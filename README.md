@@ -4,7 +4,7 @@ App meant for automation of core operations inside businesses.
 
 ## Features
 
- - to be updated
+ - storing products, check [Database config](docs/DATABASE.md)
 
 ## Tech stack
 
@@ -54,6 +54,7 @@ CREATE DATABASE coregrid;
 
 ```text
 database/
+docs/
 .gitignore
 README.md
 ```
