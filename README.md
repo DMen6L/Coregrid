@@ -4,7 +4,7 @@ App meant for automation of core operations inside businesses.
 
 ## Features
 
- - storing products, check [Database config](docs/DATABASE.md)
+ - [storing products, suppliers, supplier companies/brands](docs/DATABASE.md)
 
 ## Tech stack
 
@@ -48,6 +48,27 @@ sudo -iu postgres psql
 
 ```sql
 CREATE DATABASE coregrid;
+```
+
+### Test scripts
+
+#### `init.sql`
+
+```bash
+psql -U user -d coregrid -f database/scripts/init.sql
+```
+
+Check the results:
+
+```bash
+# connect
+psql -U user -d coregrid
+
+# list the tables
+\dt
+
+# exit
+\q
 ```
 
 ## Project structure
