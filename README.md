@@ -73,9 +73,28 @@ psql -U user -d coregrid
 
 ## Project structure
 
-```text
-database/
-docs/
-.gitignore
-README.md
+```txt
+.
+├── backend
+│   ├── alembic
+│   │   ├── env.py
+│   │   ├── README
+│   │   ├── script.py.mako
+│   │   └── versions
+│   ├── alembic.ini
+│   ├── app
+│   │   ├── config.py
+│   │   ├── db.py
+│   │   ├── __init__.py
+│   │   └── models.py
+│   ├── main.py
+│   ├── pyproject.toml
+│   ├── README.md
+│   └── uv.lock
+├── docs
+│   ├── BACKEND.md
+│   └── DATABASE.md
+├── .env
+├── .gitignore
+└── README.md
 ```
