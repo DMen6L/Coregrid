@@ -1,4 +1,5 @@
-from sqlalchemy import String, ForeignKey
+from datetime import datetime
+from sqlalchemy import String, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -36,7 +37,7 @@ class Product(Base):
     supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     price: Mapped[int] = mapped_column(nullable=False)
-    created_at: Mapped[str] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
-    company = Mapped["Company"] = relationship(back_populates="products")
+    company: Mapped["Company"] = relationship(back_populates="products")
     supplier: Mapped["Supplier"] = relationship(back_populates="products")
