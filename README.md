@@ -5,12 +5,14 @@ App meant for automation of core operations inside businesses.
 ## Features
 
  - [storing products, suppliers, supplier companies/brands](docs/DATABASE.md)
+ - [configuration and maintenance of backend and database on python](docs/BACKEND.md)
 
 ## Tech stack
 
 ### Backend
 
 - PostgeSQL
+- Python - SQLAlchemy, psycopg, Alembic
 
 ---
 
@@ -23,12 +25,13 @@ git clone git@github.com:DMen6L/Coregrid.git
 cd Coregrid
 ```
 
-### Download PostgeSQL
+### Download PostgeSQL and Python+UV
 
 Arch:
 
 ```bash
 sudo pacman -S postgresql
+sudo pacman -S python uv
 ```
 
 ### Start PostgeSQL
@@ -50,15 +53,24 @@ sudo -iu postgres psql
 CREATE DATABASE coregrid;
 ```
 
-### Test scripts
-
-#### `init.sql`
+### Sync virtual environment
 
 ```bash
-psql -U user -d coregrid -f database/scripts/init.sql
+uv venv
+uv sync
 ```
 
-Check the results:
+### Test scripts
+
+Run the scripts
+
+```bash
+# Activate virtual environment
+source .venv/bin/activate
+python main.py
+```
+
+Test the results
 
 ```bash
 # connect
@@ -73,7 +85,7 @@ psql -U user -d coregrid
 
 ## Project structure
 
-```txt
+```text
 .
 ├── backend
 │   ├── alembic
