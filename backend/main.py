@@ -1,11 +1,11 @@
+from fastapi import FastAPI
+
 from app.db import engine, Base
 from app.models import Company, Supplier, Product
 
-
-def main():
-    # create all tables
-    Base.metadata.create_all(bind=engine)
+app = FastAPI()
 
 
-if __name__ == "__main__":
-    main()
+@app.get("/")
+def read_root():
+    return {"Hello": "World"}
