@@ -12,7 +12,7 @@ App meant for automation of core operations inside businesses.
 ### Backend
 
 - PostgeSQL
-- Python - SQLAlchemy, psycopg, Alembic
+- Python
 
 ---
 
@@ -67,14 +67,22 @@ Run the scripts
 ```bash
 # Activate virtual environment
 source .venv/bin/activate
-python main.py
+uv run fastapi dev main.py 
 ```
 
 Test the results
 
+> [!NOTE]
+> Check http://127.0.0.1:8000/docs after running dev server for tests
+
+Check responsibility of endpoints on database part
+
 ```bash
 # connect
 psql -U user -d coregrid
+
+# check tables individually
+SELECT * FROM table_name;
 
 # list the tables
 \dt

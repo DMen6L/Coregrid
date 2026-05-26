@@ -39,3 +39,6 @@ Purpose is to save and generate transaction scripts to dynamically update the ta
 ### `main.py`
 
 Here is defined FastAPI endpoints, for now as test only read_rood function is defined to check responses on the backend side.
+
+> [!NOTE]
+> Check current endpoints and their functions in [here](/backend/README.md)
