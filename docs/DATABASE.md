@@ -2,7 +2,7 @@
 
 ## Tables
 
-***according to latest `init.sql` configuration***
+***All table structures are defined in `backend/app/models.py`***
 
 ### Companies
 
