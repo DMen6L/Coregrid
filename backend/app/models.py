@@ -42,6 +42,8 @@ class Product(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     price: Mapped[int] = mapped_column(nullable=False)
+    quantity: Mapped[int | None] = mapped_column(nullable=False)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     company: Mapped["Company"] = relationship(back_populates="products")
