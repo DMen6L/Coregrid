@@ -1,5 +1,5 @@
 from os import name
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -9,10 +9,13 @@ from app.models import Company, Supplier, Product
 from app.schemas import (
     CompanyCreate,
     CompanyResponse,
+    CompanyUpdate,
     SupplierCreate,
     SupplierResponse,
+    SupplierUpdate,
     ProductCreate,
     ProductResponse,
+    ProductUpdate,
 )
 
 
@@ -81,9 +84,113 @@ def add_product(product_data: ProductCreate, db: Session = Depends(get_db)):
 # ===============
 
 
-@app.patch("/companies/{id}", status_code=200)
-def update_company(id: int):
-    pass
+@app.patch("/companies/{id}", response_model=CompanyResponse, status_code=200)
+def patch_company(id: int, update_data: CompanyUpdate, db: Session = Depends(get_db)):
+    company = db.get(Company, id)
+
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    changes = update_data.model_dump(exclude_unset=True)
+
+    for field, value in changes.items():
+        setattr(company, field, value)
+
+    db.commit()
+    db.refresh(company)
+
+    return company
+
+
+@app.patch("/suppliers/{id}", response_model=SupplierResponse, status_code=200)
+def patch_supplier(id: int, update_data: SupplierUpdate, db: Session = Depends(get_db)):
+    supplier = db.get(Supplier, id)
+
+    if supplier is None:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+
+    changes = update_data.model_dump(exclude_unset=True)
+
+    for field, value in changes.items():
+        setattr(supplier, field, value)
+
+    db.commit()
+    db.refresh(supplier)
+
+    return supplier
+
+
+@app.patch("/products/{id}", response_model=ProductResponse, status_code=200)
+def patch_product(id: int, update_data: ProductUpdate, db: Session = Depends(get_db)):
+    product = db.get(Product, id)
+
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    changes = update_data.model_dump(exclude_unset=True)
+
+    for field, value in changes.items():
+        setattr(product, field, value)
+
+    db.commit()
+    db.refresh(product)
+
+    return product
+
+
+# =======================
+# SELECTING ALL INSTANCES
+# =======================
+
+
+@app.get("/companies", response_model=list[CompanyResponse], status_code=200)
+def get_companies(db: Session = Depends(get_db)):
+    return db.query(Company).all()
+
+
+@app.get("/suppliers", response_model=list[SupplierResponse], status_code=200)
+def get_suppliers(db: Session = Depends(get_db)):
+    return db.query(Supplier).all()
+
+
+@app.get("/products", response_model=list[ProductResponse], status_code=200)
+def get_products(db: Session = Depends(get_db)):
+    return db.query(Product).all()
+
+
+# ==========================
+# SELECTING SINGLE INSTANCES
+# ==========================
+
+
+@app.get("/companies/{id}", response_model=CompanyResponse, status_code=200)
+def get_company(id: int, db: Session = Depends(get_db)):
+    company = db.get(Company, id)
+
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    return company
+
+
+@app.get("/suppliers/{id}", response_model=SupplierResponse, status_code=200)
+def get_company(id: int, db: Session = Depends(get_db)):
+    supplier = db.get(Supplier, id)
+
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+
+    return supplier
+
+
+@app.get("/products/{id}", response_model=ProductResponse, status_code=200)
+def get_company(id: int, db: Session = Depends(get_db)):
+    product = db.get(Product, id)
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    return product
 
 
 # ===================

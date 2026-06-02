@@ -13,15 +13,25 @@ class CompanyResponse(BaseModel):
     iin: str
 
 
+class CompanyUpdate(BaseModel):
+    name: str | None = None
+    iin: str | None = None
+
+
 class SupplierCreate(BaseModel):
     name: str = Field(min_length=4, max_length=255)
-    phone_number: str = Field(min_length=12, max_length=12)
+    phone_number: str = Field(min_length=12, max_length=13)
 
 
 class SupplierResponse(BaseModel):
     id: int
     name: str
     phone_number: str
+
+
+class SupplierUpdate(BaseModel):
+    name: str | None = None
+    phone_number: str | None = None
 
 
 class ProductCreate(BaseModel):
@@ -42,3 +52,12 @@ class ProductResponse(BaseModel):
 
     company_id: int | None
     supplier_id: int | None
+
+
+class ProductUpdate(BaseModel):
+    name: str | None = None
+    price: int | None = None
+    quantity: int | None = None
+
+    company_id: int | None = None
+    supplier_id: int | None = None
