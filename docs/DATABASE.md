@@ -9,7 +9,7 @@
 Stores supplier companies whose products are stored.
 
 - `id` unique identifier given to the company/brand
-- `IIN` unique identifier used in referring the company in documents or receipts
+- `IIN` unique identifier used in referring to the company in documents or receipts
 - `name` name of the referred company/brand
 
 ### Suppliers
@@ -27,4 +27,5 @@ Stores products assigning them unique identifiers and created for easier access 
 - `id` unique identifier of each product
 - `name` stores the names of each of the products
 - `price` stores the prices of the products, meant to be flexible due to different reasons of price changes
+- `quantity` stores the amount of currently stored products, default set to 0
 - `created_at` needed to identify the creation time of the product

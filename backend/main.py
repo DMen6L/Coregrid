@@ -60,6 +60,7 @@ def add_product(product_data: ProductCreate):
         new_product = Product(
             name=product_data.name,
             price=product_data.price,
+            quantity=product_data.quantity,
             company_id=product_data.company_id,
             supplier_id=product_data.supplier_id,
         )

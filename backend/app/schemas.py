@@ -27,6 +27,7 @@ class SupplierResponse(BaseModel):
 class ProductCreate(BaseModel):
     name: str = Field(min_length=4, max_length=255)
     price: int = Field(gt=0)
+    quantity: int = Field(default=0, ge=0, validate_default=True)
 
     company_id: int | None = None
     supplier_id: int | None = None
@@ -36,6 +37,7 @@ class ProductResponse(BaseModel):
     id: int
     name: str
     price: int
+    quantity: int
     created_at: datetime
 
     company_id: int | None
