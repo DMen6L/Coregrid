@@ -174,7 +174,7 @@ def get_company(id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/suppliers/{id}", response_model=SupplierResponse, status_code=200)
-def get_company(id: int, db: Session = Depends(get_db)):
+def get_supplier(id: int, db: Session = Depends(get_db)):
     supplier = db.get(Supplier, id)
 
     if not supplier:
@@ -184,7 +184,7 @@ def get_company(id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/products/{id}", response_model=ProductResponse, status_code=200)
-def get_company(id: int, db: Session = Depends(get_db)):
+def get_product(id: int, db: Session = Depends(get_db)):
     product = db.get(Product, id)
 
     if not product:
