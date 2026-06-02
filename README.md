@@ -79,9 +79,10 @@ Check responsibility of endpoints on database part
 
 ```bash
 # connect
-psql -U user -d coregrid
+psql -U postgres -d coregrid
 
 # check tables individually
+# table_name is to be substituted with proper name of the table
 SELECT * FROM table_name;
 
 # list the tables
