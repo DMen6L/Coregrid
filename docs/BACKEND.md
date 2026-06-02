@@ -37,7 +37,7 @@ Purpose is to save and generate transaction scripts to dynamically update the ta
 
 ### `main.py`
 
-Here is defined FastAPI endpoints, for now as test_root, and inserts and deletes are defined, basic CRUD is to be implemented.
+Here is defined FastAPI endpoints.
 
 > [!NOTE]
 > Check current endpoints and their functions in [here](/backend/README.md)

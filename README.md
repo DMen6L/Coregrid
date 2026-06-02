@@ -67,6 +67,9 @@ Run the scripts
 ```bash
 # Activate virtual environment
 source .venv/bin/activate
+fastapi dev main.py
+
+# Or run directly
 uv run fastapi dev main.py 
 ```
 
