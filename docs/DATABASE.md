@@ -29,3 +29,20 @@ Stores products assigning them unique identifiers and created for easier access 
 - `price` stores the prices of the products, meant to be flexible due to different reasons of price changes
 - `quantity` stores the amount of currently stored products, default set to 0
 - `created_at` needed to identify the creation time of the product
+
+## Connection and working with Coregrid database
+
+```bash
+# connect
+psql -U postgres -d coregrid
+
+# list the tables
+\dt
+
+# check tables individually
+# table_name is to be substituted with proper name of the table
+SELECT * FROM table_name;
+
+# exit
+\q
+```

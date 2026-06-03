@@ -66,34 +66,14 @@ Run the scripts
 
 ```bash
 # Activate virtual environment
+# from backend/
 source .venv/bin/activate
-fastapi dev main.py
+pytest -s
 
 # Or run directly
-uv run fastapi dev main.py 
+uv run pytest -s
 ```
 
-Test the results
-
-> [!NOTE]
-> Check http://127.0.0.1:8000/docs after running dev server for tests
-
-Check responsibility of endpoints on database part
-
-```bash
-# connect
-psql -U postgres -d coregrid
-
-# check tables individually
-# table_name is to be substituted with proper name of the table
-SELECT * FROM table_name;
-
-# list the tables
-\dt
-
-# exit
-\q
-```
 
 ## Project structure
 
@@ -110,15 +90,17 @@ SELECT * FROM table_name;
 │   │   ├── config.py
 │   │   ├── db.py
 │   │   ├── __init__.py
-│   │   └── models.py
+│   │   ├── models.py
+│   │   └── schemas.py
 │   ├── main.py
 │   ├── pyproject.toml
 │   ├── README.md
+│   ├── tests
+│   │   ├── __init__.py
+│   │   └── test_api.py
 │   └── uv.lock
 ├── docs
 │   ├── BACKEND.md
 │   └── DATABASE.md
-├── .env
-├── .gitignore
 └── README.md
 ```

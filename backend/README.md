@@ -81,3 +81,17 @@
 ### `DELETE /cleanup`
 
 - Cleans out the tables present in Coregrid database
+
+## Running the server
+
+```bash
+# from backend/
+source .venv/bin/activate
+fastapi dev main.py
+
+# or directly
+uv run fastapi dev main.py
+```
+
+> [!NOTE]
+> Check http://127.0.0.1:8000/docs after running dev server for tests
