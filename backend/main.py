@@ -29,7 +29,6 @@ app = FastAPI()
 
 @app.get("/")
 def read_root():
-    Base.metadata.create_all(bind=engine)
     return {"Hello": "World"}
 
 
