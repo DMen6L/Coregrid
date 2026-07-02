@@ -1,10 +1,45 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+from typing import Annotated
+from pydantic import BaseModel, Field, model_validator, StringConstraints
+
+# ======
+# FIELDS
+# ======
+
+IIN = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, pattern=r"^\d{12}$"),
+]
+Name = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=255),
+]
+PhoneNumber = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, pattern=r"\d{12}$"),
+]
+
+# ===============
+# VALIDATOR CLASS
+# ===============
+
+
+class UpdateValidator(BaseModel):
+    @model_validator(mode="after")
+    def non_empty_fields(self):
+        if not self.model_fields_set:
+            raise ValueError("update models cannot be empty")
+        return self
+
+
+# =======
+# SCHEMAS
+# =======
 
 
 class CompanyCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=255)
-    iin: str = Field(min_length=12, max_length=12)
+    name: Name
+    iin: IIN
 
 
 class CompanyResponse(BaseModel):
@@ -13,14 +48,14 @@ class CompanyResponse(BaseModel):
     iin: str
 
 
-class CompanyUpdate(BaseModel):
-    name: str | None = None
-    iin: str | None = None
+class CompanyUpdate(UpdateValidator):
+    name: Name | None = None
+    iin: IIN | None = None
 
 
 class SupplierCreate(BaseModel):
-    name: str = Field(min_length=4, max_length=255)
-    phone_number: str = Field(min_length=12, max_length=13)
+    name: Name
+    phone_number: PhoneNumber
 
 
 class SupplierResponse(BaseModel):
@@ -29,13 +64,13 @@ class SupplierResponse(BaseModel):
     phone_number: str
 
 
-class SupplierUpdate(BaseModel):
-    name: str | None = None
-    phone_number: str | None = None
+class SupplierUpdate(UpdateValidator):
+    name: Name | None = Field(default=None, min_length=4, max_length=255)
+    phone_number: PhoneNumber | None = Field(default=None, min_length=12, max_length=12)
 
 
 class ProductCreate(BaseModel):
-    name: str = Field(min_length=4, max_length=255)
+    name: Name
     price: int = Field(gt=0)
     quantity: int = Field(default=0, ge=0, validate_default=True)
 
@@ -54,10 +89,10 @@ class ProductResponse(BaseModel):
     supplier_id: int | None
 
 
-class ProductUpdate(BaseModel):
-    name: str | None = None
-    price: int | None = None
-    quantity: int | None = None
+class ProductUpdate(UpdateValidator):
+    name: Name | None = Field(default=None, min_length=4, max_length=255)
+    price: int | None = Field(default=None, gt=0)
+    quantity: int | None = Field(default=None, ge=0, validate_default=True)
 
     company_id: int | None = None
     supplier_id: int | None = None

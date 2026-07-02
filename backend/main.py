@@ -1,8 +1,12 @@
 from os import name
+
 from fastapi import FastAPI, Depends, HTTPException
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+
+from psycopg.errors import UniqueViolation, ForeignKeyViolation, CheckViolation
+from sqlalchemy.exc import IntegrityError
 
 from app.db import SessionLocal, engine, Base
 from app.models import Company, Supplier, Product
@@ -24,6 +28,28 @@ def get_db():
         yield session
 
 
+def commit_or_raise(db: Session):
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+
+        if isinstance(exc.orig, UniqueViolation):
+            raise HTTPException(
+                status_code=409, detail="Duplicate value conflicts existing row"
+            ) from exc
+        if isinstance(exc.orig, ForeignKeyViolation):
+            raise HTTPException(
+                status_code=409, detail="Referenced row does not exist or was changed"
+            ) from exc
+        if isinstance(exc.orig, CheckViolation):
+            raise HTTPException(
+                status_code=422, detail="Value violates a database constraint"
+            ) from exc
+
+        raise HTTPException(status_code=500, detail="Database error") from exc
+
+
 app = FastAPI()
 
 
@@ -42,7 +68,7 @@ def add_company(company_data: CompanyCreate, db: Session = Depends(get_db)):
     new_company = Company(iin=company_data.iin, name=company_data.name)
 
     db.add(new_company)
-    db.commit()
+    commit_or_raise(db)
     db.refresh(new_company)
 
     return new_company
@@ -55,7 +81,7 @@ def add_supplier(supplier_data: SupplierCreate, db: Session = Depends(get_db)):
     )
 
     db.add(new_supplier)
-    db.commit()
+    commit_or_raise(db)
     db.refresh(new_supplier)
 
     return new_supplier
@@ -72,7 +98,7 @@ def add_product(product_data: ProductCreate, db: Session = Depends(get_db)):
     )
 
     db.add(new_product)
-    db.commit()
+    commit_or_raise(db)
     db.refresh(new_product)
 
     return new_product
@@ -95,7 +121,7 @@ def patch_company(id: int, update_data: CompanyUpdate, db: Session = Depends(get
     for field, value in changes.items():
         setattr(company, field, value)
 
-    db.commit()
+    commit_or_raise(db)
     db.refresh(company)
 
     return company
@@ -113,7 +139,7 @@ def patch_supplier(id: int, update_data: SupplierUpdate, db: Session = Depends(g
     for field, value in changes.items():
         setattr(supplier, field, value)
 
-    db.commit()
+    commit_or_raise(db)
     db.refresh(supplier)
 
     return supplier
@@ -131,7 +157,7 @@ def patch_product(id: int, update_data: ProductUpdate, db: Session = Depends(get
     for field, value in changes.items():
         setattr(product, field, value)
 
-    db.commit()
+    commit_or_raise(db)
     db.refresh(product)
 
     return product
@@ -202,4 +228,4 @@ def cleanup(db: Session = Depends(get_db)):
     db.execute(
         text("TRUNCATE TABLE products, companies, suppliers RESTART IDENTITY CASCADE")
     )
-    db.commit()
+    commit_or_raise(db)
