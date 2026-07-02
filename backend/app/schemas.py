@@ -16,7 +16,7 @@ Name = Annotated[
 ]
 PhoneNumber = Annotated[
     str,
-    StringConstraints(strip_whitespace=True, pattern=r"\d{12}$"),
+    StringConstraints(strip_whitespace=True, pattern=r"^\d{12}$"),
 ]
 
 # ===============
@@ -65,8 +65,8 @@ class SupplierResponse(BaseModel):
 
 
 class SupplierUpdate(UpdateValidator):
-    name: Name | None = Field(default=None, min_length=4, max_length=255)
-    phone_number: PhoneNumber | None = Field(default=None, min_length=12, max_length=12)
+    name: Name | None = None
+    phone_number: PhoneNumber | None = None
 
 
 class ProductCreate(BaseModel):
@@ -90,7 +90,7 @@ class ProductResponse(BaseModel):
 
 
 class ProductUpdate(UpdateValidator):
-    name: Name | None = Field(default=None, min_length=4, max_length=255)
+    name: Name | None = None
     price: int | None = Field(default=None, gt=0)
     quantity: int | None = Field(default=None, ge=0, validate_default=True)
 

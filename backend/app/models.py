@@ -64,7 +64,7 @@ class Supplier(Base):
         UniqueConstraint("name", name="uq_suppliers_name"),
         UniqueConstraint("phone_number", name="uq_suppliers_phone_number"),
         CheckConstraint(
-            "char_length(phone_number) = 12", name="ck_supplier_phone_number"
+            "char_length(phone_number) = 12", name="ck_suppliers_phone_number"
         ),
     )
 
@@ -73,12 +73,12 @@ class Product(Base):
     __tablename__ = "products"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int] = mapped_column(
+    company_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("companies.id", ondelete="SET NULL"),
         nullable=True,
     )
-    supplier_id: Mapped[int] = mapped_column(
+    supplier_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("suppliers.id", ondelete="SET NULL"),
         nullable=True,
@@ -106,6 +106,6 @@ class Product(Base):
     supplier: Mapped["Supplier"] = relationship(back_populates="products")
 
     __table_args__ = (
-        CheckConstraint("price > 0", name="ck_product_price"),
-        CheckConstraint("quantity >= 0", name="ck_product_quantity"),
+        CheckConstraint("price > 0", name="ck_products_price"),
+        CheckConstraint("quantity >= 0", name="ck_products_quantity"),
     )
