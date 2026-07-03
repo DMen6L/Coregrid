@@ -1,21 +1,32 @@
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
+from app.db import SessionLocal
 from main import app
 
 
 client = TestClient(app)
 
 
+def truncate_database():
+    with SessionLocal() as session:
+        session.execute(
+            text(
+                "TRUNCATE TABLE products, companies, suppliers "
+                "RESTART IDENTITY CASCADE"
+            )
+        )
+        session.commit()
+
+
 @pytest.fixture(autouse=True)
 def clean_database():
-    response = client.delete("/cleanup")
-    assert response.status_code == 204
+    truncate_database()
 
     yield
 
-    response = client.delete("/cleanup")
-    assert response.status_code == 204
+    truncate_database()
 
 
 def create_company(name="Test Company", iin="121212121212"):
@@ -158,6 +169,17 @@ def test_product_quantity_defaults_to_zero():
     assert response.json()["quantity"] == 0
 
 
+def test_create_payload_whitespace_is_stripped():
+    response = client.post(
+        "/companies",
+        json={"name": "  Trimmed Company  ", "iin": " 121212121212 "},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["name"] == "Trimmed Company"
+    assert response.json()["iin"] == "121212121212"
+
+
 def test_company_duplicate_iin_returns_conflict():
     create_company(name="First Company", iin="121212121212")
 
@@ -232,6 +254,43 @@ def test_product_missing_supplier_reference_returns_conflict():
     assert_missing_reference_error(response)
 
 
+def test_patch_product_missing_company_reference_returns_conflict():
+    product = create_product()
+
+    response = client.patch(
+        f"/products/{product['id']}",
+        json={"company_id": 999},
+    )
+
+    assert_missing_reference_error(response)
+
+
+def test_patch_product_missing_supplier_reference_returns_conflict():
+    product = create_product()
+
+    response = client.patch(
+        f"/products/{product['id']}",
+        json={"supplier_id": 999},
+    )
+
+    assert_missing_reference_error(response)
+
+
+def test_patch_product_can_clear_company_and_supplier_relationships():
+    company = create_company()
+    supplier = create_supplier()
+    product = create_product(company_id=company["id"], supplier_id=supplier["id"])
+
+    response = client.patch(
+        f"/products/{product['id']}",
+        json={"company_id": None, "supplier_id": None},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["company_id"] is None
+    assert response.json()["supplier_id"] is None
+
+
 @pytest.mark.parametrize(
     ("path", "payload"),
     [
@@ -249,6 +308,21 @@ def test_product_missing_supplier_reference_returns_conflict():
 )
 def test_create_validation_errors_return_unprocessable_entity(path, payload):
     response = client.post(path, json=payload)
+
+    assert_validation_error(response)
+
+
+@pytest.mark.parametrize(
+    ("path", "payload"),
+    [
+        ("/companies/1", {"iin": "123"}),
+        ("/suppliers/1", {"phone_number": "777"}),
+        ("/products/1", {"price": 0}),
+        ("/products/1", {"quantity": -1}),
+    ],
+)
+def test_patch_validation_errors_return_unprocessable_entity(path, payload):
+    response = client.patch(path, json=payload)
 
     assert_validation_error(response)
 
@@ -293,15 +367,69 @@ def test_get_missing_row_returns_not_found(path, expected_detail):
     assert response.json() == {"detail": expected_detail}
 
 
-def test_cleanup_returns_no_content():
-    create_company()
-    create_supplier()
-    create_product()
+def test_delete_product_removes_product():
+    product = create_product()
 
-    response = client.delete("/cleanup")
+    response = client.delete(f"/products/{product['id']}")
 
     assert response.status_code == 204
     assert response.content == b""
-    assert client.get("/companies").json() == []
-    assert client.get("/suppliers").json() == []
-    assert client.get("/products").json() == []
+
+    get_response = client.get(f"/products/{product['id']}")
+    assert get_response.status_code == 404
+    assert get_response.json() == {"detail": "Product not found"}
+
+
+def test_delete_company_keeps_product_and_clears_company_id():
+    company = create_company()
+    supplier = create_supplier()
+    product = create_product(company_id=company["id"], supplier_id=supplier["id"])
+
+    response = client.delete(f"/companies/{company['id']}")
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+    get_product_response = client.get(f"/products/{product['id']}")
+    assert get_product_response.status_code == 200
+    assert get_product_response.json()["company_id"] is None
+    assert get_product_response.json()["supplier_id"] == supplier["id"]
+
+    get_company_response = client.get(f"/companies/{company['id']}")
+    assert get_company_response.status_code == 404
+    assert get_company_response.json() == {"detail": "Company not found"}
+
+
+def test_delete_supplier_keeps_product_and_clears_supplier_id():
+    company = create_company()
+    supplier = create_supplier()
+    product = create_product(company_id=company["id"], supplier_id=supplier["id"])
+
+    response = client.delete(f"/suppliers/{supplier['id']}")
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+    get_product_response = client.get(f"/products/{product['id']}")
+    assert get_product_response.status_code == 200
+    assert get_product_response.json()["company_id"] == company["id"]
+    assert get_product_response.json()["supplier_id"] is None
+
+    get_supplier_response = client.get(f"/suppliers/{supplier['id']}")
+    assert get_supplier_response.status_code == 404
+    assert get_supplier_response.json() == {"detail": "Supplier not found"}
+
+
+@pytest.mark.parametrize(
+    ("path", "expected_detail"),
+    [
+        ("/companies/999", "Company not found"),
+        ("/suppliers/999", "Supplier not found"),
+        ("/products/999", "Product not found"),
+    ],
+)
+def test_delete_missing_row_returns_not_found(path, expected_detail):
+    response = client.delete(path)
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": expected_detail}

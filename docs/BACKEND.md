@@ -42,8 +42,14 @@ Here is defined FastAPI endpoints.
 ### `test_api.py`
 
 Automated tests to check responses of FastAPI.
+Currently 30 test cases are included.
 
 - Needed to lower amount of manual testing of endpoints.
+
+```bash
+# Run from backend/
+uv run pytest -s
+```
 
 ## Alembic
 
