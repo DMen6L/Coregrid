@@ -5,6 +5,7 @@ from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import selectinload
 
 from app.models import Company, Product, Supplier
+from app.pricing import calculate_floor_price
 from app.schemas import (
     PaginatedResponse,
     ProductCreate,
@@ -19,13 +20,20 @@ from pagination import DEFAULT_PAGE_SIZE, PageNumber, PageSize, paginate
 
 router = APIRouter(prefix="/products", tags=["products"])
 ProductStockFilter = Literal["all", "available", "low", "empty"]
+SALE_PRICE_FLOOR_ERROR = "sale_price cannot be lower than floor_price"
 
 
 @router.post("", response_model=ProductResponse, status_code=201)
 def add_product(product_data: ProductCreate, db: DbSession) -> Product:
+    floor_price = calculate_floor_price(
+        product_data.purchase_price,
+        product_data.margin_percent,
+    )
     new_product = Product(
         name=product_data.name,
-        price=product_data.price,
+        purchase_price=product_data.purchase_price,
+        margin_percent=product_data.margin_percent,
+        sale_price=product_data.sale_price or floor_price,
         quantity=product_data.quantity,
         low_stock_threshold=product_data.low_stock_threshold,
         company_id=product_data.company_id,
@@ -47,6 +55,7 @@ def patch_product(id: int, update_data: ProductUpdate, db: DbSession) -> Product
         raise HTTPException(status_code=404, detail="Product not found")
 
     changes = update_data.model_dump(exclude_unset=True)
+    validate_product_pricing_update(product, changes)
 
     for field, value in changes.items():
         setattr(product, field, value)
@@ -94,12 +103,29 @@ def get_products(
     return paginate(query.order_by(Product.id), page, page_size)
 
 
+def validate_product_pricing_update(
+    product: Product,
+    changes: dict[str, object],
+) -> None:
+    for field in ("purchase_price", "margin_percent", "sale_price"):
+        if field in changes and changes[field] is None:
+            raise HTTPException(status_code=422, detail=f"{field} cannot be null")
+
+    purchase_price = int(changes.get("purchase_price", product.purchase_price))
+    margin_percent = int(changes.get("margin_percent", product.margin_percent))
+    sale_price = int(changes.get("sale_price", product.sale_price))
+    floor_price = calculate_floor_price(purchase_price, margin_percent)
+
+    if sale_price < floor_price:
+        raise HTTPException(status_code=422, detail=SALE_PRICE_FLOOR_ERROR)
+
+
 @router.get("/summary", response_model=ProductSummaryResponse, status_code=200)
 def get_product_summary(db: DbSession) -> ProductSummaryResponse:
     total_products, total_units, inventory_value, low_stock = db.query(
         func.count(Product.id),
         func.coalesce(func.sum(Product.quantity), 0),
-        func.coalesce(func.sum(Product.price * Product.quantity), 0),
+        func.coalesce(func.sum(Product.purchase_price * Product.quantity), 0),
         func.coalesce(
             func.sum(
                 case(

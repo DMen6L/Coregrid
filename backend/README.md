@@ -64,10 +64,12 @@ Paginated responses use:
 #### `POST /suppliers`
 
 - Creating new instance for table Suppliers
+- `phone_number` accepts `8XXXXXXXXXX` or `+7XXXXXXXXXX`
 
 #### `PATCH /suppliers/{id}`
 
 - Updating data of an instance for table Suppliers
+- `phone_number` accepts `8XXXXXXXXXX` or `+7XXXXXXXXXX`
 
 #### `GET /suppliers`
 
@@ -88,16 +90,23 @@ Paginated responses use:
 #### `POST /products`
 
 - Creating new instance for table Products
+- Requires `purchase_price`
+- Accepts `margin_percent`, defaulting to `0`
+- Accepts optional `sale_price`; when omitted, it defaults to calculated `floor_price`
 - Accepts optional `low_stock_threshold`, defaulting to `5`
+- Rejects `sale_price` lower than calculated `floor_price`
 
 #### `PATCH /products/{id}`
 
 - Updating data of an instance for table Products
+- Can update `purchase_price`, `margin_percent`, and `sale_price`
 - Can update `low_stock_threshold`
+- Rejects pricing changes that would make `sale_price` lower than calculated `floor_price`
 
 #### `GET /products`
 
 - Returns a paginated list of products
+- Product responses include `purchase_price`, `margin_percent`, calculated `floor_price`, and `sale_price`
 - Product responses include calculated `stock_status`
 - Product responses include `company_name` and `supplier_name` for display
 - Supports `search` by product, company, or supplier name
@@ -110,6 +119,7 @@ Paginated responses use:
 #### `GET /products/{id}`
 
 - Returns a single instance of Products referenced by `id`
+- Product responses include `purchase_price`, `margin_percent`, calculated `floor_price`, and `sale_price`
 - Product responses include calculated `stock_status`
 - Product responses include `company_name` and `supplier_name` for display
 

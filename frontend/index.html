@@ -65,7 +65,9 @@
                 <thead>
                   <tr>
                     <th scope="col">Товар</th>
-                    <th scope="col">Цена</th>
+                    <th scope="col">Закупка</th>
+                    <th scope="col">Маржа</th>
+                    <th scope="col">Продажа</th>
                     <th scope="col">Количество</th>
                     <th scope="col">Статус</th>
                     <th scope="col">Компания</th>
@@ -221,14 +223,28 @@
 
             <div class="field-grid">
               <div>
-                <label for="product-price">Цена</label>
-                <input id="product-price" name="price" type="number" min="1" step="1" required>
+                <label for="product-purchase-price">Цена закупки</label>
+                <input id="product-purchase-price" name="purchase_price" type="number" min="1" step="1" required>
               </div>
               <div>
-                <label for="product-quantity">Количество</label>
-                <input id="product-quantity" name="quantity" type="number" min="0" step="1" value="0" required>
+                <label for="product-margin-percent">Маржа %</label>
+                <input id="product-margin-percent" name="margin_percent" type="number" min="0" step="1" value="0" required>
               </div>
             </div>
+
+            <div class="field-grid">
+              <div>
+                <label for="product-floor-price">Минимальная цена</label>
+                <input id="product-floor-price" type="number" readonly>
+              </div>
+              <div>
+                <label for="product-sale-price">Цена продажи</label>
+                <input id="product-sale-price" name="sale_price" type="number" min="1" step="1">
+              </div>
+            </div>
+
+            <label for="product-quantity">Количество</label>
+            <input id="product-quantity" name="quantity" type="number" min="0" step="1" value="0" required>
 
             <label for="product-low-stock-threshold">Порог малого остатка</label>
             <input id="product-low-stock-threshold" name="low_stock_threshold" type="number" min="0" step="1" value="5" required>
@@ -250,7 +266,7 @@
             <input id="supplier-name" name="name" type="text" maxlength="255" required>
 
             <label for="supplier-phone">Телефон</label>
-            <input id="supplier-phone" name="phone_number" type="text" inputmode="numeric" maxlength="12" pattern="[0-9]{12}" required>
+            <input id="supplier-phone" name="phone_number" type="tel" inputmode="tel" maxlength="12" pattern="(8[0-9]{10}|\+7[0-9]{10})" placeholder="+77001234567 или 87001234567" required>
 
             <button id="supplier-submit" type="submit">Добавить поставщика</button>
           </form>

@@ -8,6 +8,8 @@ from pydantic import (
     StringConstraints,
 )
 
+from app.pricing import calculate_floor_price
+
 # ======
 # FIELDS
 # ======
@@ -22,7 +24,7 @@ Name = Annotated[
 ]
 PhoneNumber = Annotated[
     str,
-    StringConstraints(strip_whitespace=True, pattern=r"^\d{12}$"),
+    StringConstraints(strip_whitespace=True, pattern=r"^(8\d{10}|\+7\d{10})$"),
 ]
 MovementType = Literal["in", "out", "adjustment"]
 StockStatus = Literal["available", "low", "out"]
@@ -80,18 +82,37 @@ class SupplierUpdate(UpdateValidator):
 
 class ProductCreate(BaseModel):
     name: Name
-    price: int = Field(gt=0)
+    purchase_price: int = Field(gt=0)
+    margin_percent: int = Field(default=0, ge=0, validate_default=True)
+    sale_price: int | None = Field(default=None, gt=0)
     quantity: int = Field(default=0, ge=0, validate_default=True)
     low_stock_threshold: int = Field(default=5, ge=0, validate_default=True)
 
     company_id: int | None = None
     supplier_id: int | None = None
 
+    @model_validator(mode="after")
+    def sale_price_must_not_be_below_floor(self):
+        if self.sale_price is None:
+            return self
+
+        floor_price = calculate_floor_price(
+            self.purchase_price,
+            self.margin_percent,
+        )
+        if self.sale_price < floor_price:
+            raise ValueError("sale_price cannot be lower than floor_price")
+
+        return self
+
 
 class ProductResponse(BaseModel):
     id: int
     name: str
-    price: int
+    purchase_price: int
+    margin_percent: int
+    floor_price: int
+    sale_price: int
     quantity: int
     low_stock_threshold: int
     stock_status: StockStatus
@@ -105,7 +126,9 @@ class ProductResponse(BaseModel):
 
 class ProductUpdate(UpdateValidator):
     name: Name | None = None
-    price: int | None = Field(default=None, gt=0)
+    purchase_price: int | None = Field(default=None, gt=0)
+    margin_percent: int | None = Field(default=None, ge=0)
+    sale_price: int | None = Field(default=None, gt=0)
     quantity: int | None = Field(default=None, ge=0, validate_default=True)
     low_stock_threshold: int | None = Field(default=None, ge=0)
 

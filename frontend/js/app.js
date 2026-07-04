@@ -26,13 +26,17 @@ const BACKEND_ERROR_MESSAGES = {
   "Product not found": "Товар не найден.",
   "Stock movement would make product quantity negative":
     "Движение не может сделать остаток товара отрицательным.",
+  "sale_price cannot be lower than floor_price":
+    "Цена продажи не может быть ниже минимальной цены.",
 };
 
 const FIELD_LABELS = {
   name: "Название",
   iin: "ИИН",
   phone_number: "Телефон",
-  price: "Цена",
+  purchase_price: "Цена закупки",
+  margin_percent: "Маржа",
+  sale_price: "Цена продажи",
   quantity: "Количество",
   low_stock_threshold: "Порог малого остатка",
   company_id: "Компания",
@@ -88,7 +92,10 @@ const refs = {
   productForm: document.querySelector("#product-form"),
   productId: document.querySelector("#product-id"),
   productName: document.querySelector("#product-name"),
-  productPrice: document.querySelector("#product-price"),
+  productPurchasePrice: document.querySelector("#product-purchase-price"),
+  productMarginPercent: document.querySelector("#product-margin-percent"),
+  productFloorPrice: document.querySelector("#product-floor-price"),
+  productSalePrice: document.querySelector("#product-sale-price"),
   productQuantity: document.querySelector("#product-quantity"),
   productLowStockThreshold: document.querySelector(
     "#product-low-stock-threshold",
@@ -144,6 +151,8 @@ function init() {
   refs.refreshButton.addEventListener("click", loadAll);
   refs.productSearch.addEventListener("input", handleSearchInput);
   refs.stockFilter.addEventListener("change", handleStockFilterChange);
+  refs.productPurchasePrice.addEventListener("input", updateProductPricingPreview);
+  refs.productMarginPercent.addEventListener("input", updateProductPricingPreview);
   refs.productForm.addEventListener("submit", handleProductSubmit);
   refs.cancelEdit.addEventListener("click", closeDrawer);
   refs.productTableBody.addEventListener("click", handleProductTableClick);
@@ -318,11 +327,15 @@ function formatValidationIssue(issue) {
     : null;
   const label = FIELD_LABELS[field] || "Поле";
 
-  return `${label}: ${translateValidationMessage(issue.msg)}`;
+  return `${label}: ${translateValidationMessage(issue.msg, field)}`;
 }
 
-function translateValidationMessage(message) {
+function translateValidationMessage(message, field = null) {
   if (message.includes("should match pattern")) {
+    if (field === "phone_number") {
+      return "значение должно быть в формате 8XXXXXXXXXX или +7XXXXXXXXXX.";
+    }
+
     return "значение должно состоять из 12 цифр.";
   }
 
@@ -340,6 +353,10 @@ function translateValidationMessage(message) {
 
   if (message.includes("cannot be empty")) {
     return "нужно заполнить хотя бы одно поле.";
+  }
+
+  if (message.includes("sale_price cannot be lower than floor_price")) {
+    return "цена продажи не может быть ниже минимальной цены.";
   }
 
   return message;
@@ -375,7 +392,7 @@ function renderProductTable() {
   if (state.products.length === 0) {
     refs.productTableBody.innerHTML = `
       <tr>
-        <td colspan="8">
+        <td colspan="10">
           <div class="empty-state">Нет товаров для текущего фильтра.</div>
         </td>
       </tr>
@@ -392,7 +409,9 @@ function renderProductTable() {
       return `
         <tr>
           <td><strong>${escapeHtml(product.name)}</strong></td>
-          <td>${formatNumber(product.price)}</td>
+          <td>${formatNumber(product.purchase_price)}</td>
+          <td>${formatNumber(product.margin_percent)}%</td>
+          <td>${formatNumber(product.sale_price)}</td>
           <td>${formatNumber(product.quantity)}</td>
           <td>${renderStockStatus(product)}</td>
           <td>${escapeHtml(companyName)}</td>
@@ -673,6 +692,7 @@ function handleDocumentKeydown(event) {
 function openProductCreate() {
   resetProductForm();
   openDrawer("product", "Редактор", "Добавить товар");
+  updateProductPricingPreview();
   refs.productName.focus();
 }
 
@@ -754,12 +774,47 @@ function handlePaginationClick(event) {
   loadPage(type);
 }
 
+function calculateProductFloorPrice() {
+  const purchasePrice = Number(refs.productPurchasePrice.value);
+  const marginPercent = Number(refs.productMarginPercent.value);
+
+  if (
+    !Number.isFinite(purchasePrice) ||
+    !Number.isFinite(marginPercent) ||
+    purchasePrice <= 0 ||
+    marginPercent < 0
+  ) {
+    return null;
+  }
+
+  return Math.ceil((purchasePrice * (100 + marginPercent)) / 100);
+}
+
+function updateProductPricingPreview() {
+  const floorPrice = calculateProductFloorPrice();
+
+  if (floorPrice === null) {
+    refs.productFloorPrice.value = "";
+    refs.productSalePrice.placeholder = "";
+    return;
+  }
+
+  refs.productFloorPrice.value = floorPrice;
+  refs.productSalePrice.placeholder = String(floorPrice);
+}
+
 async function handleProductSubmit(event) {
   event.preventDefault();
+  const floorPrice = calculateProductFloorPrice();
+  const salePrice = refs.productSalePrice.value
+    ? Number(refs.productSalePrice.value)
+    : floorPrice;
 
   const payload = {
     name: refs.productName.value.trim(),
-    price: Number(refs.productPrice.value),
+    purchase_price: Number(refs.productPurchasePrice.value),
+    margin_percent: Number(refs.productMarginPercent.value),
+    sale_price: salePrice,
     quantity: Number(refs.productQuantity.value),
     low_stock_threshold: Number(refs.productLowStockThreshold.value),
     company_id: optionalNumber(refs.productCompany.value),
@@ -820,7 +875,10 @@ function startProductEdit(productId) {
   renderSelects();
   refs.productId.value = product.id;
   refs.productName.value = product.name;
-  refs.productPrice.value = product.price;
+  refs.productPurchasePrice.value = product.purchase_price;
+  refs.productMarginPercent.value = product.margin_percent;
+  refs.productFloorPrice.value = product.floor_price;
+  refs.productSalePrice.value = product.sale_price;
   refs.productQuantity.value = product.quantity;
   refs.productLowStockThreshold.value =
     product.low_stock_threshold ?? DEFAULT_LOW_STOCK_THRESHOLD;
@@ -829,6 +887,7 @@ function startProductEdit(productId) {
   refs.productSubmit.textContent = "Сохранить";
   refs.cancelEdit.classList.remove("hidden");
   openDrawer("product", "Редактор", "Изменить товар");
+  updateProductPricingPreview();
   refs.productName.focus();
 }
 
@@ -836,6 +895,9 @@ function resetProductForm() {
   state.editingProductId = null;
   refs.productForm.reset();
   renderSelects();
+  refs.productMarginPercent.value = 0;
+  refs.productFloorPrice.value = "";
+  refs.productSalePrice.value = "";
   refs.productQuantity.value = 0;
   refs.productLowStockThreshold.value = DEFAULT_LOW_STOCK_THRESHOLD;
   refs.productCompany.value = "";

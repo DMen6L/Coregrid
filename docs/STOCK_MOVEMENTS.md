@@ -173,17 +173,17 @@ create `stock_movement_lines` in one database transaction.
 
 ## Price snapshot
 
-`unit_price_snapshot` should copy the current `Product.price` when the movement
-is created.
+`unit_price_snapshot` should copy the current `Product.sale_price` when the
+movement is created.
 
 Reason:
 
-- product price can change later
+- product sale price can change later
 - old movement history should keep the price context from the moment of change
-- current `Product.price` is already an integer, so the snapshot should also be
-  an integer for the first version
+- current product prices are already integers, so the snapshot should also be an
+  integer for the first version
 
-If decimal currency is needed later, both `Product.price` and
+If decimal currency is needed later, both product price fields and
 `unit_price_snapshot` can move toward a numeric database type.
 
 ## API shape
@@ -312,7 +312,7 @@ Direct product quantity edits should still be reconsidered.
 
 Preferred future rule:
 
-- `PATCH /products/{id}` can update product metadata such as name, price,
+- `PATCH /products/{id}` can update product metadata such as name, pricing,
   company, and supplier.
 - stock movement endpoints should be the main way to change quantity.
 

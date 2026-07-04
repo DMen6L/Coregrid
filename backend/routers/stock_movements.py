@@ -53,7 +53,7 @@ def add_stock_movement(
                 quantity_delta=line_data.quantity_delta,
                 quantity_before=quantity_before,
                 quantity_after=quantity_after,
-                unit_price_snapshot=product.price,
+                unit_price_snapshot=product.sale_price,
             )
         )
 

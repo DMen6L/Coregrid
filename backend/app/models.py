@@ -12,6 +12,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.pricing import calculate_floor_price
 
 
 # ======
@@ -64,7 +65,8 @@ class Supplier(Base):
         UniqueConstraint("name", name="uq_suppliers_name"),
         UniqueConstraint("phone_number", name="uq_suppliers_phone_number"),
         CheckConstraint(
-            "char_length(phone_number) = 12", name="ck_suppliers_phone_number"
+            "phone_number ~ '^(8[0-9]{10}|\\+7[0-9]{10})$'",
+            name="ck_suppliers_phone_number",
         ),
     )
 
@@ -87,7 +89,16 @@ class Product(Base):
         String(255),
         nullable=False,
     )
-    price: Mapped[int] = mapped_column(
+    purchase_price: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+    margin_percent: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+    )
+    sale_price: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
     )
@@ -115,13 +126,23 @@ class Product(Base):
     )
 
     __table_args__ = (
-        CheckConstraint("price > 0", name="ck_products_price"),
+        CheckConstraint("purchase_price > 0", name="ck_products_purchase_price"),
+        CheckConstraint("margin_percent >= 0", name="ck_products_margin_percent"),
+        CheckConstraint("sale_price > 0", name="ck_products_sale_price"),
+        CheckConstraint(
+            "sale_price * 100 >= purchase_price * (100 + margin_percent)",
+            name="ck_products_sale_price_floor",
+        ),
         CheckConstraint("quantity >= 0", name="ck_products_quantity"),
         CheckConstraint(
             "low_stock_threshold >= 0",
             name="ck_products_low_stock_threshold",
         ),
     )
+
+    @property
+    def floor_price(self) -> int:
+        return calculate_floor_price(self.purchase_price, self.margin_percent)
 
     @property
     def stock_status(self) -> str:

@@ -62,6 +62,11 @@ textarea {
   color: #17212b;
 }
 
+input[readonly] {
+  background: #f4f7fb;
+  color: #5b6878;
+}
+
 textarea {
   resize: vertical;
 }
@@ -296,7 +301,7 @@ label {
 
 table {
   width: 100%;
-  min-width: 920px;
+  min-width: 1080px;
   border-collapse: collapse;
 }
 
