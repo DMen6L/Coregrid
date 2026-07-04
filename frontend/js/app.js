@@ -49,12 +49,6 @@ const state = {
   suppliers: [],
   products: [],
   stockMovements: [],
-  productSummary: {
-    total_products: 0,
-    total_units: 0,
-    inventory_value: 0,
-    low_stock: 0,
-  },
   pagination: {
     companies: createPageState(DEFAULT_LOOKUP_PAGE_SIZE),
     suppliers: createPageState(DEFAULT_LOOKUP_PAGE_SIZE),
@@ -62,6 +56,7 @@ const state = {
     stockMovements: createPageState(DEFAULT_MOVEMENT_PAGE_SIZE),
   },
   activeTab: "products",
+  activeDrawerForm: null,
   stockMovementsLoaded: false,
   editingProductId: null,
   searchTerm: "",
@@ -74,18 +69,23 @@ const refs = {
   apiSettings: document.querySelector("#api-settings"),
   apiBase: document.querySelector("#api-base"),
   notice: document.querySelector("#notice"),
+  drawer: document.querySelector("#form-drawer"),
+  drawerBackdrop: document.querySelector("#drawer-backdrop"),
+  drawerClose: document.querySelector("#drawer-close"),
+  drawerTitle: document.querySelector("#drawer-title"),
+  drawerEyebrow: document.querySelector("#drawer-eyebrow"),
+  drawerForms: [...document.querySelectorAll("[data-drawer-form]")],
+  addProductButton: document.querySelector("#add-product-button"),
+  addSupplierButton: document.querySelector("#add-supplier-button"),
+  addCompanyButton: document.querySelector("#add-company-button"),
+  addMovementButton: document.querySelector("#add-movement-button"),
   refreshButton: document.querySelector("#refresh-button"),
-  totalProducts: document.querySelector("#total-products"),
-  totalUnits: document.querySelector("#total-units"),
-  inventoryValue: document.querySelector("#inventory-value"),
-  lowStock: document.querySelector("#low-stock"),
   productSearch: document.querySelector("#product-search"),
   stockFilter: document.querySelector("#stock-filter"),
   productTableBody: document.querySelector("#products-table-body"),
   productPagination: document.querySelector("#product-pagination"),
   productPageInfo: document.querySelector("#product-page-info"),
   productForm: document.querySelector("#product-form"),
-  productFormTitle: document.querySelector("#product-form-title"),
   productId: document.querySelector("#product-id"),
   productName: document.querySelector("#product-name"),
   productPrice: document.querySelector("#product-price"),
@@ -100,12 +100,14 @@ const refs = {
   companyForm: document.querySelector("#company-form"),
   companyName: document.querySelector("#company-name"),
   companyIin: document.querySelector("#company-iin"),
+  companySubmit: document.querySelector("#company-submit"),
   companyTableBody: document.querySelector("#company-table-body"),
   companyPagination: document.querySelector("#company-pagination"),
   companyPageInfo: document.querySelector("#company-page-info"),
   supplierForm: document.querySelector("#supplier-form"),
   supplierName: document.querySelector("#supplier-name"),
   supplierPhone: document.querySelector("#supplier-phone"),
+  supplierSubmit: document.querySelector("#supplier-submit"),
   supplierTableBody: document.querySelector("#supplier-table-body"),
   supplierPagination: document.querySelector("#supplier-pagination"),
   supplierPageInfo: document.querySelector("#supplier-page-info"),
@@ -132,11 +134,18 @@ function init() {
     button.addEventListener("click", handleTabClick);
   });
   refs.apiSettings.addEventListener("submit", handleApiSettingsSubmit);
+  refs.drawerBackdrop.addEventListener("click", closeDrawer);
+  refs.drawerClose.addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", handleDocumentKeydown);
+  refs.addProductButton.addEventListener("click", openProductCreate);
+  refs.addSupplierButton.addEventListener("click", openSupplierCreate);
+  refs.addCompanyButton.addEventListener("click", openCompanyCreate);
+  refs.addMovementButton.addEventListener("click", openMovementCreate);
   refs.refreshButton.addEventListener("click", loadAll);
   refs.productSearch.addEventListener("input", handleSearchInput);
   refs.stockFilter.addEventListener("change", handleStockFilterChange);
   refs.productForm.addEventListener("submit", handleProductSubmit);
-  refs.cancelEdit.addEventListener("click", resetProductForm);
+  refs.cancelEdit.addEventListener("click", closeDrawer);
   refs.productTableBody.addEventListener("click", handleProductTableClick);
   refs.productPagination.addEventListener("click", handlePaginationClick);
   refs.companyForm.addEventListener("submit", handleCompanySubmit);
@@ -160,17 +169,15 @@ async function loadAll(options = {}) {
   setBusy(true);
 
   try {
-    const [companies, suppliers, products, productSummary] = await Promise.all([
+    const [companies, suppliers, products] = await Promise.all([
       request(buildPagePath("/companies", state.pagination.companies)),
       request(buildPagePath("/suppliers", state.pagination.suppliers)),
       request(buildProductsPath()),
-      request("/products/summary"),
     ]);
 
     applyPage("companies", companies);
     applyPage("suppliers", suppliers);
     applyPage("products", products);
-    state.productSummary = productSummary;
 
     render();
 
@@ -340,7 +347,6 @@ function translateValidationMessage(message) {
 
 function render() {
   renderTabs();
-  renderSummary();
   renderProductTable();
   renderSelects();
   renderLookupTable("company");
@@ -363,17 +369,6 @@ function renderTabs() {
   refs.tabPanels.forEach((panel) => {
     panel.classList.toggle("hidden", panel.dataset.tabPanel !== state.activeTab);
   });
-}
-
-function renderSummary() {
-  refs.totalProducts.textContent = formatNumber(
-    state.productSummary.total_products,
-  );
-  refs.totalUnits.textContent = formatNumber(state.productSummary.total_units);
-  refs.inventoryValue.textContent = formatNumber(
-    state.productSummary.inventory_value,
-  );
-  refs.lowStock.textContent = formatNumber(state.productSummary.low_stock);
 }
 
 function renderProductTable() {
@@ -617,6 +612,89 @@ function getPaginationRefs(type) {
   return { container: refs.movementPagination, info: refs.movementPageInfo };
 }
 
+function openDrawer(formType, eyebrow, title) {
+  state.activeDrawerForm = formType;
+  refs.drawerEyebrow.textContent = eyebrow;
+  refs.drawerTitle.textContent = title;
+
+  refs.drawerForms.forEach((form) => {
+    form.classList.toggle("hidden", form.dataset.drawerForm !== formType);
+  });
+
+  refs.drawer.classList.remove("hidden");
+  refs.drawerBackdrop.classList.remove("hidden");
+  refs.drawer.setAttribute("aria-hidden", "false");
+  document.body.classList.add("drawer-open");
+}
+
+function closeDrawer() {
+  const activeForm = state.activeDrawerForm;
+
+  if (!activeForm) {
+    return;
+  }
+
+  state.activeDrawerForm = null;
+  refs.drawer.classList.add("hidden");
+  refs.drawerBackdrop.classList.add("hidden");
+  refs.drawer.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("drawer-open");
+  resetDrawerForm(activeForm);
+}
+
+function resetDrawerForm(formType) {
+  if (formType === "product") {
+    resetProductForm();
+    return;
+  }
+
+  if (formType === "supplier") {
+    refs.supplierForm.reset();
+    return;
+  }
+
+  if (formType === "company") {
+    refs.companyForm.reset();
+    return;
+  }
+
+  if (formType === "movement") {
+    refs.movementForm.reset();
+    updateMovementQuantityMode();
+  }
+}
+
+function handleDocumentKeydown(event) {
+  if (event.key === "Escape" && state.activeDrawerForm) {
+    closeDrawer();
+  }
+}
+
+function openProductCreate() {
+  resetProductForm();
+  openDrawer("product", "Редактор", "Добавить товар");
+  refs.productName.focus();
+}
+
+function openSupplierCreate() {
+  refs.supplierForm.reset();
+  openDrawer("supplier", "Редактор", "Добавить поставщика");
+  refs.supplierName.focus();
+}
+
+function openCompanyCreate() {
+  refs.companyForm.reset();
+  openDrawer("company", "Редактор", "Добавить компанию");
+  refs.companyName.focus();
+}
+
+function openMovementCreate() {
+  refs.movementForm.reset();
+  updateMovementQuantityMode();
+  openDrawer("movement", "Операция", "Добавить движение");
+  refs.movementType.focus();
+}
+
 function handleTabClick(event) {
   const tab = event.currentTarget.dataset.tabTarget;
 
@@ -624,6 +702,7 @@ function handleTabClick(event) {
     return;
   }
 
+  closeDrawer();
   state.activeTab = tab;
   renderTabs();
 
@@ -691,6 +770,8 @@ async function handleProductSubmit(event) {
   const path = isEditing ? `/products/${state.editingProductId}` : "/products";
   const method = isEditing ? "PATCH" : "POST";
 
+  setBusy(true);
+
   try {
     await request(path, {
       method,
@@ -698,10 +779,13 @@ async function handleProductSubmit(event) {
     });
 
     resetProductForm();
+    closeDrawer();
     await loadAll({ quiet: true });
     showNotice(isEditing ? "Товар обновлен." : "Товар добавлен.");
   } catch (error) {
     showNotice(error.message, true);
+  } finally {
+    setBusy(false);
   }
 }
 
@@ -742,9 +826,9 @@ function startProductEdit(productId) {
     product.low_stock_threshold ?? DEFAULT_LOW_STOCK_THRESHOLD;
   refs.productCompany.value = product.company_id ?? "";
   refs.productSupplier.value = product.supplier_id ?? "";
-  refs.productFormTitle.textContent = "Изменить товар";
   refs.productSubmit.textContent = "Сохранить";
   refs.cancelEdit.classList.remove("hidden");
+  openDrawer("product", "Редактор", "Изменить товар");
   refs.productName.focus();
 }
 
@@ -756,7 +840,6 @@ function resetProductForm() {
   refs.productLowStockThreshold.value = DEFAULT_LOW_STOCK_THRESHOLD;
   refs.productCompany.value = "";
   refs.productSupplier.value = "";
-  refs.productFormTitle.textContent = "Добавить товар";
   refs.productSubmit.textContent = "Добавить товар";
   refs.cancelEdit.classList.add("hidden");
 }
@@ -782,6 +865,8 @@ async function deleteProduct(productId) {
 async function handleCompanySubmit(event) {
   event.preventDefault();
 
+  setBusy(true);
+
   try {
     await request("/companies", {
       method: "POST",
@@ -792,10 +877,13 @@ async function handleCompanySubmit(event) {
     });
 
     refs.companyForm.reset();
+    closeDrawer();
     await loadAll({ quiet: true });
     showNotice("Компания добавлена.");
   } catch (error) {
     showNotice(error.message, true);
+  } finally {
+    setBusy(false);
   }
 }
 
@@ -810,6 +898,8 @@ function handleCompanyTableClick(event) {
 async function handleSupplierSubmit(event) {
   event.preventDefault();
 
+  setBusy(true);
+
   try {
     await request("/suppliers", {
       method: "POST",
@@ -820,10 +910,13 @@ async function handleSupplierSubmit(event) {
     });
 
     refs.supplierForm.reset();
+    closeDrawer();
     await loadAll({ quiet: true });
     showNotice("Поставщик добавлен.");
   } catch (error) {
     showNotice(error.message, true);
+  } finally {
+    setBusy(false);
   }
 }
 
@@ -886,16 +979,15 @@ async function handleMovementSubmit(event) {
 
     refs.movementForm.reset();
     updateMovementQuantityMode();
+    closeDrawer();
     state.pagination.stockMovements.page = 1;
 
-    const [products, productSummary, stockMovements] = await Promise.all([
+    const [products, stockMovements] = await Promise.all([
       request(buildProductsPath()),
-      request("/products/summary"),
       request(getPagePath("stockMovements")),
     ]);
 
     applyPage("products", products);
-    state.productSummary = productSummary;
     applyPage("stockMovements", stockMovements);
     state.stockMovementsLoaded = true;
     render();
@@ -983,8 +1075,14 @@ function showNotice(message, isError = false) {
 }
 
 function setBusy(isBusy) {
+  refs.addProductButton.disabled = isBusy;
+  refs.addSupplierButton.disabled = isBusy;
+  refs.addCompanyButton.disabled = isBusy;
+  refs.addMovementButton.disabled = isBusy;
   refs.refreshButton.disabled = isBusy;
   refs.productSubmit.disabled = isBusy;
+  refs.supplierSubmit.disabled = isBusy;
+  refs.companySubmit.disabled = isBusy;
   refs.movementRefreshButton.disabled = isBusy;
   refs.movementSubmit.disabled = isBusy;
 }
