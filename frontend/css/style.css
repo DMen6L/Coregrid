@@ -507,6 +507,124 @@ tbody tr:hover {
   text-align: center;
 }
 
+.movement-builder {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.movement-builder-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.movement-builder-title {
+  color: #4d5b6c;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.movement-form-lines {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.movement-form-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(5.5rem, 0.8fr) auto;
+  gap: 0.5rem;
+  align-items: end;
+  padding: 0.6rem;
+  border: 1px solid #e2e7ef;
+  border-radius: 6px;
+  background: #f9fafb;
+}
+
+.movement-line-field {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.movement-line-remove {
+  min-width: 5rem;
+  padding: 0 0.6rem;
+}
+
+.movement-product-picker {
+  position: relative;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.movement-product-selected {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #b9dcd8;
+  border-radius: 6px;
+  background: #eef9f7;
+}
+
+.movement-product-selected-name,
+.movement-product-suggestion-name {
+  color: #17212b;
+  font-weight: 700;
+}
+
+.movement-product-selected-meta,
+.movement-product-suggestion-meta {
+  color: #5f6c7d;
+  font-size: 0.78rem;
+}
+
+.movement-product-suggestions {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  right: 0;
+  left: 0;
+  z-index: 40;
+  display: grid;
+  max-height: 16rem;
+  overflow-y: auto;
+  border: 1px solid #cbd3df;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 0.75rem 1.5rem rgba(15, 23, 42, 0.14);
+}
+
+.movement-product-suggestion {
+  display: grid;
+  gap: 0.15rem;
+  min-height: auto;
+  padding: 0.55rem 0.65rem;
+  border: 0;
+  border-bottom: 1px solid #edf1f6;
+  border-radius: 0;
+  background: #ffffff;
+  color: #17212b;
+  text-align: left;
+}
+
+.movement-product-suggestion:hover {
+  background: #f4f8fa;
+}
+
+.movement-product-suggestion:last-child {
+  border-bottom: 0;
+}
+
+.movement-product-suggestion-empty {
+  padding: 0.65rem;
+  color: #667386;
+  font-size: 0.84rem;
+}
+
+.movement-product-suggestion-empty.error {
+  color: #a22c24;
+}
+
 .movement-lines {
   display: grid;
   gap: 0.25rem;
@@ -591,6 +709,20 @@ tbody tr:hover {
   }
 
   .form-drawer {
+    width: 100%;
+  }
+
+  .movement-form-line {
+    grid-template-columns: 1fr;
+  }
+
+  .movement-builder-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .movement-builder-header button,
+  .movement-line-remove {
     width: 100%;
   }
 }

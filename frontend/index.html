@@ -289,12 +289,13 @@
               <option value="adjustment">Корректировка</option>
             </select>
 
-            <label for="movement-product-id">Товар ID</label>
-            <input id="movement-product-id" name="product_id" type="number" min="1" step="1" list="movement-product-options" required>
-            <datalist id="movement-product-options"></datalist>
-
-            <label id="movement-quantity-label" for="movement-quantity">Количество</label>
-            <input id="movement-quantity" name="quantity" type="number" min="1" step="1" value="1" required>
+            <div class="movement-builder">
+              <div class="movement-builder-header">
+                <span class="movement-builder-title">Товары</span>
+                <button class="secondary-button" id="add-movement-line-button" type="button">Добавить строку</button>
+              </div>
+              <div class="movement-form-lines" id="movement-form-lines"></div>
+            </div>
 
             <label for="movement-note">Заметка</label>
             <textarea id="movement-note" name="note" maxlength="500" rows="3"></textarea>
