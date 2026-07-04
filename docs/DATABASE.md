@@ -25,10 +25,45 @@ Stores identities and contact information of the people that provide the listed 
 Stores products assigning them unique identifiers and created for easier access of data on those products and for easy modification of the data.
 
 - `id` unique identifier of each product
+- `company_id` optional reference to the company/brand connected to the product
+- `supplier_id` optional reference to the supplier connected to the product
 - `name` stores the names of each of the products
 - `price` stores the prices of the products, meant to be flexible due to different reasons of price changes
 - `quantity` stores the amount of currently stored products, default set to 0
+- `low_stock_threshold` stores the per-product low-stock warning threshold, default set to 5
 - `created_at` needed to identify the creation time of the product
+
+Product stock status is calculated by the API and is not stored as a column:
+
+- `out` when `quantity` is `0`
+- `low` when `low_stock_threshold > 0` and `quantity` is within the threshold
+- `available` otherwise
+
+`low_stock_threshold = 0` disables low-stock warnings for that product.
+
+### Stock movements
+
+Stores the header of each stock change transaction.
+
+- `id` unique identifier of each stock movement
+- `movement_type` controlled value of `in`, `out`, or `adjustment`
+- `note` optional text note for the stock movement
+- `created_at` time when the stock movement was created
+
+### Stock movement lines
+
+Stores the product-level changes inside a stock movement.
+
+- `id` unique identifier of each movement line
+- `movement_id` reference to the stock movement header
+- `product_id` reference to the product that changed
+- `quantity_delta` amount of stock change, positive or negative
+- `quantity_before` product quantity before the movement line
+- `quantity_after` product quantity after the movement line
+- `unit_price_snapshot` product price copied when the movement was created
+
+See [stock movements design](STOCK_MOVEMENTS.md) for the detailed API and
+business rules.
 
 ## Connection and working with Coregrid database
 

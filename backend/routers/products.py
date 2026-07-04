@@ -1,12 +1,24 @@
-from fastapi import APIRouter, HTTPException
+from typing import Annotated, Literal
 
-from app.models import Product
-from app.schemas import ProductCreate, ProductResponse, ProductUpdate
+from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy import and_, case, func, or_
+from sqlalchemy.orm import selectinload
+
+from app.models import Company, Product, Supplier
+from app.schemas import (
+    PaginatedResponse,
+    ProductCreate,
+    ProductResponse,
+    ProductSummaryResponse,
+    ProductUpdate,
+)
 from devs import DbSession
 from errors import commit_or_raise
+from pagination import DEFAULT_PAGE_SIZE, PageNumber, PageSize, paginate
 
 
 router = APIRouter(prefix="/products", tags=["products"])
+ProductStockFilter = Literal["all", "available", "low", "empty"]
 
 
 @router.post("", response_model=ProductResponse, status_code=201)
@@ -15,6 +27,7 @@ def add_product(product_data: ProductCreate, db: DbSession) -> Product:
         name=product_data.name,
         price=product_data.price,
         quantity=product_data.quantity,
+        low_stock_threshold=product_data.low_stock_threshold,
         company_id=product_data.company_id,
         supplier_id=product_data.supplier_id,
     )
@@ -44,14 +57,82 @@ def patch_product(id: int, update_data: ProductUpdate, db: DbSession) -> Product
     return product
 
 
-@router.get("", response_model=list[ProductResponse], status_code=200)
-def get_products(db: DbSession) -> list[Product]:
-    return db.query(Product).all()
+@router.get("", response_model=PaginatedResponse[ProductResponse], status_code=200)
+def get_products(
+    db: DbSession,
+    page: PageNumber = 1,
+    page_size: PageSize = DEFAULT_PAGE_SIZE,
+    search: Annotated[str | None, Query(max_length=255)] = None,
+    stock: ProductStockFilter = "all",
+) -> dict[str, object]:
+    query = db.query(Product).options(
+        selectinload(Product.company),
+        selectinload(Product.supplier),
+    )
+
+    search_term = search.strip() if search else ""
+    if search_term:
+        pattern = f"%{search_term}%"
+        query = query.filter(
+            or_(
+                Product.name.ilike(pattern),
+                Product.company.has(Company.name.ilike(pattern)),
+                Product.supplier.has(Supplier.name.ilike(pattern)),
+            )
+        )
+
+    if stock == "available":
+        query = query.filter(Product.quantity > 0)
+    elif stock == "low":
+        query = query.filter(
+            Product.quantity > 0,
+            Product.quantity <= Product.low_stock_threshold,
+        )
+    elif stock == "empty":
+        query = query.filter(Product.quantity == 0)
+
+    return paginate(query.order_by(Product.id), page, page_size)
+
+
+@router.get("/summary", response_model=ProductSummaryResponse, status_code=200)
+def get_product_summary(db: DbSession) -> ProductSummaryResponse:
+    total_products, total_units, inventory_value, low_stock = db.query(
+        func.count(Product.id),
+        func.coalesce(func.sum(Product.quantity), 0),
+        func.coalesce(func.sum(Product.price * Product.quantity), 0),
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        and_(
+                            Product.quantity > 0,
+                            Product.quantity <= Product.low_stock_threshold,
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ),
+            0,
+        ),
+    ).one()
+
+    return ProductSummaryResponse(
+        total_products=int(total_products),
+        total_units=int(total_units),
+        inventory_value=int(inventory_value),
+        low_stock=int(low_stock),
+    )
 
 
 @router.get("/{id}", response_model=ProductResponse, status_code=200)
 def get_product(id: int, db: DbSession) -> Product:
-    product = db.get(Product, id)
+    product = (
+        db.query(Product)
+        .options(selectinload(Product.company), selectinload(Product.supplier))
+        .filter(Product.id == id)
+        .one_or_none()
+    )
 
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")

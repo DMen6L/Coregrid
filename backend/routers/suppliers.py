@@ -1,9 +1,15 @@
 from fastapi import APIRouter, HTTPException
 
 from app.models import Supplier
-from app.schemas import SupplierCreate, SupplierResponse, SupplierUpdate
+from app.schemas import (
+    PaginatedResponse,
+    SupplierCreate,
+    SupplierResponse,
+    SupplierUpdate,
+)
 from devs import DbSession
 from errors import commit_or_raise
+from pagination import DEFAULT_PAGE_SIZE, PageNumber, PageSize, paginate
 
 
 router = APIRouter(prefix="/suppliers", tags=["suppliers"])
@@ -40,9 +46,13 @@ def patch_supplier(id: int, update_data: SupplierUpdate, db: DbSession) -> Suppl
     return supplier
 
 
-@router.get("", response_model=list[SupplierResponse], status_code=200)
-def get_suppliers(db: DbSession) -> list[Supplier]:
-    return db.query(Supplier).all()
+@router.get("", response_model=PaginatedResponse[SupplierResponse], status_code=200)
+def get_suppliers(
+    db: DbSession,
+    page: PageNumber = 1,
+    page_size: PageSize = DEFAULT_PAGE_SIZE,
+) -> dict[str, object]:
+    return paginate(db.query(Supplier).order_by(Supplier.id), page, page_size)
 
 
 @router.get("/{id}", response_model=SupplierResponse, status_code=200)

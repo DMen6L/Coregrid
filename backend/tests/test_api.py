@@ -13,7 +13,8 @@ def truncate_database():
     with SessionLocal() as session:
         session.execute(
             text(
-                "TRUNCATE TABLE products, companies, suppliers "
+                "TRUNCATE TABLE stock_movement_lines, stock_movements, "
+                "products, companies, suppliers "
                 "RESTART IDENTITY CASCADE"
             )
         )
@@ -48,6 +49,7 @@ def create_product(
     name="Test Product",
     price=100,
     quantity=5,
+    low_stock_threshold=None,
     company_id=None,
     supplier_id=None,
 ):
@@ -58,7 +60,24 @@ def create_product(
         "company_id": company_id,
         "supplier_id": supplier_id,
     }
+    if low_stock_threshold is not None:
+        payload["low_stock_threshold"] = low_stock_threshold
+
     response = client.post("/products", json=payload)
+    assert response.status_code == 201
+    return response.json()
+
+
+def create_stock_movement(movement_type="in", note=None, lines=None):
+    movement_lines = lines or [
+        {"product_id": create_product()["id"], "quantity_delta": 1}
+    ]
+    payload = {
+        "movement_type": movement_type,
+        "note": note,
+        "lines": movement_lines,
+    }
+    response = client.post("/stock-movements", json=payload)
     assert response.status_code == 201
     return response.json()
 
@@ -77,6 +96,22 @@ def assert_missing_reference_error(response):
     assert response.status_code == 409
     assert response.json() == {
         "detail": "Referenced row does not exist or was changed"
+    }
+
+
+def assert_page(response, expected_items, total=None, page=1, page_size=25):
+    expected_total = len(expected_items) if total is None else total
+    expected_pages = (
+        (expected_total + page_size - 1) // page_size if expected_total else 0
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": expected_items,
+        "total": expected_total,
+        "page": page,
+        "page_size": page_size,
+        "pages": expected_pages,
     }
 
 
@@ -103,8 +138,7 @@ def test_company_create_read_update_and_list():
     assert patch_response.json()["iin"] == company["iin"]
 
     list_response = client.get("/companies")
-    assert list_response.status_code == 200
-    assert list_response.json() == [patch_response.json()]
+    assert_page(list_response, [patch_response.json()])
 
 
 def test_supplier_create_read_update_and_list():
@@ -123,8 +157,7 @@ def test_supplier_create_read_update_and_list():
     assert patch_response.json()["name"] == supplier["name"]
 
     list_response = client.get("/suppliers")
-    assert list_response.status_code == 200
-    assert list_response.json() == [patch_response.json()]
+    assert_page(list_response, [patch_response.json()])
 
 
 def test_product_create_read_update_and_list_with_related_rows():
@@ -145,10 +178,314 @@ def test_product_create_read_update_and_list_with_related_rows():
     assert patch_response.json()["quantity"] == 8
     assert patch_response.json()["company_id"] == company["id"]
     assert patch_response.json()["supplier_id"] == supplier["id"]
+    assert patch_response.json()["company_name"] == company["name"]
+    assert patch_response.json()["supplier_name"] == supplier["name"]
 
     list_response = client.get("/products")
-    assert list_response.status_code == 200
-    assert list_response.json() == [patch_response.json()]
+    assert_page(list_response, [patch_response.json()])
+
+
+def test_incoming_stock_movement_increases_product_quantity():
+    product = create_product(quantity=5, price=250)
+
+    response = client.post(
+        "/stock-movements",
+        json={
+            "movement_type": "in",
+            "note": "Restock",
+            "lines": [{"product_id": product["id"], "quantity_delta": 4}],
+        },
+    )
+
+    assert response.status_code == 201
+    movement = response.json()
+    assert movement["movement_type"] == "in"
+    assert movement["note"] == "Restock"
+    assert len(movement["lines"]) == 1
+    assert movement["lines"][0]["product_id"] == product["id"]
+    assert movement["lines"][0]["quantity_delta"] == 4
+    assert movement["lines"][0]["quantity_before"] == 5
+    assert movement["lines"][0]["quantity_after"] == 9
+    assert movement["lines"][0]["unit_price_snapshot"] == 250
+
+    get_product_response = client.get(f"/products/{product['id']}")
+    assert get_product_response.status_code == 200
+    assert get_product_response.json()["quantity"] == 9
+
+
+def test_outgoing_stock_movement_decreases_product_quantity():
+    product = create_product(quantity=5)
+
+    response = client.post(
+        "/stock-movements",
+        json={
+            "movement_type": "out",
+            "lines": [{"product_id": product["id"], "quantity_delta": -3}],
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["lines"][0]["quantity_before"] == 5
+    assert response.json()["lines"][0]["quantity_after"] == 2
+
+    get_product_response = client.get(f"/products/{product['id']}")
+    assert get_product_response.status_code == 200
+    assert get_product_response.json()["quantity"] == 2
+
+
+@pytest.mark.parametrize("quantity_delta", [3, -2])
+def test_adjustment_stock_movement_can_increase_or_decrease_quantity(quantity_delta):
+    product = create_product(quantity=5)
+
+    response = client.post(
+        "/stock-movements",
+        json={
+            "movement_type": "adjustment",
+            "lines": [{"product_id": product["id"], "quantity_delta": quantity_delta}],
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["lines"][0]["quantity_before"] == 5
+    assert response.json()["lines"][0]["quantity_after"] == 5 + quantity_delta
+
+    get_product_response = client.get(f"/products/{product['id']}")
+    assert get_product_response.status_code == 200
+    assert get_product_response.json()["quantity"] == 5 + quantity_delta
+
+
+def test_stock_movement_with_multiple_lines_updates_all_products():
+    first_product = create_product(name="First Product", quantity=2, price=100)
+    second_product = create_product(name="Second Product", quantity=7, price=300)
+
+    response = client.post(
+        "/stock-movements",
+        json={
+            "movement_type": "in",
+            "note": "Delivery",
+            "lines": [
+                {"product_id": first_product["id"], "quantity_delta": 5},
+                {"product_id": second_product["id"], "quantity_delta": 4},
+            ],
+        },
+    )
+
+    assert response.status_code == 201
+    lines = response.json()["lines"]
+    assert len(lines) == 2
+    assert lines[0]["quantity_before"] == 2
+    assert lines[0]["quantity_after"] == 7
+    assert lines[0]["unit_price_snapshot"] == 100
+    assert lines[1]["quantity_before"] == 7
+    assert lines[1]["quantity_after"] == 11
+    assert lines[1]["unit_price_snapshot"] == 300
+
+    first_product_response = client.get(f"/products/{first_product['id']}")
+    second_product_response = client.get(f"/products/{second_product['id']}")
+
+    assert first_product_response.status_code == 200
+    assert first_product_response.json()["quantity"] == 7
+    assert second_product_response.status_code == 200
+    assert second_product_response.json()["quantity"] == 11
+
+
+def test_stock_movement_that_would_make_quantity_negative_is_rejected():
+    product = create_product(quantity=2)
+
+    response = client.post(
+        "/stock-movements",
+        json={
+            "movement_type": "out",
+            "lines": [{"product_id": product["id"], "quantity_delta": -3}],
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": "Stock movement would make product quantity negative"
+    }
+
+    get_product_response = client.get(f"/products/{product['id']}")
+    assert get_product_response.status_code == 200
+    assert get_product_response.json()["quantity"] == 2
+
+
+def test_stock_movement_missing_product_returns_not_found():
+    response = client.post(
+        "/stock-movements",
+        json={
+            "movement_type": "in",
+            "lines": [{"product_id": 999, "quantity_delta": 1}],
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Product not found"}
+
+
+def test_stock_movement_history_can_be_fetched():
+    product = create_product(quantity=5)
+    movement = create_stock_movement(
+        movement_type="in",
+        note="Delivery",
+        lines=[{"product_id": product["id"], "quantity_delta": 2}],
+    )
+
+    list_response = client.get("/stock-movements")
+    assert_page(list_response, [movement])
+
+    get_response = client.get(f"/stock-movements/{movement['id']}")
+    assert get_response.status_code == 200
+    assert get_response.json() == movement
+
+    product_history_response = client.get(f"/products/{product['id']}/movements")
+    assert_page(product_history_response, [movement])
+
+
+def test_collection_pagination_limits_results():
+    companies = [
+        create_company(name=f"Company {index}", iin=f"10000000000{index}")
+        for index in range(1, 4)
+    ]
+    suppliers = [
+        create_supplier(name=f"Supplier {index}", phone_number=f"70000000000{index}")
+        for index in range(1, 4)
+    ]
+    products = [
+        create_product(name=f"Product {index}", quantity=index)
+        for index in range(1, 4)
+    ]
+
+    assert_page(
+        client.get("/companies?page=2&page_size=2"),
+        [companies[2]],
+        total=3,
+        page=2,
+        page_size=2,
+    )
+    assert_page(
+        client.get("/suppliers?page=2&page_size=2"),
+        [suppliers[2]],
+        total=3,
+        page=2,
+        page_size=2,
+    )
+    assert_page(
+        client.get("/products?page=2&page_size=2"),
+        [products[2]],
+        total=3,
+        page=2,
+        page_size=2,
+    )
+
+
+def test_product_pagination_supports_search_and_stock_filter():
+    company = create_company(name="Searchable Company", iin="121212121212")
+    supplier = create_supplier(name="Searchable Supplier", phone_number="777777777777")
+    available_product = create_product(
+        name="Available Product",
+        quantity=10,
+        company_id=company["id"],
+        supplier_id=supplier["id"],
+    )
+    low_product = create_product(
+        name="Low Product",
+        quantity=2,
+        low_stock_threshold=5,
+    )
+    empty_product = create_product(name="Empty Product", quantity=0)
+
+    assert_page(
+        client.get("/products?search=Searchable&page_size=10"),
+        [available_product],
+        page_size=10,
+    )
+    assert_page(
+        client.get("/products?stock=available&page_size=10"),
+        [available_product, low_product],
+        page_size=10,
+    )
+    assert_page(
+        client.get("/products?stock=low&page_size=10"),
+        [low_product],
+        page_size=10,
+    )
+    assert_page(
+        client.get("/products?stock=empty&page_size=10"),
+        [empty_product],
+        page_size=10,
+    )
+
+
+def test_product_summary_returns_global_inventory_totals():
+    create_product(name="Low Product", price=100, quantity=5, low_stock_threshold=5)
+    create_product(name="Available Product", price=50, quantity=10)
+    create_product(name="Empty Product", price=200, quantity=0)
+
+    response = client.get("/products/summary")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "total_products": 3,
+        "total_units": 15,
+        "inventory_value": 1000,
+        "low_stock": 1,
+    }
+
+
+def test_stock_movement_pagination_limits_history_results():
+    product = create_product(quantity=0)
+    movements = [
+        create_stock_movement(
+            movement_type="in",
+            note=f"Delivery {index}",
+            lines=[{"product_id": product["id"], "quantity_delta": 1}],
+        )
+        for index in range(1, 4)
+    ]
+
+    assert_page(
+        client.get("/stock-movements?page=2&page_size=2"),
+        [movements[2]],
+        total=3,
+        page=2,
+        page_size=2,
+    )
+    assert_page(
+        client.get(f"/products/{product['id']}/movements?page=2&page_size=2"),
+        [movements[2]],
+        total=3,
+        page=2,
+        page_size=2,
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/companies?page=0",
+        "/suppliers?page_size=101",
+        "/products?page=0",
+        "/products?page_size=101",
+        "/products?stock=invalid",
+        "/stock-movements?page=0",
+        "/products/1/movements?page_size=101",
+    ],
+)
+def test_pagination_query_validation_errors_return_unprocessable_entity(path):
+    response = client.get(path)
+
+    assert_validation_error(response)
+
+
+def test_stock_movement_missing_rows_return_not_found():
+    missing_movement_response = client.get("/stock-movements/999")
+    missing_product_history_response = client.get("/products/999/movements")
+
+    assert missing_movement_response.status_code == 404
+    assert missing_movement_response.json() == {"detail": "Stock movement not found"}
+    assert missing_product_history_response.status_code == 404
+    assert missing_product_history_response.json() == {"detail": "Product not found"}
 
 
 def test_product_can_be_created_without_company_or_supplier():
@@ -157,9 +494,10 @@ def test_product_can_be_created_without_company_or_supplier():
     assert product["company_id"] is None
     assert product["supplier_id"] is None
     assert product["quantity"] == 0
+    assert product["stock_status"] == "out"
 
 
-def test_product_quantity_defaults_to_zero():
+def test_product_quantity_and_low_stock_threshold_defaults():
     response = client.post(
         "/products",
         json={"name": "Default Quantity Product", "price": 100},
@@ -167,6 +505,69 @@ def test_product_quantity_defaults_to_zero():
 
     assert response.status_code == 201
     assert response.json()["quantity"] == 0
+    assert response.json()["low_stock_threshold"] == 5
+    assert response.json()["stock_status"] == "out"
+
+
+def test_product_create_accepts_custom_low_stock_threshold():
+    product = create_product(quantity=8, low_stock_threshold=10)
+
+    assert product["low_stock_threshold"] == 10
+    assert product["stock_status"] == "low"
+
+
+def test_patch_product_updates_low_stock_threshold_and_stock_status():
+    product = create_product(quantity=8)
+
+    response = client.patch(
+        f"/products/{product['id']}",
+        json={"low_stock_threshold": 10},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["low_stock_threshold"] == 10
+    assert response.json()["stock_status"] == "low"
+
+
+@pytest.mark.parametrize(
+    ("quantity", "low_stock_threshold", "expected_status"),
+    [
+        (0, 5, "out"),
+        (3, 5, "low"),
+        (6, 5, "available"),
+        (3, 0, "available"),
+    ],
+)
+def test_product_response_includes_calculated_stock_status(
+    quantity,
+    low_stock_threshold,
+    expected_status,
+):
+    product = create_product(
+        quantity=quantity,
+        low_stock_threshold=low_stock_threshold,
+    )
+
+    assert product["stock_status"] == expected_status
+
+
+def test_stock_movement_updates_later_product_stock_status():
+    product = create_product(quantity=8, low_stock_threshold=5)
+
+    response = client.post(
+        "/stock-movements",
+        json={
+            "movement_type": "out",
+            "lines": [{"product_id": product["id"], "quantity_delta": -4}],
+        },
+    )
+
+    assert response.status_code == 201
+
+    get_product_response = client.get(f"/products/{product['id']}")
+    assert get_product_response.status_code == 200
+    assert get_product_response.json()["quantity"] == 4
+    assert get_product_response.json()["stock_status"] == "low"
 
 
 def test_create_payload_whitespace_is_stripped():
@@ -304,6 +705,38 @@ def test_patch_product_can_clear_company_and_supplier_relationships():
             "/products",
             {"name": "Invalid Quantity Product", "price": 100, "quantity": -1},
         ),
+        (
+            "/products",
+            {
+                "name": "Invalid Threshold Product",
+                "price": 100,
+                "low_stock_threshold": -1,
+            },
+        ),
+        ("/stock-movements", {"movement_type": "transfer", "lines": []}),
+        ("/stock-movements", {"movement_type": "in", "lines": []}),
+        (
+            "/stock-movements",
+            {"movement_type": "in", "lines": [{"product_id": 1, "quantity_delta": 0}]},
+        ),
+        (
+            "/stock-movements",
+            {"movement_type": "in", "lines": [{"product_id": 1, "quantity_delta": -1}]},
+        ),
+        (
+            "/stock-movements",
+            {"movement_type": "out", "lines": [{"product_id": 1, "quantity_delta": 1}]},
+        ),
+        (
+            "/stock-movements",
+            {
+                "movement_type": "in",
+                "lines": [
+                    {"product_id": 1, "quantity_delta": 1},
+                    {"product_id": 1, "quantity_delta": 2},
+                ],
+            },
+        ),
     ],
 )
 def test_create_validation_errors_return_unprocessable_entity(path, payload):
@@ -319,6 +752,7 @@ def test_create_validation_errors_return_unprocessable_entity(path, payload):
         ("/suppliers/1", {"phone_number": "777"}),
         ("/products/1", {"price": 0}),
         ("/products/1", {"quantity": -1}),
+        ("/products/1", {"low_stock_threshold": -1}),
     ],
 )
 def test_patch_validation_errors_return_unprocessable_entity(path, payload):
@@ -378,6 +812,21 @@ def test_delete_product_removes_product():
     get_response = client.get(f"/products/{product['id']}")
     assert get_response.status_code == 404
     assert get_response.json() == {"detail": "Product not found"}
+
+
+def test_delete_product_with_stock_movement_history_returns_conflict():
+    product = create_product()
+    create_stock_movement(
+        movement_type="in",
+        lines=[{"product_id": product["id"], "quantity_delta": 1}],
+    )
+
+    response = client.delete(f"/products/{product['id']}")
+
+    assert_missing_reference_error(response)
+
+    get_product_response = client.get(f"/products/{product['id']}")
+    assert get_product_response.status_code == 200
 
 
 def test_delete_company_keeps_product_and_clears_company_id():

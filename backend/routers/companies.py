@@ -1,9 +1,15 @@
 from fastapi import APIRouter, HTTPException
 
 from app.models import Company
-from app.schemas import CompanyCreate, CompanyResponse, CompanyUpdate
+from app.schemas import (
+    CompanyCreate,
+    CompanyResponse,
+    CompanyUpdate,
+    PaginatedResponse,
+)
 from devs import DbSession
 from errors import commit_or_raise
+from pagination import DEFAULT_PAGE_SIZE, PageNumber, PageSize, paginate
 
 
 router = APIRouter(prefix="/companies", tags=["companies"])
@@ -38,9 +44,13 @@ def patch_company(id: int, update_data: CompanyUpdate, db: DbSession) -> Company
     return company
 
 
-@router.get("", response_model=list[CompanyResponse], status_code=200)
-def get_companies(db: DbSession) -> list[Company]:
-    return db.query(Company).all()
+@router.get("", response_model=PaginatedResponse[CompanyResponse], status_code=200)
+def get_companies(
+    db: DbSession,
+    page: PageNumber = 1,
+    page_size: PageSize = DEFAULT_PAGE_SIZE,
+) -> dict[str, object]:
+    return paginate(db.query(Company).order_by(Company.id), page, page_size)
 
 
 @router.get("/{id}", response_model=CompanyResponse, status_code=200)

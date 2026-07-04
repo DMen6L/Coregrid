@@ -1,6 +1,12 @@
 from datetime import datetime
-from typing import Annotated
-from pydantic import BaseModel, Field, model_validator, StringConstraints
+from typing import Annotated, Generic, Literal, TypeVar
+from pydantic import (
+    BaseModel,
+    Field,
+    field_validator,
+    model_validator,
+    StringConstraints,
+)
 
 # ======
 # FIELDS
@@ -18,6 +24,9 @@ PhoneNumber = Annotated[
     str,
     StringConstraints(strip_whitespace=True, pattern=r"^\d{12}$"),
 ]
+MovementType = Literal["in", "out", "adjustment"]
+StockStatus = Literal["available", "low", "out"]
+ItemT = TypeVar("ItemT")
 
 # ===============
 # VALIDATOR CLASS
@@ -73,6 +82,7 @@ class ProductCreate(BaseModel):
     name: Name
     price: int = Field(gt=0)
     quantity: int = Field(default=0, ge=0, validate_default=True)
+    low_stock_threshold: int = Field(default=5, ge=0, validate_default=True)
 
     company_id: int | None = None
     supplier_id: int | None = None
@@ -83,16 +93,89 @@ class ProductResponse(BaseModel):
     name: str
     price: int
     quantity: int
+    low_stock_threshold: int
+    stock_status: StockStatus
     created_at: datetime
 
     company_id: int | None
     supplier_id: int | None
+    company_name: str | None = None
+    supplier_name: str | None = None
 
 
 class ProductUpdate(UpdateValidator):
     name: Name | None = None
     price: int | None = Field(default=None, gt=0)
     quantity: int | None = Field(default=None, ge=0, validate_default=True)
+    low_stock_threshold: int | None = Field(default=None, ge=0)
 
     company_id: int | None = None
     supplier_id: int | None = None
+
+
+class StockMovementLineCreate(BaseModel):
+    product_id: int = Field(gt=0)
+    quantity_delta: int
+
+    @field_validator("quantity_delta")
+    @classmethod
+    def quantity_delta_cannot_be_zero(cls, value: int) -> int:
+        if value == 0:
+            raise ValueError("quantity_delta cannot be zero")
+        return value
+
+
+class StockMovementCreate(BaseModel):
+    movement_type: MovementType
+    note: str | None = Field(default=None, max_length=500)
+    lines: list[StockMovementLineCreate] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_lines(self):
+        product_ids = [line.product_id for line in self.lines]
+        if len(product_ids) != len(set(product_ids)):
+            raise ValueError("movement lines cannot repeat product_id")
+
+        if self.movement_type == "in":
+            invalid_line = any(line.quantity_delta < 0 for line in self.lines)
+            if invalid_line:
+                raise ValueError("incoming movements must increase stock")
+
+        if self.movement_type == "out":
+            invalid_line = any(line.quantity_delta > 0 for line in self.lines)
+            if invalid_line:
+                raise ValueError("outgoing movements must decrease stock")
+
+        return self
+
+
+class StockMovementLineResponse(BaseModel):
+    id: int
+    product_id: int
+    quantity_delta: int
+    quantity_before: int
+    quantity_after: int
+    unit_price_snapshot: int | None
+
+
+class StockMovementResponse(BaseModel):
+    id: int
+    movement_type: MovementType
+    note: str | None
+    created_at: datetime
+    lines: list[StockMovementLineResponse]
+
+
+class ProductSummaryResponse(BaseModel):
+    total_products: int
+    total_units: int
+    inventory_value: int
+    low_stock: int
+
+
+class PaginatedResponse(BaseModel, Generic[ItemT]):
+    items: list[ItemT]
+    total: int
+    page: int
+    page_size: int
+    pages: int

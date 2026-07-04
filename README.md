@@ -6,13 +6,23 @@ App meant for automation of core operations inside businesses.
 
  - [storing products, suppliers, supplier companies/brands](docs/DATABASE.md)
  - [configuration and maintenance of backend and database on python](docs/BACKEND.md)
+ - [stock movement history for inventory changes](docs/STOCK_MOVEMENTS.md)
+ - per-product low-stock thresholds with calculated stock status
+ - static inventory operations UI for testing product workflows
 
 ## Tech stack
 
 ### Backend
 
-- PostgeSQL
+- PostgreSQL
 - Python
+- FastAPI
+
+### Frontend
+
+- HTML
+- CSS
+- JavaScript
 
 ---
 
@@ -74,6 +84,24 @@ pytest -s
 uv run pytest -s
 ```
 
+### Run locally
+
+Start the backend API:
+
+```bash
+# from backend/
+uv run fastapi dev main.py
+```
+
+Start the static frontend:
+
+```bash
+# from frontend/
+python3 -m http.server 5173
+```
+
+Open `http://127.0.0.1:5173` and keep the API base set to `http://127.0.0.1:8000`.
+
 
 ## Project structure
 
@@ -95,12 +123,18 @@ uv run pytest -s
 │   ├── main.py
 │   ├── pyproject.toml
 │   ├── README.md
+│   ├── routers
 │   ├── tests
 │   │   ├── __init__.py
 │   │   └── test_api.py
 │   └── uv.lock
 ├── docs
 │   ├── BACKEND.md
-│   └── DATABASE.md
+│   ├── DATABASE.md
+│   └── STOCK_MOVEMENTS.md
+├── frontend
+│   ├── css
+│   ├── js
+│   └── index.html
 └── README.md
 ```
