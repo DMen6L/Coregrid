@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Coregrid | Складские операции</title>
+    <link href="css/style.css" rel="stylesheet">
+    <script src="js/app.js" defer></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">Coregrid</p>
+          <h1>Складские операции</h1>
+        </div>
+
+        <form class="api-settings" id="api-settings">
+          <label for="api-base">Адрес API</label>
+          <div class="api-control">
+            <input id="api-base" name="apiBase" type="url" autocomplete="off">
+            <button type="submit">Применить</button>
+          </div>
+        </form>
+      </header>
+
+      <section class="notice hidden" id="notice" aria-live="polite"></section>
+
+      <section class="summary-grid" aria-label="Сводка склада">
+        <article class="summary-tile">
+          <span class="summary-label">Товары</span>
+          <strong id="total-products">0</strong>
+        </article>
+        <article class="summary-tile">
+          <span class="summary-label">Единицы</span>
+          <strong id="total-units">0</strong>
+        </article>
+        <article class="summary-tile">
+          <span class="summary-label">Стоимость запасов</span>
+          <strong id="inventory-value">0</strong>
+        </article>
+        <article class="summary-tile warning">
+          <span class="summary-label">Мало на складе</span>
+          <strong id="low-stock">0</strong>
+        </article>
+      </section>
+
+      <nav class="tabs" role="tablist" aria-label="Разделы Coregrid">
+        <button class="tab-button active" id="tab-products" type="button" role="tab" aria-selected="true" aria-controls="panel-products" data-tab-target="products">Товары</button>
+        <button class="tab-button" id="tab-suppliers" type="button" role="tab" aria-selected="false" aria-controls="panel-suppliers" data-tab-target="suppliers">Поставщики</button>
+        <button class="tab-button" id="tab-companies" type="button" role="tab" aria-selected="false" aria-controls="panel-companies" data-tab-target="companies">Компании</button>
+        <button class="tab-button" id="tab-stock-movements" type="button" role="tab" aria-selected="false" aria-controls="panel-stock-movements" data-tab-target="stockMovements">Движения</button>
+      </nav>
+
+      <section class="tab-panel" id="panel-products" role="tabpanel" aria-labelledby="tab-products" data-tab-panel="products">
+        <section class="workspace">
+          <section class="data-panel" aria-labelledby="products-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Товары</p>
+                <h2 id="products-title">Список остатков</h2>
+              </div>
+              <button class="secondary-button" id="refresh-button" type="button">Обновить</button>
+            </div>
+
+            <div class="table-tools">
+              <label for="product-search">Поиск</label>
+              <input id="product-search" type="search" placeholder="Название, компания или поставщик">
+
+              <label for="stock-filter">Остаток</label>
+              <select id="stock-filter">
+                <option value="all">Все остатки</option>
+                <option value="available">В наличии</option>
+                <option value="low">Мало</option>
+                <option value="empty">Нет на складе</option>
+              </select>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Товар</th>
+                    <th scope="col">Цена</th>
+                    <th scope="col">Количество</th>
+                    <th scope="col">Статус</th>
+                    <th scope="col">Компания</th>
+                    <th scope="col">Поставщик</th>
+                    <th scope="col">Создан</th>
+                    <th scope="col">Действия</th>
+                  </tr>
+                </thead>
+                <tbody id="products-table-body"></tbody>
+              </table>
+            </div>
+
+            <div class="pagination-bar" id="product-pagination">
+              <span id="product-page-info">Нет записей</span>
+              <div class="pagination-actions">
+                <button class="secondary-button" type="button" data-pagination-target="products" data-pagination-action="prev">Назад</button>
+                <button class="secondary-button" type="button" data-pagination-target="products" data-pagination-action="next">Вперед</button>
+              </div>
+            </div>
+          </section>
+
+          <aside class="side-panel" aria-label="Формы товаров">
+            <section class="tool-panel" aria-labelledby="product-form-title">
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">Редактор</p>
+                  <h2 id="product-form-title">Добавить товар</h2>
+                </div>
+              </div>
+
+              <form class="stack-form" id="product-form">
+                <input id="product-id" type="hidden">
+
+                <label for="product-name">Название</label>
+                <input id="product-name" name="name" type="text" maxlength="255" required>
+
+                <div class="field-grid">
+                  <div>
+                    <label for="product-price">Цена</label>
+                    <input id="product-price" name="price" type="number" min="1" step="1" required>
+                  </div>
+                  <div>
+                    <label for="product-quantity">Количество</label>
+                    <input id="product-quantity" name="quantity" type="number" min="0" step="1" value="0" required>
+                  </div>
+                </div>
+
+                <label for="product-low-stock-threshold">Порог малого остатка</label>
+                <input id="product-low-stock-threshold" name="low_stock_threshold" type="number" min="0" step="1" value="5" required>
+
+                <label for="product-company">Компания</label>
+                <select id="product-company" name="company_id"></select>
+
+                <label for="product-supplier">Поставщик</label>
+                <select id="product-supplier" name="supplier_id"></select>
+
+                <div class="form-actions">
+                  <button id="product-submit" type="submit">Добавить товар</button>
+                  <button class="secondary-button hidden" id="cancel-edit" type="button">Отменить правку</button>
+                </div>
+              </form>
+            </section>
+          </aside>
+        </section>
+      </section>
+
+      <section class="tab-panel hidden" id="panel-suppliers" role="tabpanel" aria-labelledby="tab-suppliers" data-tab-panel="suppliers">
+        <section class="workspace">
+          <section class="data-panel" aria-labelledby="suppliers-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Справочник</p>
+                <h2 id="suppliers-title">Поставщики</h2>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="lookup-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Поставщик</th>
+                    <th scope="col">Телефон</th>
+                    <th scope="col">Действия</th>
+                  </tr>
+                </thead>
+                <tbody id="supplier-table-body"></tbody>
+              </table>
+            </div>
+
+            <div class="pagination-bar" id="supplier-pagination">
+              <span id="supplier-page-info">Нет записей</span>
+              <div class="pagination-actions">
+                <button class="secondary-button" type="button" data-pagination-target="suppliers" data-pagination-action="prev">Назад</button>
+                <button class="secondary-button" type="button" data-pagination-target="suppliers" data-pagination-action="next">Вперед</button>
+              </div>
+            </div>
+          </section>
+
+          <aside class="side-panel" aria-label="Формы поставщиков">
+            <section class="tool-panel" aria-labelledby="supplier-form-title">
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">Редактор</p>
+                  <h2 id="supplier-form-title">Добавить поставщика</h2>
+                </div>
+              </div>
+
+              <form class="stack-form compact-form" id="supplier-form">
+                <label for="supplier-name">Название</label>
+                <input id="supplier-name" name="name" type="text" maxlength="255" required>
+
+                <label for="supplier-phone">Телефон</label>
+                <input id="supplier-phone" name="phone_number" type="text" inputmode="numeric" maxlength="12" pattern="[0-9]{12}" required>
+
+                <button type="submit">Добавить поставщика</button>
+              </form>
+            </section>
+          </aside>
+        </section>
+      </section>
+
+      <section class="tab-panel hidden" id="panel-companies" role="tabpanel" aria-labelledby="tab-companies" data-tab-panel="companies">
+        <section class="workspace">
+          <section class="data-panel" aria-labelledby="companies-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Справочник</p>
+                <h2 id="companies-title">Компании</h2>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="lookup-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Компания</th>
+                    <th scope="col">ИИН</th>
+                    <th scope="col">Действия</th>
+                  </tr>
+                </thead>
+                <tbody id="company-table-body"></tbody>
+              </table>
+            </div>
+
+            <div class="pagination-bar" id="company-pagination">
+              <span id="company-page-info">Нет записей</span>
+              <div class="pagination-actions">
+                <button class="secondary-button" type="button" data-pagination-target="companies" data-pagination-action="prev">Назад</button>
+                <button class="secondary-button" type="button" data-pagination-target="companies" data-pagination-action="next">Вперед</button>
+              </div>
+            </div>
+          </section>
+
+          <aside class="side-panel" aria-label="Формы компаний">
+            <section class="tool-panel" aria-labelledby="company-form-title">
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">Редактор</p>
+                  <h2 id="company-form-title">Добавить компанию</h2>
+                </div>
+              </div>
+
+              <form class="stack-form compact-form" id="company-form">
+                <label for="company-name">Название</label>
+                <input id="company-name" name="name" type="text" maxlength="255" required>
+
+                <label for="company-iin">ИИН</label>
+                <input id="company-iin" name="iin" type="text" inputmode="numeric" maxlength="12" pattern="[0-9]{12}" required>
+
+                <button type="submit">Добавить компанию</button>
+              </form>
+            </section>
+          </aside>
+        </section>
+      </section>
+
+      <section class="tab-panel hidden" id="panel-stock-movements" role="tabpanel" aria-labelledby="tab-stock-movements" data-tab-panel="stockMovements">
+        <section class="workspace">
+          <section class="data-panel" aria-labelledby="stock-movements-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">История</p>
+                <h2 id="stock-movements-title">Движения склада</h2>
+              </div>
+              <button class="secondary-button" id="movement-refresh-button" type="button">Обновить</button>
+            </div>
+
+            <div class="table-wrap">
+              <table class="movement-table">
+                <thead>
+                  <tr>
+                    <th scope="col">ID</th>
+                    <th scope="col">Тип</th>
+                    <th scope="col">Изменения</th>
+                    <th scope="col">Дата</th>
+                    <th scope="col">Заметка</th>
+                  </tr>
+                </thead>
+                <tbody id="movement-table-body"></tbody>
+              </table>
+            </div>
+
+            <div class="pagination-bar" id="movement-pagination">
+              <span id="movement-page-info">Нет записей</span>
+              <div class="pagination-actions">
+                <button class="secondary-button" type="button" data-pagination-target="stockMovements" data-pagination-action="prev">Назад</button>
+                <button class="secondary-button" type="button" data-pagination-target="stockMovements" data-pagination-action="next">Вперед</button>
+              </div>
+            </div>
+          </section>
+
+          <aside class="side-panel" aria-label="Формы движений">
+            <section class="tool-panel" aria-labelledby="movement-form-title">
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">Операция</p>
+                  <h2 id="movement-form-title">Добавить движение</h2>
+                </div>
+              </div>
+
+              <form class="stack-form" id="movement-form">
+                <label for="movement-type">Тип</label>
+                <select id="movement-type" name="movement_type" required>
+                  <option value="in">Приход</option>
+                  <option value="out">Расход</option>
+                  <option value="adjustment">Корректировка</option>
+                </select>
+
+                <label for="movement-product-id">Товар ID</label>
+                <input id="movement-product-id" name="product_id" type="number" min="1" step="1" list="movement-product-options" required>
+                <datalist id="movement-product-options"></datalist>
+
+                <label id="movement-quantity-label" for="movement-quantity">Количество</label>
+                <input id="movement-quantity" name="quantity" type="number" min="1" step="1" value="1" required>
+
+                <label for="movement-note">Заметка</label>
+                <textarea id="movement-note" name="note" maxlength="500" rows="3"></textarea>
+
+                <button id="movement-submit" type="submit">Добавить движение</button>
+              </form>
+            </section>
+          </aside>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>
