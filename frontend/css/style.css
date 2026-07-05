@@ -259,7 +259,6 @@ label {
   display: grid;
   grid-template-columns:
     auto minmax(12rem, 1fr)
-    auto minmax(10rem, 14rem)
     auto minmax(8rem, 12rem);
   gap: 0.65rem;
   align-items: center;
@@ -338,6 +337,17 @@ td {
 
 tbody tr:hover {
   background: #f8fafc;
+}
+
+.product-name-cell {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.product-name {
+  display: block;
+  min-width: 0;
 }
 
 .muted {
@@ -471,6 +481,8 @@ tbody tr:hover {
 
 .product-tag-list {
   margin-top: 0.35rem;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 
 .tag-chip {
@@ -485,6 +497,11 @@ tbody tr:hover {
   font-weight: 700;
 }
 
+.tag-chip-more {
+  flex: 0 0 auto;
+  color: #5b6878;
+}
+
 .tag-chip:hover {
   background: #e8f1f8;
 }
@@ -494,11 +511,19 @@ tbody tr:hover {
   font-size: 0.84rem;
 }
 
-.tag-filter-control,
+.product-search-control,
 .tag-editor {
   position: relative;
   display: grid;
   gap: 0.45rem;
+}
+
+.product-search-control input {
+  width: 100%;
+}
+
+.search-tag-list {
+  gap: 0.25rem;
 }
 
 .tag-input-row {
@@ -521,7 +546,7 @@ tbody tr:hover {
   box-shadow: 0 0.75rem 1.5rem rgba(15, 23, 42, 0.14);
 }
 
-.tag-filter-control .tag-suggestions {
+.product-search-control .tag-suggestions {
   top: calc(2.5rem + 0.25rem);
 }
 

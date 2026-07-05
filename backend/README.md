@@ -113,7 +113,8 @@ Paginated responses use:
 - Product responses include `company_name` and `supplier_name` for display
 - Product responses include reusable `tags`
 - Supports `search` by product, company, supplier, or tag name
-- Supports exact `tag` filtering by tag name or tag id
+- Supports repeated exact `tags` filtering by tag name; products must match all selected tags
+- Keeps legacy exact `tag` filtering by tag name or tag id
 - Supports `stock` values: `all`, `available`, `low`, `empty`
 
 #### `GET /products/summary`

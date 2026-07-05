@@ -12,8 +12,9 @@ from app.schemas import (
     ProductResponse,
     ProductSummaryResponse,
     ProductUpdate,
+    TagName,
 )
-from app.tags import get_or_create_tags, normalize_tag_name
+from app.tags import get_or_create_tags, normalize_tag_name, normalize_tag_names
 from devs import DbSession
 from errors import commit_or_raise
 from pagination import DEFAULT_PAGE_SIZE, PageNumber, PageSize, paginate
@@ -87,6 +88,7 @@ def get_products(
     search: Annotated[str | None, Query(max_length=255)] = None,
     stock: ProductStockFilter = "all",
     tag: Annotated[str | None, Query(max_length=50)] = None,
+    tags: Annotated[list[TagName] | None, Query()] = None,
 ) -> dict[str, object]:
     query = db.query(Product).options(
         selectinload(Product.company),
@@ -106,8 +108,12 @@ def get_products(
             )
         )
 
-    tag_term = normalize_tag_name(tag) if tag else ""
-    if tag_term:
+    tag_terms = normalize_tag_names(tags or [])
+    legacy_tag_term = normalize_tag_name(tag) if tag else ""
+    if legacy_tag_term:
+        tag_terms = normalize_tag_names([*tag_terms, legacy_tag_term])
+
+    for tag_term in tag_terms:
         tag_conditions = [Product.tags.any(Tag.name == tag_term)]
         if tag_term.isdecimal():
             tag_conditions.append(Product.tags.any(Tag.id == int(tag_term)))

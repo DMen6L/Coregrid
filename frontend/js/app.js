@@ -8,6 +8,7 @@ const DEFAULT_MOVEMENT_PRODUCT_SEARCH_PAGE_SIZE = 10;
 const MOVEMENT_PRODUCT_SEARCH_DELAY_MS = 300;
 const DEFAULT_TAG_SEARCH_PAGE_SIZE = 10;
 const TAG_SEARCH_DELAY_MS = 250;
+const PRODUCT_ROW_TAG_LIMIT = 3;
 
 const STOCK_STATUS_LABELS = {
   available: "В наличии",
@@ -68,7 +69,7 @@ const state = {
   stockMovementsLoaded: false,
   movementProductCache: new Map(),
   productFormTags: [],
-  tagFilter: "",
+  selectedTagFilters: [],
   editingProductId: null,
   searchTerm: "",
   stockFilter: "all",
@@ -98,11 +99,10 @@ const refs = {
   addMovementButton: document.querySelector("#add-movement-button"),
   refreshButton: document.querySelector("#refresh-button"),
   productSearch: document.querySelector("#product-search"),
-  productTagFilter: document.querySelector("#product-tag-filter"),
-  productTagFilterSuggestions: document.querySelector(
-    "#product-tag-filter-suggestions",
+  productSearchTagSuggestions: document.querySelector(
+    "#product-search-tag-suggestions",
   ),
-  selectedTagFilter: document.querySelector("#selected-tag-filter"),
+  selectedSearchTags: document.querySelector("#selected-search-tags"),
   stockFilter: document.querySelector("#stock-filter"),
   productTableBody: document.querySelector("#products-table-body"),
   productPagination: document.querySelector("#product-pagination"),
@@ -170,13 +170,12 @@ function init() {
   refs.addMovementButton.addEventListener("click", openMovementCreate);
   refs.refreshButton.addEventListener("click", loadAll);
   refs.productSearch.addEventListener("input", handleSearchInput);
-  refs.productTagFilter.addEventListener("input", handleProductTagFilterInput);
-  refs.productTagFilter.addEventListener("keydown", handleProductTagFilterKeydown);
-  refs.productTagFilterSuggestions.addEventListener(
+  refs.productSearch.addEventListener("keydown", handleSearchKeydown);
+  refs.productSearchTagSuggestions.addEventListener(
     "click",
-    handleProductTagFilterSuggestionClick,
+    handleProductSearchTagSuggestionClick,
   );
-  refs.selectedTagFilter.addEventListener("click", handleSelectedTagFilterClick);
+  refs.selectedSearchTags.addEventListener("click", handleSelectedSearchTagsClick);
   refs.stockFilter.addEventListener("change", handleStockFilterChange);
   refs.productPurchasePrice.addEventListener("input", updateProductPricingPreview);
   refs.productMarginPercent.addEventListener("input", updateProductPricingPreview);
@@ -279,7 +278,7 @@ function createPageState(pageSize) {
 function buildProductsPath() {
   return buildPagePath("/products", state.pagination.products, {
     search: state.searchTerm,
-    tag: state.tagFilter,
+    tags: state.selectedTagFilters,
     stock: state.stockFilter,
   });
 }
@@ -312,6 +311,15 @@ function buildPagePath(path, pagination, params = {}) {
   });
 
   Object.entries(params).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item !== null && item !== undefined && item !== "") {
+          query.append(key, item);
+        }
+      });
+      return;
+    }
+
     if (value !== null && value !== undefined && value !== "" && value !== "all") {
       query.set(key, value);
     }
@@ -426,7 +434,7 @@ function translateValidationMessage(message, field = null) {
 function render() {
   renderTabs();
   renderProductTable();
-  renderSelectedTagFilter();
+  renderSelectedSearchTags();
   renderProductFormTags();
   renderSelects();
   renderLookupTable("company");
@@ -471,8 +479,10 @@ function renderProductTable() {
       return `
         <tr>
           <td>
-            <strong>${escapeHtml(product.name)}</strong>
-            ${renderProductTags(product.tags)}
+            <div class="product-name-cell">
+              <strong class="product-name">${escapeHtml(product.name)}</strong>
+              ${renderProductTags(product.tags)}
+            </div>
           </td>
           <td>${formatNumber(product.purchase_price)}</td>
           <td>${formatNumber(product.margin_percent)}%</td>
@@ -507,24 +517,29 @@ function renderProductTags(tags = []) {
     return "";
   }
 
+  const visibleTags = tags.slice(0, PRODUCT_ROW_TAG_LIMIT);
+  const hiddenTagCount = Math.max(tags.length - visibleTags.length, 0);
+  const allTagNames = tags.map((tag) => tag.name).join(", ");
+
   return `
-    <div class="product-tag-list">
-      ${tags.map((tag) => renderTagChip(tag.name)).join("")}
+    <div class="product-tag-list" title="${escapeHtml(allTagNames)}">
+      ${visibleTags.map((tag) => renderTagChip(tag.name)).join("")}
+      ${hiddenTagCount > 0 ? `<span class="tag-chip tag-chip-more">+${hiddenTagCount}</span>` : ""}
     </div>
   `;
 }
 
-function renderSelectedTagFilter() {
-  if (!state.tagFilter) {
-    refs.selectedTagFilter.innerHTML = "";
-    refs.selectedTagFilter.classList.add("hidden");
+function renderSelectedSearchTags() {
+  if (!state.selectedTagFilters.length) {
+    refs.selectedSearchTags.innerHTML = "";
+    refs.selectedSearchTags.classList.add("hidden");
     return;
   }
 
-  refs.selectedTagFilter.innerHTML = renderTagChip(state.tagFilter, {
-    removeAction: "tag-filter",
-  });
-  refs.selectedTagFilter.classList.remove("hidden");
+  refs.selectedSearchTags.innerHTML = state.selectedTagFilters
+    .map((tagName) => renderTagChip(tagName, { removeAction: "search-tag" }))
+    .join("");
+  refs.selectedSearchTags.classList.remove("hidden");
 }
 
 function renderProductFormTags() {
@@ -848,66 +863,142 @@ async function handleApiSettingsSubmit(event) {
 }
 
 function handleSearchInput(event) {
-  state.searchTerm = event.target.value.trim();
-  state.pagination.products.page = 1;
-  loadPage("products");
+  const tagToken = getActiveSearchTagToken(event.target);
+  const nextSearchTerm = getProductSearchText(event.target.value);
+  const searchChanged = nextSearchTerm !== state.searchTerm;
+
+  state.searchTerm = nextSearchTerm;
+
+  if (tagToken) {
+    scheduleTagSearch(
+      "product-search",
+      refs.productSearchTagSuggestions,
+      tagToken.term,
+      { allowEmpty: true },
+    );
+  } else {
+    clearTagSearchTimer("product-search");
+    hideTagSuggestions(refs.productSearchTagSuggestions);
+  }
+
+  if (searchChanged) {
+    state.pagination.products.page = 1;
+    loadPage("products");
+  }
 }
 
-function handleProductTagFilterInput(event) {
-  scheduleTagSearch(
-    "product-filter",
-    refs.productTagFilterSuggestions,
-    event.target.value,
-  );
-}
+function handleSearchKeydown(event) {
+  if (event.key === "Backspace" && event.target.value === "") {
+    const removedTag = state.selectedTagFilters.at(-1);
 
-function handleProductTagFilterKeydown(event) {
+    if (!removedTag) {
+      return;
+    }
+
+    state.selectedTagFilters = state.selectedTagFilters.slice(0, -1);
+    state.pagination.products.page = 1;
+    renderSelectedSearchTags();
+    loadPage("products");
+    return;
+  }
+
   if (event.key !== "Enter") {
     return;
   }
 
+  const tagToken = getActiveSearchTagToken(event.target);
+
+  if (!tagToken) {
+    return;
+  }
+
   event.preventDefault();
-  applyProductTagFilter(refs.productTagFilter.value);
+  addSearchTagFilter(tagToken.term);
 }
 
-function handleProductTagFilterSuggestionClick(event) {
+function handleProductSearchTagSuggestionClick(event) {
   const button = event.target.closest("[data-select-tag]");
 
   if (!button) {
     return;
   }
 
-  applyProductTagFilter(button.dataset.tagName);
+  addSearchTagFilter(button.dataset.tagName);
 }
 
-function handleSelectedTagFilterClick(event) {
-  const button = event.target.closest("[data-remove-tag-filter]");
+function handleSelectedSearchTagsClick(event) {
+  const button = event.target.closest("[data-remove-search-tag]");
 
   if (!button) {
     return;
   }
 
-  state.tagFilter = "";
-  refs.productTagFilter.value = "";
-  hideTagSuggestions(refs.productTagFilterSuggestions);
-  state.pagination.products.page = 1;
-  renderSelectedTagFilter();
-  loadPage("products");
+  state.selectedTagFilters = state.selectedTagFilters.filter(
+    (tagName) => tagName !== button.dataset.removeSearchTag,
+  );
+  reloadProductsAfterSearchTagChange();
 }
 
-function applyProductTagFilter(tagName) {
+function addSearchTagFilter(tagName) {
   const normalizedTagName = normalizeTagName(tagName);
 
   if (!normalizedTagName) {
     return;
   }
 
-  state.tagFilter = normalizedTagName;
-  refs.productTagFilter.value = "";
-  hideTagSuggestions(refs.productTagFilterSuggestions);
+  if (!state.selectedTagFilters.includes(normalizedTagName)) {
+    state.selectedTagFilters = [...state.selectedTagFilters, normalizedTagName];
+  }
+
+  refs.productSearch.value = removeActiveSearchTagToken(refs.productSearch);
+  state.searchTerm = getProductSearchText(refs.productSearch.value);
+  hideTagSuggestions(refs.productSearchTagSuggestions);
+  reloadProductsAfterSearchTagChange();
+}
+
+function reloadProductsAfterSearchTagChange() {
   state.pagination.products.page = 1;
-  renderSelectedTagFilter();
+  renderSelectedSearchTags();
   loadPage("products");
+}
+
+function getActiveSearchTagToken(input) {
+  const cursorPosition = input.selectionStart ?? input.value.length;
+  const beforeCursor = input.value.slice(0, cursorPosition);
+  const hashIndex = beforeCursor.lastIndexOf("#");
+
+  if (hashIndex === -1) {
+    return null;
+  }
+
+  const tagTerm = beforeCursor.slice(hashIndex + 1);
+  const charBeforeHash = hashIndex > 0 ? beforeCursor[hashIndex - 1] : "";
+
+  if ((charBeforeHash && !/\s/.test(charBeforeHash)) || /\s/.test(tagTerm)) {
+    return null;
+  }
+
+  return {
+    start: hashIndex,
+    end: cursorPosition,
+    term: tagTerm,
+  };
+}
+
+function removeActiveSearchTagToken(input) {
+  const tagToken = getActiveSearchTagToken(input);
+
+  if (!tagToken) {
+    return input.value.replace(/(^|\s)#\S*$/, " ").replace(/\s+/g, " ").trim();
+  }
+
+  return `${input.value.slice(0, tagToken.start)}${input.value.slice(tagToken.end)}`
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getProductSearchText(value) {
+  return String(value).replace(/(^|\s)#\S*/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function handleStockFilterChange(event) {
@@ -1034,14 +1125,14 @@ function normalizeTagName(tagName) {
   return String(tagName).trim().toLocaleLowerCase("ru-RU");
 }
 
-function scheduleTagSearch(key, container, value) {
+function scheduleTagSearch(key, container, value, options = {}) {
   const searchTerm = normalizeTagName(value);
   const token = String(++tagSearchCounter);
 
   clearTagSearchTimer(key);
   container.dataset.tagSearchToken = token;
 
-  if (!searchTerm) {
+  if (!searchTerm && !options.allowEmpty) {
     hideTagSuggestions(container);
     return;
   }

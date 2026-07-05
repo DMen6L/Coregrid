@@ -514,6 +514,42 @@ def test_product_pagination_supports_search_and_stock_filter():
     )
 
 
+def test_product_pagination_supports_multiple_tag_filters():
+    shared_product = create_product(
+        name="Shared Tagged Product",
+        tags=["Кабель", "Витрина"],
+    )
+    cable_product = create_product(
+        name="Cable Product",
+        tags=["Кабель", "Склад"],
+    )
+    display_product = create_product(
+        name="Display Product",
+        tags=["Витрина"],
+    )
+
+    assert_page(
+        client.get("/products?tags=кабель&page_size=10"),
+        [shared_product, cable_product],
+        page_size=10,
+    )
+    assert_page(
+        client.get("/products?tags=кабель&tags=витрина&page_size=10"),
+        [shared_product],
+        page_size=10,
+    )
+    assert_page(
+        client.get("/products?search=Product&tags=витрина&page_size=10"),
+        [shared_product, display_product],
+        page_size=10,
+    )
+    assert_page(
+        client.get("/products?tag=кабель&tags=витрина&page_size=10"),
+        [shared_product],
+        page_size=10,
+    )
+
+
 def test_product_summary_returns_global_inventory_totals():
     create_product(
         name="Low Product",

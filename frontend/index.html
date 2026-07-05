@@ -49,13 +49,10 @@
 
             <div class="table-tools">
               <label for="product-search">Поиск</label>
-              <input id="product-search" type="search" placeholder="Название, компания, поставщик или тег">
-
-              <label for="product-tag-filter">Тег</label>
-              <div class="tag-filter-control">
-                <input id="product-tag-filter" type="search" maxlength="50" autocomplete="off" placeholder="Фильтр по тегу">
-                <div class="tag-suggestions hidden" id="product-tag-filter-suggestions"></div>
-                <div class="tag-chip-list hidden" id="selected-tag-filter"></div>
+              <div class="product-search-control">
+                <input id="product-search" type="search" autocomplete="off" placeholder="Название, компания, поставщик или #тег">
+                <div class="tag-suggestions hidden" id="product-search-tag-suggestions"></div>
+                <div class="tag-chip-list search-tag-list hidden" id="selected-search-tags"></div>
               </div>
 
               <label for="stock-filter">Остаток</label>
