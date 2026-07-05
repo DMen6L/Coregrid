@@ -26,6 +26,7 @@ Holds actual table models that the database has, essential for both initializati
 - Company
 - Supplier
 - Product
+- Tag
 - StockMovement
 - StockMovementLine
 
@@ -34,7 +35,7 @@ Holds actual table models that the database has, essential for both initializati
 
 ### `main.py`
 
-Defines the FastAPI app, local development CORS, and includes the routers for companies, suppliers, products, and stock movements.
+Defines the FastAPI app, local development CORS, and includes the routers for companies, suppliers, products, tags, and stock movements.
 
 > [!NOTE]
 > Check current endpoints and their functions in [here](/backend/README.md)

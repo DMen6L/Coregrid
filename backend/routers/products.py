@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import selectinload
 
-from app.models import Company, Product, Supplier
+from app.models import Company, Product, Supplier, Tag
 from app.pricing import calculate_floor_price
 from app.schemas import (
     PaginatedResponse,
@@ -13,6 +13,7 @@ from app.schemas import (
     ProductSummaryResponse,
     ProductUpdate,
 )
+from app.tags import get_or_create_tags, normalize_tag_name
 from devs import DbSession
 from errors import commit_or_raise
 from pagination import DEFAULT_PAGE_SIZE, PageNumber, PageSize, paginate
@@ -21,6 +22,7 @@ from pagination import DEFAULT_PAGE_SIZE, PageNumber, PageSize, paginate
 router = APIRouter(prefix="/products", tags=["products"])
 ProductStockFilter = Literal["all", "available", "low", "empty"]
 SALE_PRICE_FLOOR_ERROR = "sale_price cannot be lower than floor_price"
+TAGS_NULL_ERROR = "tags cannot be null"
 
 
 @router.post("", response_model=ProductResponse, status_code=201)
@@ -39,6 +41,7 @@ def add_product(product_data: ProductCreate, db: DbSession) -> Product:
         company_id=product_data.company_id,
         supplier_id=product_data.supplier_id,
     )
+    new_product.tags = get_or_create_tags(db, product_data.tags)
 
     db.add(new_product)
     commit_or_raise(db)
@@ -55,10 +58,20 @@ def patch_product(id: int, update_data: ProductUpdate, db: DbSession) -> Product
         raise HTTPException(status_code=404, detail="Product not found")
 
     changes = update_data.model_dump(exclude_unset=True)
+    tag_names = None
+
+    if "tags" in changes:
+        tag_names = changes.pop("tags")
+        if tag_names is None:
+            raise HTTPException(status_code=422, detail=TAGS_NULL_ERROR)
+
     validate_product_pricing_update(product, changes)
 
     for field, value in changes.items():
         setattr(product, field, value)
+
+    if tag_names is not None:
+        product.tags = get_or_create_tags(db, tag_names)
 
     commit_or_raise(db)
     db.refresh(product)
@@ -73,10 +86,12 @@ def get_products(
     page_size: PageSize = DEFAULT_PAGE_SIZE,
     search: Annotated[str | None, Query(max_length=255)] = None,
     stock: ProductStockFilter = "all",
+    tag: Annotated[str | None, Query(max_length=50)] = None,
 ) -> dict[str, object]:
     query = db.query(Product).options(
         selectinload(Product.company),
         selectinload(Product.supplier),
+        selectinload(Product.tags),
     )
 
     search_term = search.strip() if search else ""
@@ -87,8 +102,16 @@ def get_products(
                 Product.name.ilike(pattern),
                 Product.company.has(Company.name.ilike(pattern)),
                 Product.supplier.has(Supplier.name.ilike(pattern)),
+                Product.tags.any(Tag.name.ilike(pattern)),
             )
         )
+
+    tag_term = normalize_tag_name(tag) if tag else ""
+    if tag_term:
+        tag_conditions = [Product.tags.any(Tag.name == tag_term)]
+        if tag_term.isdecimal():
+            tag_conditions.append(Product.tags.any(Tag.id == int(tag_term)))
+        query = query.filter(or_(*tag_conditions))
 
     if stock == "available":
         query = query.filter(Product.quantity > 0)
@@ -155,7 +178,11 @@ def get_product_summary(db: DbSession) -> ProductSummaryResponse:
 def get_product(id: int, db: DbSession) -> Product:
     product = (
         db.query(Product)
-        .options(selectinload(Product.company), selectinload(Product.supplier))
+        .options(
+            selectinload(Product.company),
+            selectinload(Product.supplier),
+            selectinload(Product.tags),
+        )
         .filter(Product.id == id)
         .one_or_none()
     )

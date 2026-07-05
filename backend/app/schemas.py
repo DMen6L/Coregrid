@@ -26,6 +26,10 @@ PhoneNumber = Annotated[
     str,
     StringConstraints(strip_whitespace=True, pattern=r"^(8\d{10}|\+7\d{10})$"),
 ]
+TagName = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=50),
+]
 MovementType = Literal["in", "out", "adjustment"]
 StockStatus = Literal["available", "low", "out"]
 ItemT = TypeVar("ItemT")
@@ -80,6 +84,15 @@ class SupplierUpdate(UpdateValidator):
     phone_number: PhoneNumber | None = None
 
 
+class TagCreate(BaseModel):
+    name: TagName
+
+
+class TagResponse(BaseModel):
+    id: int
+    name: str
+
+
 class ProductCreate(BaseModel):
     name: Name
     purchase_price: int = Field(gt=0)
@@ -90,6 +103,7 @@ class ProductCreate(BaseModel):
 
     company_id: int | None = None
     supplier_id: int | None = None
+    tags: list[TagName] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def sale_price_must_not_be_below_floor(self):
@@ -122,6 +136,7 @@ class ProductResponse(BaseModel):
     supplier_id: int | None
     company_name: str | None = None
     supplier_name: str | None = None
+    tags: list[TagResponse] = Field(default_factory=list)
 
 
 class ProductUpdate(UpdateValidator):
@@ -134,6 +149,7 @@ class ProductUpdate(UpdateValidator):
 
     company_id: int | None = None
     supplier_id: int | None = None
+    tags: list[TagName] | None = None
 
 
 class StockMovementLineCreate(BaseModel):

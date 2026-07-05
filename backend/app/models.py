@@ -1,11 +1,13 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    Column,
     CheckConstraint,
     Integer,
     String,
     DateTime,
     ForeignKey,
+    Table,
     UniqueConstraint,
     func,
 )
@@ -18,6 +20,21 @@ from app.pricing import calculate_floor_price
 # ======
 # MODELS
 # ======
+
+product_tags = Table(
+    "product_tags",
+    Base.metadata,
+    Column(
+        "product_id",
+        ForeignKey("products.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "tag_id",
+        ForeignKey("tags.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
 
 
 class Company(Base):
@@ -68,6 +85,30 @@ class Supplier(Base):
             "phone_number ~ '^(8[0-9]{10}|\\+7[0-9]{10})$'",
             name="ck_suppliers_phone_number",
         ),
+    )
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+    )
+
+    products: Mapped[list["Product"]] = relationship(
+        secondary=product_tags,
+        back_populates="tags",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("name", name="uq_tags_name"),
+        CheckConstraint("char_length(name) > 0", name="ck_tags_name_not_empty"),
     )
 
 
@@ -123,6 +164,11 @@ class Product(Base):
     stock_movement_lines: Mapped[list["StockMovementLine"]] = relationship(
         back_populates="product",
         passive_deletes=True,
+    )
+    tags: Mapped[list["Tag"]] = relationship(
+        secondary=product_tags,
+        back_populates="products",
+        order_by="Tag.name",
     )
 
     __table_args__ = (

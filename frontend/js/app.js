@@ -6,6 +6,8 @@ const DEFAULT_LOOKUP_PAGE_SIZE = 10;
 const DEFAULT_MOVEMENT_PAGE_SIZE = 25;
 const DEFAULT_MOVEMENT_PRODUCT_SEARCH_PAGE_SIZE = 10;
 const MOVEMENT_PRODUCT_SEARCH_DELAY_MS = 300;
+const DEFAULT_TAG_SEARCH_PAGE_SIZE = 10;
+const TAG_SEARCH_DELAY_MS = 250;
 
 const STOCK_STATUS_LABELS = {
   available: "В наличии",
@@ -65,6 +67,8 @@ const state = {
   activeDrawerForm: null,
   stockMovementsLoaded: false,
   movementProductCache: new Map(),
+  productFormTags: [],
+  tagFilter: "",
   editingProductId: null,
   searchTerm: "",
   stockFilter: "all",
@@ -73,6 +77,8 @@ const state = {
 let movementLineCounter = 0;
 let movementProductSearchCounter = 0;
 const movementProductSearchTimers = new Map();
+let tagSearchCounter = 0;
+const tagSearchTimers = new Map();
 
 const refs = {
   tabButtons: [...document.querySelectorAll("[data-tab-target]")],
@@ -92,6 +98,11 @@ const refs = {
   addMovementButton: document.querySelector("#add-movement-button"),
   refreshButton: document.querySelector("#refresh-button"),
   productSearch: document.querySelector("#product-search"),
+  productTagFilter: document.querySelector("#product-tag-filter"),
+  productTagFilterSuggestions: document.querySelector(
+    "#product-tag-filter-suggestions",
+  ),
+  selectedTagFilter: document.querySelector("#selected-tag-filter"),
   stockFilter: document.querySelector("#stock-filter"),
   productTableBody: document.querySelector("#products-table-body"),
   productPagination: document.querySelector("#product-pagination"),
@@ -109,6 +120,10 @@ const refs = {
   ),
   productCompany: document.querySelector("#product-company"),
   productSupplier: document.querySelector("#product-supplier"),
+  productTagList: document.querySelector("#product-tag-list"),
+  productTagInput: document.querySelector("#product-tag-input"),
+  addProductTagButton: document.querySelector("#add-product-tag-button"),
+  productTagSuggestions: document.querySelector("#product-tag-suggestions"),
   productSubmit: document.querySelector("#product-submit"),
   cancelEdit: document.querySelector("#cancel-edit"),
   companyForm: document.querySelector("#company-form"),
@@ -155,10 +170,22 @@ function init() {
   refs.addMovementButton.addEventListener("click", openMovementCreate);
   refs.refreshButton.addEventListener("click", loadAll);
   refs.productSearch.addEventListener("input", handleSearchInput);
+  refs.productTagFilter.addEventListener("input", handleProductTagFilterInput);
+  refs.productTagFilter.addEventListener("keydown", handleProductTagFilterKeydown);
+  refs.productTagFilterSuggestions.addEventListener(
+    "click",
+    handleProductTagFilterSuggestionClick,
+  );
+  refs.selectedTagFilter.addEventListener("click", handleSelectedTagFilterClick);
   refs.stockFilter.addEventListener("change", handleStockFilterChange);
   refs.productPurchasePrice.addEventListener("input", updateProductPricingPreview);
   refs.productMarginPercent.addEventListener("input", updateProductPricingPreview);
   refs.productForm.addEventListener("submit", handleProductSubmit);
+  refs.productTagInput.addEventListener("input", handleProductTagInput);
+  refs.productTagInput.addEventListener("keydown", handleProductTagKeydown);
+  refs.addProductTagButton.addEventListener("click", addProductTagFromInput);
+  refs.productTagList.addEventListener("click", handleProductTagListClick);
+  refs.productTagSuggestions.addEventListener("click", handleProductTagSuggestionClick);
   refs.cancelEdit.addEventListener("click", closeDrawer);
   refs.productTableBody.addEventListener("click", handleProductTableClick);
   refs.productPagination.addEventListener("click", handlePaginationClick);
@@ -252,8 +279,19 @@ function createPageState(pageSize) {
 function buildProductsPath() {
   return buildPagePath("/products", state.pagination.products, {
     search: state.searchTerm,
+    tag: state.tagFilter,
     stock: state.stockFilter,
   });
+}
+
+function buildTagSearchPath(searchTerm) {
+  const query = new URLSearchParams({
+    page: "1",
+    page_size: String(DEFAULT_TAG_SEARCH_PAGE_SIZE),
+    search: searchTerm,
+  });
+
+  return `/tags?${query.toString()}`;
 }
 
 function buildMovementProductSearchPath(searchTerm) {
@@ -388,6 +426,8 @@ function translateValidationMessage(message, field = null) {
 function render() {
   renderTabs();
   renderProductTable();
+  renderSelectedTagFilter();
+  renderProductFormTags();
   renderSelects();
   renderLookupTable("company");
   renderLookupTable("supplier");
@@ -430,7 +470,10 @@ function renderProductTable() {
 
       return `
         <tr>
-          <td><strong>${escapeHtml(product.name)}</strong></td>
+          <td>
+            <strong>${escapeHtml(product.name)}</strong>
+            ${renderProductTags(product.tags)}
+          </td>
           <td>${formatNumber(product.purchase_price)}</td>
           <td>${formatNumber(product.margin_percent)}%</td>
           <td>${formatNumber(product.sale_price)}</td>
@@ -457,6 +500,58 @@ function renderStockStatus(product) {
   const className = status === "low" || status === "out" ? ` status-${status}` : "";
 
   return `<span class="status-pill${className}">${escapeHtml(label)}</span>`;
+}
+
+function renderProductTags(tags = []) {
+  if (!tags.length) {
+    return "";
+  }
+
+  return `
+    <div class="product-tag-list">
+      ${tags.map((tag) => renderTagChip(tag.name)).join("")}
+    </div>
+  `;
+}
+
+function renderSelectedTagFilter() {
+  if (!state.tagFilter) {
+    refs.selectedTagFilter.innerHTML = "";
+    refs.selectedTagFilter.classList.add("hidden");
+    return;
+  }
+
+  refs.selectedTagFilter.innerHTML = renderTagChip(state.tagFilter, {
+    removeAction: "tag-filter",
+  });
+  refs.selectedTagFilter.classList.remove("hidden");
+}
+
+function renderProductFormTags() {
+  if (!state.productFormTags.length) {
+    refs.productTagList.innerHTML = '<span class="tag-empty">Теги не добавлены</span>';
+    return;
+  }
+
+  refs.productTagList.innerHTML = state.productFormTags
+    .map((tagName) => renderTagChip(tagName, { removeAction: "product-tag" }))
+    .join("");
+}
+
+function renderTagChip(tagName, options = {}) {
+  if (!options.removeAction) {
+    return `<span class="tag-chip">${escapeHtml(tagName)}</span>`;
+  }
+
+  const removeAttribute = options.removeAction
+    ? ` data-remove-${options.removeAction}="${escapeHtml(tagName)}"`
+    : "";
+
+  return `
+    <button class="tag-chip" type="button" title="Удалить тег"${removeAttribute}>
+      ${escapeHtml(tagName)}
+    </button>
+  `;
 }
 
 function getStockStatus(product) {
@@ -758,6 +853,63 @@ function handleSearchInput(event) {
   loadPage("products");
 }
 
+function handleProductTagFilterInput(event) {
+  scheduleTagSearch(
+    "product-filter",
+    refs.productTagFilterSuggestions,
+    event.target.value,
+  );
+}
+
+function handleProductTagFilterKeydown(event) {
+  if (event.key !== "Enter") {
+    return;
+  }
+
+  event.preventDefault();
+  applyProductTagFilter(refs.productTagFilter.value);
+}
+
+function handleProductTagFilterSuggestionClick(event) {
+  const button = event.target.closest("[data-select-tag]");
+
+  if (!button) {
+    return;
+  }
+
+  applyProductTagFilter(button.dataset.tagName);
+}
+
+function handleSelectedTagFilterClick(event) {
+  const button = event.target.closest("[data-remove-tag-filter]");
+
+  if (!button) {
+    return;
+  }
+
+  state.tagFilter = "";
+  refs.productTagFilter.value = "";
+  hideTagSuggestions(refs.productTagFilterSuggestions);
+  state.pagination.products.page = 1;
+  renderSelectedTagFilter();
+  loadPage("products");
+}
+
+function applyProductTagFilter(tagName) {
+  const normalizedTagName = normalizeTagName(tagName);
+
+  if (!normalizedTagName) {
+    return;
+  }
+
+  state.tagFilter = normalizedTagName;
+  refs.productTagFilter.value = "";
+  hideTagSuggestions(refs.productTagFilterSuggestions);
+  state.pagination.products.page = 1;
+  renderSelectedTagFilter();
+  loadPage("products");
+}
+
 function handleStockFilterChange(event) {
   state.stockFilter = event.target.value;
   state.pagination.products.page = 1;
@@ -814,6 +966,153 @@ function updateProductPricingPreview() {
   refs.productSalePrice.placeholder = String(floorPrice);
 }
 
+function handleProductTagInput(event) {
+  scheduleTagSearch("product-form", refs.productTagSuggestions, event.target.value);
+}
+
+function handleProductTagKeydown(event) {
+  if (event.key !== "Enter" && event.key !== ",") {
+    return;
+  }
+
+  event.preventDefault();
+  addProductTagFromInput();
+}
+
+function handleProductTagSuggestionClick(event) {
+  const button = event.target.closest("[data-select-tag]");
+
+  if (!button) {
+    return;
+  }
+
+  addProductFormTag(button.dataset.tagName);
+}
+
+function handleProductTagListClick(event) {
+  const button = event.target.closest("[data-remove-product-tag]");
+
+  if (!button) {
+    return;
+  }
+
+  state.productFormTags = state.productFormTags.filter(
+    (tagName) => tagName !== button.dataset.removeProductTag,
+  );
+  renderProductFormTags();
+}
+
+function addProductTagFromInput() {
+  addProductFormTag(refs.productTagInput.value);
+  refs.productTagInput.focus();
+}
+
+function addProductFormTag(tagName) {
+  const normalizedTagName = normalizeTagName(tagName);
+
+  if (!normalizedTagName) {
+    return;
+  }
+
+  if (!state.productFormTags.includes(normalizedTagName)) {
+    state.productFormTags = [...state.productFormTags, normalizedTagName].sort();
+  }
+
+  refs.productTagInput.value = "";
+  hideTagSuggestions(refs.productTagSuggestions);
+  renderProductFormTags();
+}
+
+function setProductFormTags(tags = []) {
+  state.productFormTags = [
+    ...new Set(tags.map((tag) => normalizeTagName(tag.name ?? tag)).filter(Boolean)),
+  ].sort();
+  renderProductFormTags();
+}
+
+function normalizeTagName(tagName) {
+  return String(tagName).trim().toLocaleLowerCase("ru-RU");
+}
+
+function scheduleTagSearch(key, container, value) {
+  const searchTerm = normalizeTagName(value);
+  const token = String(++tagSearchCounter);
+
+  clearTagSearchTimer(key);
+  container.dataset.tagSearchToken = token;
+
+  if (!searchTerm) {
+    hideTagSuggestions(container);
+    return;
+  }
+
+  const timerId = window.setTimeout(() => {
+    tagSearchTimers.delete(key);
+    searchTags(container, searchTerm, token);
+  }, TAG_SEARCH_DELAY_MS);
+
+  tagSearchTimers.set(key, timerId);
+}
+
+function clearTagSearchTimer(key) {
+  if (!tagSearchTimers.has(key)) {
+    return;
+  }
+
+  window.clearTimeout(tagSearchTimers.get(key));
+  tagSearchTimers.delete(key);
+}
+
+async function searchTags(container, searchTerm, token) {
+  renderTagSuggestionMessage(container, "Ищем теги...");
+
+  try {
+    const payload = await request(buildTagSearchPath(searchTerm));
+
+    if (container.dataset.tagSearchToken !== token) {
+      return;
+    }
+
+    renderTagSuggestions(container, payload.items);
+  } catch (error) {
+    if (container.dataset.tagSearchToken === token) {
+      renderTagSuggestionMessage(container, error.message, true);
+    }
+  }
+}
+
+function renderTagSuggestions(container, tags) {
+  if (tags.length === 0) {
+    renderTagSuggestionMessage(container, "Теги не найдены.");
+    return;
+  }
+
+  container.innerHTML = tags
+    .map(
+      (tag) => `
+        <button class="tag-suggestion" type="button" data-select-tag data-tag-name="${escapeHtml(tag.name)}">
+          ${escapeHtml(tag.name)}
+        </button>
+      `,
+    )
+    .join("");
+  container.classList.remove("hidden");
+}
+
+function renderTagSuggestionMessage(container, message, isError = false) {
+  container.innerHTML = `
+    <div class="tag-suggestion-empty${isError ? " error" : ""}">
+      ${escapeHtml(message)}
+    </div>
+  `;
+  container.classList.remove("hidden");
+}
+
+function hideTagSuggestions(container) {
+  container.innerHTML = "";
+  container.classList.add("hidden");
+}
+
 async function handleProductSubmit(event) {
   event.preventDefault();
   const floorPrice = calculateProductFloorPrice();
@@ -830,6 +1129,7 @@ async function handleProductSubmit(event) {
     low_stock_threshold: Number(refs.productLowStockThreshold.value),
     company_id: optionalNumber(refs.productCompany.value),
     supplier_id: optionalNumber(refs.productSupplier.value),
+    tags: state.productFormTags,
   };
 
   const isEditing = state.editingProductId !== null;
@@ -895,6 +1195,7 @@ function startProductEdit(productId) {
     product.low_stock_threshold ?? DEFAULT_LOW_STOCK_THRESHOLD;
   refs.productCompany.value = product.company_id ?? "";
   refs.productSupplier.value = product.supplier_id ?? "";
+  setProductFormTags(product.tags);
   refs.productSubmit.textContent = "Сохранить";
   refs.cancelEdit.classList.remove("hidden");
   openDrawer("product", "Редактор", "Изменить товар");
@@ -913,6 +1214,9 @@ function resetProductForm() {
   refs.productLowStockThreshold.value = DEFAULT_LOW_STOCK_THRESHOLD;
   refs.productCompany.value = "";
   refs.productSupplier.value = "";
+  setProductFormTags([]);
+  refs.productTagInput.value = "";
+  hideTagSuggestions(refs.productTagSuggestions);
   refs.productSubmit.textContent = "Добавить товар";
   refs.cancelEdit.classList.add("hidden");
 }
@@ -1184,6 +1488,7 @@ function renderMovementProductSuggestions(row, products) {
         <button class="movement-product-suggestion" type="button" data-select-movement-product data-product-id="${product.id}">
           <span class="movement-product-suggestion-name">${escapeHtml(product.name)}</span>
           <span class="movement-product-suggestion-meta">Остаток: ${formatNumber(product.quantity)} · Продажа: ${formatNumber(product.sale_price)}</span>
+          ${renderMovementSuggestionTags(product.tags)}
         </button>
       `,
     )
@@ -1262,6 +1567,19 @@ function renderMovementSelectedProduct(product) {
   return `
     <span class="movement-product-selected-name">${escapeHtml(product.name)}</span>
     <span class="movement-product-selected-meta">Остаток: ${formatNumber(product.quantity)} · Продажа: ${formatNumber(product.sale_price)}</span>
+    ${renderMovementSuggestionTags(product.tags)}
+  `;
+}
+
+function renderMovementSuggestionTags(tags = []) {
+  if (!tags.length) {
+    return "";
+  }
+
+  return `
+    <span class="movement-product-suggestion-tags">
+      ${tags.map((tag) => `#${escapeHtml(tag.name)}`).join(" ")}
+    </span>
   `;
 }
 
@@ -1467,6 +1785,7 @@ function setBusy(isBusy) {
   refs.addMovementButton.disabled = isBusy;
   refs.refreshButton.disabled = isBusy;
   refs.productSubmit.disabled = isBusy;
+  refs.addProductTagButton.disabled = isBusy;
   refs.supplierSubmit.disabled = isBusy;
   refs.companySubmit.disabled = isBusy;
   refs.movementRefreshButton.disabled = isBusy;

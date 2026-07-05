@@ -49,7 +49,14 @@
 
             <div class="table-tools">
               <label for="product-search">Поиск</label>
-              <input id="product-search" type="search" placeholder="Название, компания или поставщик">
+              <input id="product-search" type="search" placeholder="Название, компания, поставщик или тег">
+
+              <label for="product-tag-filter">Тег</label>
+              <div class="tag-filter-control">
+                <input id="product-tag-filter" type="search" maxlength="50" autocomplete="off" placeholder="Фильтр по тегу">
+                <div class="tag-suggestions hidden" id="product-tag-filter-suggestions"></div>
+                <div class="tag-chip-list hidden" id="selected-tag-filter"></div>
+              </div>
 
               <label for="stock-filter">Остаток</label>
               <select id="stock-filter">
@@ -254,6 +261,16 @@
 
             <label for="product-supplier">Поставщик</label>
             <select id="product-supplier" name="supplier_id"></select>
+
+            <label for="product-tag-input">Теги</label>
+            <div class="tag-editor">
+              <div class="tag-chip-list" id="product-tag-list"></div>
+              <div class="tag-input-row">
+                <input id="product-tag-input" type="text" maxlength="50" autocomplete="off" placeholder="Например: расходник">
+                <button class="secondary-button" id="add-product-tag-button" type="button">Добавить</button>
+              </div>
+              <div class="tag-suggestions hidden" id="product-tag-suggestions"></div>
+            </div>
 
             <div class="form-actions">
               <button id="product-submit" type="submit">Добавить товар</button>

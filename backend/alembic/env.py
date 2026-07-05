@@ -8,7 +8,7 @@ from alembic import context
 from app.db import Base
 from app.config import DATABASE_URL
 
-from app.models import Company, Supplier, Product
+from app.models import Company, Supplier, Product, Tag
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

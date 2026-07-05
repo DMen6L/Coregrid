@@ -52,6 +52,25 @@ Product stock status is calculated by the API and is not stored as a column:
 
 `low_stock_threshold = 0` disables low-stock warnings for that product.
 
+### Tags
+
+Stores reusable product labels used for filtering and search.
+
+- `id` unique identifier of each tag
+- `name` normalized lowercase tag name, unique across all tags
+- `created_at` time when the tag was created
+
+### Product tags
+
+Stores the many-to-many relationship between products and tags.
+
+- `product_id` reference to the tagged product
+- `tag_id` reference to the reusable tag
+- `(product_id, tag_id)` is unique through the composite primary key
+
+Deleting a product removes only rows from `product_tags`; reusable tag records
+remain available for other products.
+
 ### Stock movements
 
 Stores the header of each stock change transaction.

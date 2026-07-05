@@ -13,8 +13,8 @@ def truncate_database():
     with SessionLocal() as session:
         session.execute(
             text(
-                "TRUNCATE TABLE stock_movement_lines, stock_movements, "
-                "products, companies, suppliers "
+                "TRUNCATE TABLE product_tags, tags, stock_movement_lines, "
+                "stock_movements, products, companies, suppliers "
                 "RESTART IDENTITY CASCADE"
             )
         )
@@ -54,6 +54,7 @@ def create_product(
     low_stock_threshold=None,
     company_id=None,
     supplier_id=None,
+    tags=None,
 ):
     payload = {
         "name": name,
@@ -67,6 +68,8 @@ def create_product(
         payload["sale_price"] = sale_price
     if low_stock_threshold is not None:
         payload["low_stock_threshold"] = low_stock_threshold
+    if tags is not None:
+        payload["tags"] = tags
 
     response = client.post("/products", json=payload)
     assert response.status_code == 201
@@ -191,6 +194,55 @@ def test_product_create_read_update_and_list_with_related_rows():
 
     list_response = client.get("/products")
     assert_page(list_response, [patch_response.json()])
+
+
+def test_product_tags_can_be_created_read_updated_and_cleared():
+    product = create_product(tags=["Кабель", "Расходник", "кабель"])
+
+    assert [tag["name"] for tag in product["tags"]] == ["кабель", "расходник"]
+
+    get_response = client.get(f"/products/{product['id']}")
+    assert get_response.status_code == 200
+    assert get_response.json() == product
+
+    keep_tags_response = client.patch(
+        f"/products/{product['id']}",
+        json={"quantity": 8},
+    )
+    assert keep_tags_response.status_code == 200
+    assert keep_tags_response.json()["tags"] == product["tags"]
+
+    replace_tags_response = client.patch(
+        f"/products/{product['id']}",
+        json={"tags": ["Сезон", "витрина"]},
+    )
+    assert replace_tags_response.status_code == 200
+    assert [tag["name"] for tag in replace_tags_response.json()["tags"]] == [
+        "витрина",
+        "сезон",
+    ]
+
+    clear_tags_response = client.patch(
+        f"/products/{product['id']}",
+        json={"tags": []},
+    )
+    assert clear_tags_response.status_code == 200
+    assert clear_tags_response.json()["tags"] == []
+
+
+def test_tags_can_be_created_and_listed():
+    product = create_product(tags=["Кабель", "Витрина"])
+    cable_tag = next(tag for tag in product["tags"] if tag["name"] == "кабель")
+
+    search_response = client.get("/tags?search=каб&page_size=10")
+    assert_page(search_response, [cable_tag], page_size=10)
+
+    create_response = client.post("/tags", json={"name": "Новинка"})
+    assert create_response.status_code == 201
+    assert create_response.json()["name"] == "новинка"
+
+    duplicate_response = client.post("/tags", json={"name": "новинка"})
+    assert_duplicate_error(duplicate_response)
 
 
 def test_incoming_stock_movement_increases_product_quantity():
@@ -419,6 +471,11 @@ def test_product_pagination_supports_search_and_stock_filter():
         low_stock_threshold=5,
     )
     empty_product = create_product(name="Empty Product", quantity=0)
+    tagged_product = create_product(
+        name="Tagged Product",
+        quantity=7,
+        tags=["Сервис"],
+    )
 
     assert_page(
         client.get("/products?search=Searchable&page_size=10"),
@@ -427,7 +484,7 @@ def test_product_pagination_supports_search_and_stock_filter():
     )
     assert_page(
         client.get("/products?stock=available&page_size=10"),
-        [available_product, low_product],
+        [available_product, low_product, tagged_product],
         page_size=10,
     )
     assert_page(
@@ -438,6 +495,21 @@ def test_product_pagination_supports_search_and_stock_filter():
     assert_page(
         client.get("/products?stock=empty&page_size=10"),
         [empty_product],
+        page_size=10,
+    )
+    assert_page(
+        client.get("/products?search=сервис&page_size=10"),
+        [tagged_product],
+        page_size=10,
+    )
+    assert_page(
+        client.get("/products?tag=сервис&page_size=10"),
+        [tagged_product],
+        page_size=10,
+    )
+    assert_page(
+        client.get(f"/products?tag={tagged_product['tags'][0]['id']}&page_size=10"),
+        [tagged_product],
         page_size=10,
     )
 
@@ -852,6 +924,24 @@ def test_patch_product_can_clear_company_and_supplier_relationships():
                 "low_stock_threshold": -1,
             },
         ),
+        (
+            "/products",
+            {
+                "name": "Invalid Tag Product",
+                "purchase_price": 100,
+                "tags": [""],
+            },
+        ),
+        (
+            "/products",
+            {
+                "name": "Invalid Tag Product",
+                "purchase_price": 100,
+                "tags": ["x" * 51],
+            },
+        ),
+        ("/tags", {"name": ""}),
+        ("/tags", {"name": "x" * 51}),
         ("/stock-movements", {"movement_type": "transfer", "lines": []}),
         ("/stock-movements", {"movement_type": "in", "lines": []}),
         (
@@ -894,12 +984,23 @@ def test_create_validation_errors_return_unprocessable_entity(path, payload):
         ("/products/1", {"sale_price": 0}),
         ("/products/1", {"quantity": -1}),
         ("/products/1", {"low_stock_threshold": -1}),
+        ("/products/1", {"tags": [""]}),
+        ("/products/1", {"tags": ["x" * 51]}),
     ],
 )
 def test_patch_validation_errors_return_unprocessable_entity(path, payload):
     response = client.patch(path, json=payload)
 
     assert_validation_error(response)
+
+
+def test_patch_product_rejects_null_tags():
+    product = create_product(tags=["existing"])
+
+    response = client.patch(f"/products/{product['id']}", json={"tags": None})
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "tags cannot be null"}
 
 
 @pytest.mark.parametrize(
@@ -953,6 +1054,17 @@ def test_delete_product_removes_product():
     get_response = client.get(f"/products/{product['id']}")
     assert get_response.status_code == 404
     assert get_response.json() == {"detail": "Product not found"}
+
+
+def test_delete_product_removes_tag_links_but_keeps_tags():
+    product = create_product(tags=["расходник"])
+    tag = product["tags"][0]
+
+    response = client.delete(f"/products/{product['id']}")
+
+    assert response.status_code == 204
+    assert_page(client.get("/tags"), [tag])
+    assert_page(client.get("/products?tag=расходник"), [])
 
 
 def test_delete_product_with_stock_movement_history_returns_conflict():
