@@ -93,6 +93,7 @@ Paginated responses use:
 - Requires `purchase_price`
 - Accepts `margin_percent`, defaulting to `0`
 - Accepts optional `sale_price`; when omitted, it defaults to calculated `floor_price`
+- Accepts optional `quantity_unit`, defaulting to `шт`
 - Accepts optional `low_stock_threshold`, defaulting to `5`
 - Accepts optional `tags` as tag-name strings; names are trimmed, lowercased, deduplicated, and created if missing
 - Rejects `sale_price` lower than calculated `floor_price`
@@ -101,6 +102,7 @@ Paginated responses use:
 
 - Updating data of an instance for table Products
 - Can update `purchase_price`, `margin_percent`, and `sale_price`
+- Can update `quantity_unit`
 - Can update `low_stock_threshold`
 - Can update `tags`; omit `tags` to keep existing tags, send `tags: []` to clear them
 - Rejects pricing changes that would make `sale_price` lower than calculated `floor_price`
@@ -109,6 +111,7 @@ Paginated responses use:
 
 - Returns a paginated list of products
 - Product responses include `purchase_price`, `margin_percent`, calculated `floor_price`, and `sale_price`
+- Product responses include `quantity` and `quantity_unit`
 - Product responses include calculated `stock_status`
 - Product responses include `company_name` and `supplier_name` for display
 - Product responses include reusable `tags`
@@ -126,6 +129,7 @@ Paginated responses use:
 
 - Returns a single instance of Products referenced by `id`
 - Product responses include `purchase_price`, `margin_percent`, calculated `floor_price`, and `sale_price`
+- Product responses include `quantity` and `quantity_unit`
 - Product responses include calculated `stock_status`
 - Product responses include `company_name` and `supplier_name` for display
 - Product responses include reusable `tags`
@@ -174,7 +178,8 @@ Product `stock_status` values:
 - Returns estimated sales totals for a calendar date range
 - Requires `date_from=YYYY-MM-DD` and `date_to=YYYY-MM-DD`
 - Counts only outgoing stock movements
-- Returns estimated revenue, sold units, and sale operation count
+- Returns estimated revenue, sold quantity, sold quantities grouped by unit label, and sale operation count
+- Includes `daily_totals` with one row per selected calendar day, including zero-sale days, for dashboard charts
 
 #### `GET /stock-movements/{id}`
 

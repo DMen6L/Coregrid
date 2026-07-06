@@ -85,6 +85,7 @@ Columns:
 | `quantity_before` | integer | must be `>= 0` |
 | `quantity_after` | integer | must be `>= 0` |
 | `unit_price_snapshot` | integer | nullable, must be `> 0` when present |
+| `quantity_unit_snapshot` | string | required, copied from the product unit |
 
 Database constraints:
 
@@ -93,6 +94,7 @@ quantity_delta != 0
 quantity_before >= 0
 quantity_after >= 0
 unit_price_snapshot is null or unit_price_snapshot > 0
+char_length(quantity_unit_snapshot) > 0
 ```
 
 Constraint names:
@@ -102,6 +104,7 @@ ck_stock_movement_lines_quantity_delta
 ck_stock_movement_lines_quantity_before
 ck_stock_movement_lines_quantity_after
 ck_stock_movement_lines_unit_price_snapshot
+ck_stock_movement_lines_quantity_unit_snapshot_not_empty
 ```
 
 Foreign key behavior:
@@ -186,6 +189,18 @@ Reason:
 If decimal currency is needed later, both product price fields and
 `unit_price_snapshot` can move toward a numeric database type.
 
+## Quantity unit snapshot
+
+`quantity_unit_snapshot` should copy the current `Product.quantity_unit` when
+the movement is created.
+
+Reason:
+
+- product quantity units can change later
+- old movement history should still answer what the recorded quantity meant
+- sales summaries can group sold quantities by unit label without converting
+  unlike units
+
 ## API shape
 
 Endpoints:
@@ -193,6 +208,7 @@ Endpoints:
 ```http
 POST /stock-movements
 GET /stock-movements?page=1&page_size=25
+GET /stock-movements/sales-summary?date_from=2026-07-05&date_to=2026-07-07
 GET /stock-movements/{id}
 GET /products/{product_id}/movements?page=1&page_size=25
 ```
@@ -233,7 +249,8 @@ Create movement response:
       "quantity_delta": 10,
       "quantity_before": 0,
       "quantity_after": 10,
-      "unit_price_snapshot": 500
+      "unit_price_snapshot": 500,
+      "quantity_unit_snapshot": "шт"
     },
     {
       "id": 2,
@@ -241,7 +258,8 @@ Create movement response:
       "quantity_delta": 5,
       "quantity_before": 7,
       "quantity_after": 12,
-      "unit_price_snapshot": 1200
+      "unit_price_snapshot": 1200,
+      "quantity_unit_snapshot": "м"
     }
   ]
 }
@@ -258,6 +276,10 @@ Movement collection responses are paginated:
   "pages": 0
 }
 ```
+
+Sales summary responses include aggregate totals for the selected calendar range
+and `daily_totals` rows for every date in the range. Dates without outgoing
+sales return zero values so dashboard charts can draw a continuous trend.
 
 ## Pydantic schema direction
 
@@ -341,6 +363,7 @@ Backend endpoint tests should cover:
 - global movement history can be fetched
 - one movement can be fetched by id
 - product-specific movement history can be fetched
+- movement lines snapshot the product quantity unit
 
 ## Assumptions
 

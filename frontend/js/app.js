@@ -6,6 +6,7 @@ const DEFAULT_LOOKUP_PAGE_SIZE = 10;
 const DEFAULT_MOVEMENT_PAGE_SIZE = 25;
 const DEFAULT_DASHBOARD_MOVEMENT_PAGE_SIZE = 5;
 const DEFAULT_MOVEMENT_PRODUCT_SEARCH_PAGE_SIZE = 10;
+const DEFAULT_QUANTITY_UNIT = "шт";
 const MOVEMENT_PRODUCT_SEARCH_DELAY_MS = 300;
 const DEFAULT_TAG_SEARCH_PAGE_SIZE = 10;
 const TAG_SEARCH_DELAY_MS = 250;
@@ -46,6 +47,7 @@ const FIELD_LABELS = {
   margin_percent: "Маржа",
   sale_price: "Цена продажи",
   quantity: "Количество",
+  quantity_unit: "Ед. изм.",
   low_stock_threshold: "Порог малого остатка",
   company_id: "Компания",
   supplier_id: "Поставщик",
@@ -122,6 +124,7 @@ const refs = {
   dashboardSalesRevenue: document.querySelector("#dashboard-sales-revenue"),
   dashboardSalesUnits: document.querySelector("#dashboard-sales-units"),
   dashboardSalesOperations: document.querySelector("#dashboard-sales-operations"),
+  dashboardSalesChart: document.querySelector("#dashboard-sales-chart"),
   dashboardMovementList: document.querySelector("#dashboard-movement-list"),
   refreshButton: document.querySelector("#refresh-button"),
   productSearch: document.querySelector("#product-search"),
@@ -141,6 +144,7 @@ const refs = {
   productFloorPrice: document.querySelector("#product-floor-price"),
   productSalePrice: document.querySelector("#product-sale-price"),
   productQuantity: document.querySelector("#product-quantity"),
+  productQuantityUnit: document.querySelector("#product-quantity-unit"),
   productLowStockThreshold: document.querySelector(
     "#product-low-stock-threshold",
   ),
@@ -369,6 +373,8 @@ function createEmptySalesSummary(
     revenue: 0,
     units_sold: 0,
     sale_operations: 0,
+    units_sold_by_unit: [],
+    daily_totals: [],
     date_from: dateFrom,
     date_to: dateTo,
   };
@@ -376,11 +382,43 @@ function createEmptySalesSummary(
 
 function getTodayDateInputValue() {
   const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
+
+  return formatDateInputValue(today);
+}
+
+function formatDateInputValue(value) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function parseDateInput(value) {
+  const [year, month, day] = String(value).split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  return new Date(year, month - 1, day);
+}
+
+function formatShortDate(value) {
+  const parsedDate = parseDateInput(value);
+
+  if (!parsedDate) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "short",
+  }).format(parsedDate);
+}
+
+function roundChartValue(value) {
+  return Math.round(value * 10) / 10;
 }
 
 function buildProductsPath() {
@@ -599,11 +637,177 @@ function renderDashboard() {
   refs.dashboardSalesDateFrom.value = state.salesDateFrom;
   refs.dashboardSalesDateTo.value = state.salesDateTo;
   refs.dashboardSalesRevenue.textContent = formatNumber(salesSummary.revenue);
-  refs.dashboardSalesUnits.textContent = formatNumber(salesSummary.units_sold);
+  refs.dashboardSalesUnits.textContent = formatSalesQuantitySummary(salesSummary);
   refs.dashboardSalesOperations.textContent = formatNumber(
     salesSummary.sale_operations,
   );
+  renderSalesChart(salesSummary);
   renderDashboardMovements();
+}
+
+function renderSalesChart(salesSummary) {
+  const isRange = salesSummary.date_from && salesSummary.date_to
+    && salesSummary.date_from !== salesSummary.date_to;
+
+  if (!isRange) {
+    refs.dashboardSalesChart.innerHTML = "";
+    refs.dashboardSalesChart.classList.add("hidden");
+    return;
+  }
+
+  const dailyTotals = normalizeDailySalesTotals(
+    salesSummary.date_from,
+    salesSummary.date_to,
+    salesSummary.daily_totals || [],
+  );
+
+  refs.dashboardSalesChart.classList.remove("hidden");
+  refs.dashboardSalesChart.innerHTML = `
+    <div class="sales-chart-header">
+      <h4 class="sales-chart-title">Динамика выручки</h4>
+      <span class="sales-chart-total">${formatNumber(salesSummary.revenue)} за период</span>
+    </div>
+    ${renderSalesChartBody(dailyTotals)}
+  `;
+}
+
+function renderSalesChartBody(dailyTotals) {
+  const maxRevenue = Math.max(...dailyTotals.map((item) => item.revenue), 0);
+
+  if (maxRevenue === 0) {
+    return '<div class="sales-chart-empty">Продаж за период нет.</div>';
+  }
+
+  const width = 720;
+  const height = 240;
+  const padding = {
+    top: 28,
+    right: 24,
+    bottom: 46,
+    left: 56,
+  };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const lastIndex = Math.max(dailyTotals.length - 1, 1);
+  const points = dailyTotals.map((item, index) => {
+    const x = padding.left + (plotWidth * index) / lastIndex;
+    const y = padding.top + plotHeight - (item.revenue / maxRevenue) * plotHeight;
+
+    return { ...item, x, y };
+  });
+  const polylinePoints = points
+    .map((point) => `${roundChartValue(point.x)},${roundChartValue(point.y)}`)
+    .join(" ");
+  const baselineY = padding.top + plotHeight;
+  const valueLabelIndexes = getSalesChartValueLabelIndexes(points);
+  const dateLabelIndexes = getSalesChartDateLabelIndexes(points);
+
+  return `
+    <svg class="sales-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Выручка по дням">
+      <line class="sales-chart-axis" x1="${padding.left}" y1="${baselineY}" x2="${width - padding.right}" y2="${baselineY}"></line>
+      <line class="sales-chart-axis" x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${baselineY}"></line>
+      <polyline class="sales-chart-line" points="${polylinePoints}"></polyline>
+      ${points
+        .map(
+          (point) => `
+            <circle class="sales-chart-point" cx="${roundChartValue(point.x)}" cy="${roundChartValue(point.y)}" r="4">
+              <title>${escapeHtml(formatSalesChartTitle(point))}</title>
+            </circle>
+          `,
+        )
+        .join("")}
+      ${points
+        .filter((_, index) => valueLabelIndexes.has(index))
+        .map(
+          (point) => `
+            <text class="sales-chart-value" x="${roundChartValue(point.x)}" y="${roundChartValue(Math.max(point.y - 10, 12))}" text-anchor="middle">${formatNumber(point.revenue)}</text>
+          `,
+        )
+        .join("")}
+      ${points
+        .filter((_, index) => dateLabelIndexes.has(index))
+        .map(
+          (point) => `
+            <text class="sales-chart-label" x="${roundChartValue(point.x)}" y="${height - 14}" text-anchor="middle">${escapeHtml(formatShortDate(point.date))}</text>
+          `,
+        )
+        .join("")}
+    </svg>
+  `;
+}
+
+function normalizeDailySalesTotals(dateFrom, dateTo, dailyTotals) {
+  const totalsByDate = new Map(
+    dailyTotals.map((item) => [
+      item.date,
+      {
+        date: item.date,
+        revenue: Number(item.revenue) || 0,
+        units_sold: Number(item.units_sold) || 0,
+        units_sold_by_unit: item.units_sold_by_unit || [],
+        sale_operations: Number(item.sale_operations) || 0,
+      },
+    ]),
+  );
+  const dates = getDateInputRange(dateFrom, dateTo);
+
+  return dates.map((dateValue) => (
+    totalsByDate.get(dateValue) || {
+      date: dateValue,
+      revenue: 0,
+      units_sold: 0,
+      units_sold_by_unit: [],
+      sale_operations: 0,
+    }
+  ));
+}
+
+function getDateInputRange(dateFrom, dateTo) {
+  const startDate = parseDateInput(dateFrom);
+  const endDate = parseDateInput(dateTo);
+
+  if (!startDate || !endDate || startDate > endDate) {
+    return [];
+  }
+
+  const dates = [];
+  const currentDate = new Date(startDate);
+  while (currentDate <= endDate) {
+    dates.push(formatDateInputValue(currentDate));
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  return dates;
+}
+
+function getSalesChartValueLabelIndexes(points) {
+  const indexes = new Set([0, points.length - 1]);
+  const maxRevenue = Math.max(...points.map((point) => point.revenue));
+  const maxIndex = points.findIndex((point) => point.revenue === maxRevenue);
+
+  if (maxIndex >= 0) {
+    indexes.add(maxIndex);
+  }
+
+  return indexes;
+}
+
+function getSalesChartDateLabelIndexes(points) {
+  if (points.length <= 7) {
+    return new Set(points.map((_, index) => index));
+  }
+
+  const step = Math.ceil((points.length - 1) / 4);
+  const indexes = new Set([0, points.length - 1]);
+  for (let index = step; index < points.length - 1; index += step) {
+    indexes.add(index);
+  }
+
+  return indexes;
+}
+
+function formatSalesChartTitle(point) {
+  return `${formatShortDate(point.date)}: ${formatNumber(point.revenue)}`;
 }
 
 function renderDashboardMovements() {
@@ -659,7 +863,7 @@ function renderProductTable() {
           <td>${formatNumber(product.purchase_price)}</td>
           <td>${formatNumber(product.margin_percent)}%</td>
           <td>${formatNumber(product.sale_price)}</td>
-          <td>${formatNumber(product.quantity)}</td>
+          <td>${escapeHtml(formatQuantity(product.quantity, product.quantity_unit))}</td>
           <td>${renderStockStatus(product)}</td>
           <td>${escapeHtml(companyName)}</td>
           <td>${escapeHtml(supplierName)}</td>
@@ -889,15 +1093,17 @@ function renderMovementLines(lines) {
   return `
     <div class="movement-lines">
       ${lines
-        .map(
-          (line) => `
+        .map((line) => {
+          const quantityUnit = getMovementLineUnit(line);
+
+          return `
             <div class="movement-line">
               <strong>${escapeHtml(getProductDisplayName(line.product_id))}</strong>:
-              ${formatSignedNumber(line.quantity_delta)}
-              (${formatNumber(line.quantity_before)} -> ${formatNumber(line.quantity_after)})
+              ${escapeHtml(formatSignedQuantity(line.quantity_delta, quantityUnit))}
+              (${escapeHtml(formatQuantity(line.quantity_before, quantityUnit))} -> ${escapeHtml(formatQuantity(line.quantity_after, quantityUnit))})
             </div>
-          `,
-        )
+          `;
+        })
         .join("")}
     </div>
   `;
@@ -1454,6 +1660,7 @@ async function handleProductSubmit(event) {
     margin_percent: Number(refs.productMarginPercent.value),
     sale_price: salePrice,
     quantity: Number(refs.productQuantity.value),
+    quantity_unit: refs.productQuantityUnit.value.trim() || DEFAULT_QUANTITY_UNIT,
     low_stock_threshold: Number(refs.productLowStockThreshold.value),
     company_id: optionalNumber(refs.productCompany.value),
     supplier_id: optionalNumber(refs.productSupplier.value),
@@ -1519,6 +1726,7 @@ function startProductEdit(productId) {
   refs.productFloorPrice.value = product.floor_price;
   refs.productSalePrice.value = product.sale_price;
   refs.productQuantity.value = product.quantity;
+  refs.productQuantityUnit.value = product.quantity_unit || DEFAULT_QUANTITY_UNIT;
   refs.productLowStockThreshold.value =
     product.low_stock_threshold ?? DEFAULT_LOW_STOCK_THRESHOLD;
   refs.productCompany.value = product.company_id ?? "";
@@ -1539,6 +1747,7 @@ function resetProductForm() {
   refs.productFloorPrice.value = "";
   refs.productSalePrice.value = "";
   refs.productQuantity.value = 0;
+  refs.productQuantityUnit.value = DEFAULT_QUANTITY_UNIT;
   refs.productLowStockThreshold.value = DEFAULT_LOW_STOCK_THRESHOLD;
   refs.productCompany.value = "";
   refs.productSupplier.value = "";
@@ -1815,7 +2024,7 @@ function renderMovementProductSuggestions(row, products) {
       (product) => `
         <button class="movement-product-suggestion" type="button" data-select-movement-product data-product-id="${product.id}">
           <span class="movement-product-suggestion-name">${escapeHtml(product.name)}</span>
-          <span class="movement-product-suggestion-meta">Остаток: ${formatNumber(product.quantity)} · Продажа: ${formatNumber(product.sale_price)}</span>
+          <span class="movement-product-suggestion-meta">Остаток: ${escapeHtml(formatQuantity(product.quantity, product.quantity_unit))} · Продажа: ${formatNumber(product.sale_price)}</span>
           ${renderMovementSuggestionTags(product.tags)}
         </button>
       `,
@@ -1894,7 +2103,7 @@ function rememberMovementProducts(products) {
 function renderMovementSelectedProduct(product) {
   return `
     <span class="movement-product-selected-name">${escapeHtml(product.name)}</span>
-    <span class="movement-product-selected-meta">Остаток: ${formatNumber(product.quantity)} · Продажа: ${formatNumber(product.sale_price)}</span>
+    <span class="movement-product-selected-meta">Остаток: ${escapeHtml(formatQuantity(product.quantity, product.quantity_unit))} · Продажа: ${formatNumber(product.sale_price)}</span>
     ${renderMovementSuggestionTags(product.tags)}
   `;
 }
@@ -2091,6 +2300,18 @@ function getProductDisplayName(productId) {
   return product ? product.name : `#${productId}`;
 }
 
+function getMovementLineUnit(line) {
+  if (line.quantity_unit_snapshot) {
+    return line.quantity_unit_snapshot;
+  }
+
+  const product =
+    state.products.find((item) => item.id === line.product_id) ||
+    state.movementProductCache.get(line.product_id);
+
+  return product?.quantity_unit || DEFAULT_QUANTITY_UNIT;
+}
+
 function optionalNumber(value) {
   return value === "" ? null : Number(value);
 }
@@ -2101,6 +2322,30 @@ function formatNumber(value) {
 
 function formatSignedNumber(value) {
   return value > 0 ? `+${formatNumber(value)}` : formatNumber(value);
+}
+
+function normalizeQuantityUnit(unit) {
+  return String(unit || DEFAULT_QUANTITY_UNIT).trim() || DEFAULT_QUANTITY_UNIT;
+}
+
+function formatQuantity(value, unit) {
+  return `${formatNumber(value)} ${normalizeQuantityUnit(unit)}`;
+}
+
+function formatSignedQuantity(value, unit) {
+  return `${formatSignedNumber(value)} ${normalizeQuantityUnit(unit)}`;
+}
+
+function formatSalesQuantitySummary(salesSummary) {
+  const unitsByUnit = salesSummary.units_sold_by_unit || [];
+
+  if (unitsByUnit.length > 0) {
+    return unitsByUnit
+      .map((item) => formatQuantity(item.quantity, item.quantity_unit))
+      .join(", ");
+  }
+
+  return formatQuantity(salesSummary.units_sold || 0, DEFAULT_QUANTITY_UNIT);
 }
 
 function formatDate(value) {

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 from app.pricing import calculate_floor_price
+from app.units import DEFAULT_QUANTITY_UNIT, QUANTITY_UNIT_MAX_LENGTH
 
 
 # ======
@@ -148,6 +149,12 @@ class Product(Base):
         default=0,
         server_default="0",
     )
+    quantity_unit: Mapped[str] = mapped_column(
+        String(QUANTITY_UNIT_MAX_LENGTH),
+        default=DEFAULT_QUANTITY_UNIT,
+        server_default=DEFAULT_QUANTITY_UNIT,
+        nullable=False,
+    )
     low_stock_threshold: Mapped[int] = mapped_column(
         Integer,
         default=5,
@@ -180,6 +187,10 @@ class Product(Base):
             name="ck_products_sale_price_floor",
         ),
         CheckConstraint("quantity >= 0", name="ck_products_quantity"),
+        CheckConstraint(
+            "char_length(quantity_unit) > 0",
+            name="ck_products_quantity_unit_not_empty",
+        ),
         CheckConstraint(
             "low_stock_threshold >= 0",
             name="ck_products_low_stock_threshold",
@@ -268,6 +279,12 @@ class StockMovementLine(Base):
         Integer,
         nullable=True,
     )
+    quantity_unit_snapshot: Mapped[str] = mapped_column(
+        String(QUANTITY_UNIT_MAX_LENGTH),
+        default=DEFAULT_QUANTITY_UNIT,
+        server_default=DEFAULT_QUANTITY_UNIT,
+        nullable=False,
+    )
 
     movement: Mapped["StockMovement"] = relationship(back_populates="lines")
     product: Mapped["Product"] = relationship(back_populates="stock_movement_lines")
@@ -288,5 +305,9 @@ class StockMovementLine(Base):
         CheckConstraint(
             "unit_price_snapshot is null or unit_price_snapshot > 0",
             name="ck_stock_movement_lines_unit_price_snapshot",
+        ),
+        CheckConstraint(
+            "char_length(quantity_unit_snapshot) > 0",
+            name="ck_stock_movement_lines_quantity_unit_snapshot_not_empty",
         ),
     )

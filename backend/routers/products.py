@@ -24,6 +24,7 @@ router = APIRouter(prefix="/products", tags=["products"])
 ProductStockFilter = Literal["all", "available", "low", "empty"]
 SALE_PRICE_FLOOR_ERROR = "sale_price cannot be lower than floor_price"
 TAGS_NULL_ERROR = "tags cannot be null"
+QUANTITY_UNIT_NULL_ERROR = "quantity_unit cannot be null"
 
 
 @router.post("", response_model=ProductResponse, status_code=201)
@@ -38,6 +39,7 @@ def add_product(product_data: ProductCreate, db: DbSession) -> Product:
         margin_percent=product_data.margin_percent,
         sale_price=product_data.sale_price or floor_price,
         quantity=product_data.quantity,
+        quantity_unit=product_data.quantity_unit,
         low_stock_threshold=product_data.low_stock_threshold,
         company_id=product_data.company_id,
         supplier_id=product_data.supplier_id,
@@ -65,6 +67,9 @@ def patch_product(id: int, update_data: ProductUpdate, db: DbSession) -> Product
         tag_names = changes.pop("tags")
         if tag_names is None:
             raise HTTPException(status_code=422, detail=TAGS_NULL_ERROR)
+
+    if "quantity_unit" in changes and changes["quantity_unit"] is None:
+        raise HTTPException(status_code=422, detail=QUANTITY_UNIT_NULL_ERROR)
 
     validate_product_pricing_update(product, changes)
 

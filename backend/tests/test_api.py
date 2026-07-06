@@ -53,6 +53,7 @@ def create_product(
     margin_percent=0,
     sale_price=None,
     quantity=5,
+    quantity_unit=None,
     low_stock_threshold=None,
     company_id=None,
     supplier_id=None,
@@ -68,6 +69,8 @@ def create_product(
     }
     if sale_price is not None:
         payload["sale_price"] = sale_price
+    if quantity_unit is not None:
+        payload["quantity_unit"] = quantity_unit
     if low_stock_threshold is not None:
         payload["low_stock_threshold"] = low_stock_threshold
     if tags is not None:
@@ -194,7 +197,12 @@ def test_product_create_read_update_and_list_with_related_rows():
 
     patch_response = client.patch(
         f"/products/{product['id']}",
-        json={"purchase_price": 150, "sale_price": 150, "quantity": 8},
+        json={
+            "purchase_price": 150,
+            "sale_price": 150,
+            "quantity": 8,
+            "quantity_unit": "м",
+        },
     )
     assert patch_response.status_code == 200
     assert patch_response.json()["purchase_price"] == 150
@@ -202,6 +210,7 @@ def test_product_create_read_update_and_list_with_related_rows():
     assert patch_response.json()["floor_price"] == 150
     assert patch_response.json()["sale_price"] == 150
     assert patch_response.json()["quantity"] == 8
+    assert patch_response.json()["quantity_unit"] == "м"
     assert patch_response.json()["company_id"] == company["id"]
     assert patch_response.json()["supplier_id"] == supplier["id"]
     assert patch_response.json()["company_name"] == company["name"]
@@ -263,6 +272,7 @@ def test_tags_can_be_created_and_listed():
 def test_incoming_stock_movement_increases_product_quantity():
     product = create_product(
         quantity=5,
+        quantity_unit="м",
         purchase_price=250,
         margin_percent=20,
         sale_price=300,
@@ -287,10 +297,12 @@ def test_incoming_stock_movement_increases_product_quantity():
     assert movement["lines"][0]["quantity_before"] == 5
     assert movement["lines"][0]["quantity_after"] == 9
     assert movement["lines"][0]["unit_price_snapshot"] == 300
+    assert movement["lines"][0]["quantity_unit_snapshot"] == "м"
 
     get_product_response = client.get(f"/products/{product['id']}")
     assert get_product_response.status_code == 200
     assert get_product_response.json()["quantity"] == 9
+    assert get_product_response.json()["quantity_unit"] == "м"
 
 
 def test_outgoing_stock_movement_decreases_product_quantity():
@@ -432,6 +444,28 @@ def test_stock_movement_history_can_be_fetched():
 
     product_history_response = client.get(f"/products/{product['id']}/movements")
     assert_page(product_history_response, [movement])
+
+
+def test_stock_movement_line_snapshots_quantity_unit():
+    product = create_product(quantity=5, quantity_unit="кг")
+    movement = create_stock_movement(
+        movement_type="out",
+        lines=[{"product_id": product["id"], "quantity_delta": -2}],
+    )
+
+    assert movement["lines"][0]["quantity_unit_snapshot"] == "кг"
+
+    update_response = client.patch(
+        f"/products/{product['id']}",
+        json={"quantity_unit": "г"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["quantity_unit"] == "г"
+
+    history_response = client.get(f"/stock-movements/{movement['id']}")
+
+    assert history_response.status_code == 200
+    assert history_response.json()["lines"][0]["quantity_unit_snapshot"] == "кг"
 
 
 def test_collection_pagination_limits_results():
@@ -604,6 +638,7 @@ def test_stock_movement_sales_summary_uses_outgoing_movements_in_date_range():
         purchase_price=200,
         sale_price=250,
         quantity=10,
+        quantity_unit="мл",
     )
     included_sale = create_stock_movement(
         movement_type="out",
@@ -647,13 +682,29 @@ def test_stock_movement_sales_summary_uses_outgoing_movements_in_date_range():
     )
     range_response = client.get(
         "/stock-movements/sales-summary"
-        "?date_from=2026-07-05&date_to=2026-07-06"
+        "?date_from=2026-07-05&date_to=2026-07-07"
     )
 
     assert one_day_response.status_code == 200
     assert one_day_response.json() == {
         "revenue": 550,
         "units_sold": 3,
+        "units_sold_by_unit": [
+            {"quantity_unit": "мл", "quantity": 1},
+            {"quantity_unit": "шт", "quantity": 2},
+        ],
+        "daily_totals": [
+            {
+                "date": "2026-07-05",
+                "revenue": 550,
+                "units_sold": 3,
+                "units_sold_by_unit": [
+                    {"quantity_unit": "мл", "quantity": 1},
+                    {"quantity_unit": "шт", "quantity": 2},
+                ],
+                "sale_operations": 1,
+            },
+        ],
         "sale_operations": 1,
         "date_from": "2026-07-05",
         "date_to": "2026-07-05",
@@ -662,7 +713,72 @@ def test_stock_movement_sales_summary_uses_outgoing_movements_in_date_range():
     assert range_response.json() == {
         "revenue": 1000,
         "units_sold": 6,
+        "units_sold_by_unit": [
+            {"quantity_unit": "мл", "quantity": 1},
+            {"quantity_unit": "шт", "quantity": 5},
+        ],
+        "daily_totals": [
+            {
+                "date": "2026-07-05",
+                "revenue": 550,
+                "units_sold": 3,
+                "units_sold_by_unit": [
+                    {"quantity_unit": "мл", "quantity": 1},
+                    {"quantity_unit": "шт", "quantity": 2},
+                ],
+                "sale_operations": 1,
+            },
+            {
+                "date": "2026-07-06",
+                "revenue": 450,
+                "units_sold": 3,
+                "units_sold_by_unit": [
+                    {"quantity_unit": "шт", "quantity": 3},
+                ],
+                "sale_operations": 1,
+            },
+            {
+                "date": "2026-07-07",
+                "revenue": 0,
+                "units_sold": 0,
+                "units_sold_by_unit": [],
+                "sale_operations": 0,
+            },
+        ],
         "sale_operations": 2,
+        "date_from": "2026-07-05",
+        "date_to": "2026-07-07",
+    }
+
+
+def test_stock_movement_sales_summary_returns_zero_daily_totals_without_sales():
+    response = client.get(
+        "/stock-movements/sales-summary"
+        "?date_from=2026-07-05&date_to=2026-07-06"
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "revenue": 0,
+        "units_sold": 0,
+        "units_sold_by_unit": [],
+        "daily_totals": [
+            {
+                "date": "2026-07-05",
+                "revenue": 0,
+                "units_sold": 0,
+                "units_sold_by_unit": [],
+                "sale_operations": 0,
+            },
+            {
+                "date": "2026-07-06",
+                "revenue": 0,
+                "units_sold": 0,
+                "units_sold_by_unit": [],
+                "sale_operations": 0,
+            },
+        ],
+        "sale_operations": 0,
         "date_from": "2026-07-05",
         "date_to": "2026-07-06",
     }
@@ -746,6 +862,7 @@ def test_product_can_be_created_without_company_or_supplier():
     assert product["company_id"] is None
     assert product["supplier_id"] is None
     assert product["quantity"] == 0
+    assert product["quantity_unit"] == "шт"
     assert product["stock_status"] == "out"
 
 
@@ -761,8 +878,25 @@ def test_product_quantity_and_low_stock_threshold_defaults():
     assert response.json()["floor_price"] == 100
     assert response.json()["sale_price"] == 100
     assert response.json()["quantity"] == 0
+    assert response.json()["quantity_unit"] == "шт"
     assert response.json()["low_stock_threshold"] == 5
     assert response.json()["stock_status"] == "out"
+
+
+def test_product_create_accepts_and_strips_quantity_unit():
+    response = client.post(
+        "/products",
+        json={
+            "name": "Measured Product",
+            "purchase_price": 100,
+            "quantity": 12,
+            "quantity_unit": "  мл  ",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["quantity"] == 12
+    assert response.json()["quantity_unit"] == "мл"
 
 
 def test_product_create_calculates_floor_price_and_defaults_sale_price():
@@ -1071,6 +1205,22 @@ def test_patch_product_can_clear_company_and_supplier_relationships():
         (
             "/products",
             {
+                "name": "Invalid Unit Product",
+                "purchase_price": 100,
+                "quantity_unit": "",
+            },
+        ),
+        (
+            "/products",
+            {
+                "name": "Invalid Unit Product",
+                "purchase_price": 100,
+                "quantity_unit": "x" * 21,
+            },
+        ),
+        (
+            "/products",
+            {
                 "name": "Invalid Tag Product",
                 "purchase_price": 100,
                 "tags": [""],
@@ -1127,6 +1277,8 @@ def test_create_validation_errors_return_unprocessable_entity(path, payload):
         ("/products/1", {"margin_percent": -1}),
         ("/products/1", {"sale_price": 0}),
         ("/products/1", {"quantity": -1}),
+        ("/products/1", {"quantity_unit": ""}),
+        ("/products/1", {"quantity_unit": "x" * 21}),
         ("/products/1", {"low_stock_threshold": -1}),
         ("/products/1", {"tags": [""]}),
         ("/products/1", {"tags": ["x" * 51]}),
@@ -1145,6 +1297,18 @@ def test_patch_product_rejects_null_tags():
 
     assert response.status_code == 422
     assert response.json() == {"detail": "tags cannot be null"}
+
+
+def test_patch_product_rejects_null_quantity_unit():
+    product = create_product()
+
+    response = client.patch(
+        f"/products/{product['id']}",
+        json={"quantity_unit": None},
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "quantity_unit cannot be null"}
 
 
 @pytest.mark.parametrize(

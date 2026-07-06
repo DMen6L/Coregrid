@@ -86,7 +86,7 @@
                     <strong id="dashboard-sales-revenue">0</strong>
                   </div>
                   <div class="sales-secondary">
-                    <span class="metric-label">Продано единиц</span>
+                    <span class="metric-label">Продано</span>
                     <strong id="dashboard-sales-units">0</strong>
                   </div>
                   <div class="sales-secondary">
@@ -94,6 +94,8 @@
                     <strong id="dashboard-sales-operations">0</strong>
                   </div>
                 </div>
+
+                <div class="sales-chart hidden" id="dashboard-sales-chart" aria-label="Динамика выручки"></div>
               </section>
 
               <section class="dashboard-activity" aria-labelledby="dashboard-activity-title">
@@ -325,8 +327,25 @@
               </div>
             </div>
 
-            <label for="product-quantity">Количество</label>
-            <input id="product-quantity" name="quantity" type="number" min="0" step="1" value="0" required>
+            <div class="field-grid">
+              <div>
+                <label for="product-quantity">Количество</label>
+                <input id="product-quantity" name="quantity" type="number" min="0" step="1" value="0" required>
+              </div>
+              <div>
+                <label for="product-quantity-unit">Ед. изм.</label>
+                <input id="product-quantity-unit" name="quantity_unit" type="text" maxlength="20" list="quantity-unit-options" value="шт" required>
+                <datalist id="quantity-unit-options">
+                  <option value="шт"></option>
+                  <option value="м"></option>
+                  <option value="см"></option>
+                  <option value="кг"></option>
+                  <option value="г"></option>
+                  <option value="л"></option>
+                  <option value="мл"></option>
+                </datalist>
+              </div>
+            </div>
 
             <label for="product-low-stock-threshold">Порог малого остатка</label>
             <input id="product-low-stock-threshold" name="low_stock_threshold" type="number" min="0" step="1" value="5" required>

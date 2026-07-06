@@ -64,6 +64,7 @@ def add_stock_movement(
                 quantity_before=quantity_before,
                 quantity_after=quantity_after,
                 unit_price_snapshot=product.sale_price,
+                quantity_unit_snapshot=product.quantity_unit,
             )
         )
 
@@ -108,6 +109,12 @@ def get_stock_movement_sales_summary(
     start_at = datetime.combine(date_from, time.min)
     end_at = datetime.combine(date_to + timedelta(days=1), time.min)
 
+    sales_filters = (
+        StockMovement.movement_type == "out",
+        StockMovement.created_at >= start_at,
+        StockMovement.created_at < end_at,
+    )
+
     revenue, units_sold, sale_operations = (
         db.query(
             func.coalesce(
@@ -121,17 +128,105 @@ def get_stock_movement_sales_summary(
             func.count(func.distinct(StockMovement.id)),
         )
         .join(StockMovementLine)
-        .filter(
-            StockMovement.movement_type == "out",
-            StockMovement.created_at >= start_at,
-            StockMovement.created_at < end_at,
-        )
+        .filter(*sales_filters)
         .one()
     )
+    units_sold_by_unit = (
+        db.query(
+            StockMovementLine.quantity_unit_snapshot,
+            func.coalesce(func.sum(func.abs(StockMovementLine.quantity_delta)), 0),
+        )
+        .join(StockMovement, StockMovementLine.movement_id == StockMovement.id)
+        .filter(*sales_filters)
+        .group_by(StockMovementLine.quantity_unit_snapshot)
+        .order_by(StockMovementLine.quantity_unit_snapshot)
+        .all()
+    )
+    sales_day = func.date(StockMovement.created_at).label("sales_day")
+    daily_rows = (
+        db.query(
+            sales_day,
+            func.coalesce(
+                func.sum(
+                    func.abs(StockMovementLine.quantity_delta)
+                    * func.coalesce(StockMovementLine.unit_price_snapshot, 0)
+                ),
+                0,
+            ),
+            func.coalesce(func.sum(func.abs(StockMovementLine.quantity_delta)), 0),
+            func.count(func.distinct(StockMovement.id)),
+        )
+        .join(StockMovementLine)
+        .filter(*sales_filters)
+        .group_by(sales_day)
+        .order_by(sales_day)
+        .all()
+    )
+    daily_unit_rows = (
+        db.query(
+            sales_day,
+            StockMovementLine.quantity_unit_snapshot,
+            func.coalesce(func.sum(func.abs(StockMovementLine.quantity_delta)), 0),
+        )
+        .join(StockMovementLine)
+        .filter(*sales_filters)
+        .group_by(sales_day, StockMovementLine.quantity_unit_snapshot)
+        .order_by(sales_day, StockMovementLine.quantity_unit_snapshot)
+        .all()
+    )
+    daily_totals_by_date = {
+        normalize_sales_summary_date(sales_date): {
+            "date": normalize_sales_summary_date(sales_date),
+            "revenue": int(daily_revenue),
+            "units_sold": int(daily_units_sold),
+            "units_sold_by_unit": [],
+            "sale_operations": int(daily_sale_operations),
+        }
+        for (
+            sales_date,
+            daily_revenue,
+            daily_units_sold,
+            daily_sale_operations,
+        ) in daily_rows
+    }
+
+    for sales_date, quantity_unit, quantity in daily_unit_rows:
+        daily_total = daily_totals_by_date[normalize_sales_summary_date(sales_date)]
+        daily_total["units_sold_by_unit"].append(
+            {
+                "quantity_unit": quantity_unit,
+                "quantity": int(quantity),
+            }
+        )
+
+    daily_totals = []
+    current_date = date_from
+    while current_date <= date_to:
+        daily_totals.append(
+            daily_totals_by_date.get(
+                current_date,
+                {
+                    "date": current_date,
+                    "revenue": 0,
+                    "units_sold": 0,
+                    "units_sold_by_unit": [],
+                    "sale_operations": 0,
+                },
+            )
+        )
+        current_date += timedelta(days=1)
 
     return StockMovementSalesSummaryResponse(
         revenue=int(revenue),
         units_sold=int(units_sold),
+        units_sold_by_unit=[
+            {
+                "quantity_unit": quantity_unit,
+                "quantity": int(quantity),
+            }
+            for quantity_unit, quantity in units_sold_by_unit
+        ],
+        daily_totals=daily_totals,
         sale_operations=int(sale_operations),
         date_from=date_from,
         date_to=date_to,
@@ -151,6 +246,13 @@ def get_stock_movement(id: int, db: DbSession) -> StockMovement:
         raise HTTPException(status_code=404, detail="Stock movement not found")
 
     return movement
+
+
+def normalize_sales_summary_date(value: date | datetime) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+
+    return value
 
 
 @router.get(

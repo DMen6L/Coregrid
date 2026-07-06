@@ -9,6 +9,7 @@ from pydantic import (
 )
 
 from app.pricing import calculate_floor_price
+from app.units import DEFAULT_QUANTITY_UNIT, QUANTITY_UNIT_MAX_LENGTH
 
 # ======
 # FIELDS
@@ -29,6 +30,14 @@ PhoneNumber = Annotated[
 TagName = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=50),
+]
+QuantityUnit = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=1,
+        max_length=QUANTITY_UNIT_MAX_LENGTH,
+    ),
 ]
 MovementType = Literal["in", "out", "adjustment"]
 StockStatus = Literal["available", "low", "out"]
@@ -99,6 +108,10 @@ class ProductCreate(BaseModel):
     margin_percent: int = Field(default=0, ge=0, validate_default=True)
     sale_price: int | None = Field(default=None, gt=0)
     quantity: int = Field(default=0, ge=0, validate_default=True)
+    quantity_unit: QuantityUnit = Field(
+        default=DEFAULT_QUANTITY_UNIT,
+        validate_default=True,
+    )
     low_stock_threshold: int = Field(default=5, ge=0, validate_default=True)
 
     company_id: int | None = None
@@ -128,6 +141,7 @@ class ProductResponse(BaseModel):
     floor_price: int
     sale_price: int
     quantity: int
+    quantity_unit: str
     low_stock_threshold: int
     stock_status: StockStatus
     created_at: datetime
@@ -145,6 +159,7 @@ class ProductUpdate(UpdateValidator):
     margin_percent: int | None = Field(default=None, ge=0)
     sale_price: int | None = Field(default=None, gt=0)
     quantity: int | None = Field(default=None, ge=0, validate_default=True)
+    quantity_unit: QuantityUnit | None = None
     low_stock_threshold: int | None = Field(default=None, ge=0)
 
     company_id: int | None = None
@@ -195,6 +210,7 @@ class StockMovementLineResponse(BaseModel):
     quantity_before: int
     quantity_after: int
     unit_price_snapshot: int | None
+    quantity_unit_snapshot: str
 
 
 class StockMovementResponse(BaseModel):
@@ -205,9 +221,24 @@ class StockMovementResponse(BaseModel):
     lines: list[StockMovementLineResponse]
 
 
+class StockMovementSalesSummaryUnitResponse(BaseModel):
+    quantity_unit: str
+    quantity: int
+
+
+class StockMovementSalesSummaryDailyResponse(BaseModel):
+    date: date
+    revenue: int
+    units_sold: int
+    units_sold_by_unit: list[StockMovementSalesSummaryUnitResponse]
+    sale_operations: int
+
+
 class StockMovementSalesSummaryResponse(BaseModel):
     revenue: int
     units_sold: int
+    units_sold_by_unit: list[StockMovementSalesSummaryUnitResponse]
+    daily_totals: list[StockMovementSalesSummaryDailyResponse]
     sale_operations: int
     date_from: date
     date_to: date

@@ -32,6 +32,7 @@ Stores products assigning them unique identifiers and created for easier access 
 - `margin_percent` stores the desired markup percentage over `purchase_price`
 - `sale_price` stores the final editable selling price shown to sellers
 - `quantity` stores the amount of currently stored products, default set to 0
+- `quantity_unit` stores the short unit label for `quantity`, default set to `шт`
 - `low_stock_threshold` stores the per-product low-stock warning threshold, default set to 5
 - `created_at` needed to identify the creation time of the product
 
@@ -91,6 +92,7 @@ Stores the product-level changes inside a stock movement.
 - `quantity_before` product quantity before the movement line
 - `quantity_after` product quantity after the movement line
 - `unit_price_snapshot` product sale price copied when the movement was created
+- `quantity_unit_snapshot` product quantity unit copied when the movement was created
 
 See [stock movements design](STOCK_MOVEMENTS.md) for the detailed API and
 business rules.
