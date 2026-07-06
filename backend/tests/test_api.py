@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -88,6 +90,19 @@ def create_stock_movement(movement_type="in", note=None, lines=None):
     response = client.post("/stock-movements", json=payload)
     assert response.status_code == 201
     return response.json()
+
+
+def set_stock_movement_created_at(movement_id, created_at):
+    with SessionLocal() as session:
+        session.execute(
+            text(
+                "UPDATE stock_movements "
+                "SET created_at = :created_at "
+                "WHERE id = :movement_id"
+            ),
+            {"movement_id": movement_id, "created_at": created_at},
+        )
+        session.commit()
 
 
 def assert_validation_error(response):
@@ -574,7 +589,93 @@ def test_product_summary_returns_global_inventory_totals():
         "total_units": 15,
         "inventory_value": 1000,
         "low_stock": 1,
+        "out_of_stock": 1,
     }
+
+
+def test_stock_movement_sales_summary_uses_outgoing_movements_in_date_range():
+    product = create_product(
+        name="Sale Product",
+        sale_price=150,
+        quantity=20,
+    )
+    second_product = create_product(
+        name="Second Sale Product",
+        purchase_price=200,
+        sale_price=250,
+        quantity=10,
+    )
+    included_sale = create_stock_movement(
+        movement_type="out",
+        lines=[
+            {"product_id": product["id"], "quantity_delta": -2},
+            {"product_id": second_product["id"], "quantity_delta": -1},
+        ],
+    )
+    next_day_sale = create_stock_movement(
+        movement_type="out",
+        lines=[{"product_id": product["id"], "quantity_delta": -3}],
+    )
+    incoming_movement = create_stock_movement(
+        movement_type="in",
+        lines=[{"product_id": product["id"], "quantity_delta": 5}],
+    )
+    adjustment_movement = create_stock_movement(
+        movement_type="adjustment",
+        lines=[{"product_id": product["id"], "quantity_delta": -1}],
+    )
+    set_stock_movement_created_at(
+        included_sale["id"],
+        datetime(2026, 7, 5, 10, 0),
+    )
+    set_stock_movement_created_at(
+        next_day_sale["id"],
+        datetime(2026, 7, 6, 9, 0),
+    )
+    set_stock_movement_created_at(
+        incoming_movement["id"],
+        datetime(2026, 7, 5, 12, 0),
+    )
+    set_stock_movement_created_at(
+        adjustment_movement["id"],
+        datetime(2026, 7, 5, 13, 0),
+    )
+
+    one_day_response = client.get(
+        "/stock-movements/sales-summary"
+        "?date_from=2026-07-05&date_to=2026-07-05"
+    )
+    range_response = client.get(
+        "/stock-movements/sales-summary"
+        "?date_from=2026-07-05&date_to=2026-07-06"
+    )
+
+    assert one_day_response.status_code == 200
+    assert one_day_response.json() == {
+        "revenue": 550,
+        "units_sold": 3,
+        "sale_operations": 1,
+        "date_from": "2026-07-05",
+        "date_to": "2026-07-05",
+    }
+    assert range_response.status_code == 200
+    assert range_response.json() == {
+        "revenue": 1000,
+        "units_sold": 6,
+        "sale_operations": 2,
+        "date_from": "2026-07-05",
+        "date_to": "2026-07-06",
+    }
+
+
+def test_stock_movement_sales_summary_rejects_invalid_date_range():
+    response = client.get(
+        "/stock-movements/sales-summary"
+        "?date_from=2026-07-06&date_to=2026-07-05"
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "date_from cannot be after date_to"}
 
 
 def test_stock_movement_pagination_limits_history_results():
@@ -600,6 +701,13 @@ def test_stock_movement_pagination_limits_history_results():
         [movements[2]],
         total=3,
         page=2,
+        page_size=2,
+    )
+    assert_page(
+        client.get("/stock-movements?page=1&page_size=2&order=latest"),
+        [movements[2], movements[1]],
+        total=3,
+        page=1,
         page_size=2,
     )
 

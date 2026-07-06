@@ -151,7 +151,7 @@ def validate_product_pricing_update(
 
 @router.get("/summary", response_model=ProductSummaryResponse, status_code=200)
 def get_product_summary(db: DbSession) -> ProductSummaryResponse:
-    total_products, total_units, inventory_value, low_stock = db.query(
+    total_products, total_units, inventory_value, low_stock, out_of_stock = db.query(
         func.count(Product.id),
         func.coalesce(func.sum(Product.quantity), 0),
         func.coalesce(func.sum(Product.purchase_price * Product.quantity), 0),
@@ -170,6 +170,15 @@ def get_product_summary(db: DbSession) -> ProductSummaryResponse:
             ),
             0,
         ),
+        func.coalesce(
+            func.sum(
+                case(
+                    (Product.quantity == 0, 1),
+                    else_=0,
+                )
+            ),
+            0,
+        ),
     ).one()
 
     return ProductSummaryResponse(
@@ -177,6 +186,7 @@ def get_product_summary(db: DbSession) -> ProductSummaryResponse:
         total_units=int(total_units),
         inventory_value=int(inventory_value),
         low_stock=int(low_stock),
+        out_of_stock=int(out_of_stock),
     )
 
 

@@ -219,6 +219,162 @@ label {
   overflow: hidden;
 }
 
+.dashboard-panel {
+  overflow: visible;
+}
+
+.dashboard-grid {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.dashboard-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.metric-tile {
+  display: grid;
+  align-content: space-between;
+  gap: 0.7rem;
+  min-height: 7rem;
+  padding: 0.85rem;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  background: #fbfdff;
+  color: #17212b;
+  text-align: left;
+}
+
+.metric-tile strong {
+  color: #111827;
+  font-size: 1.65rem;
+  line-height: 1;
+}
+
+.metric-label {
+  color: #5b6878;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.metric-action {
+  width: 100%;
+  border-color: #d9e2ec;
+  background: #fffaf0;
+  cursor: pointer;
+}
+
+.metric-action:hover {
+  background: #fff3d6;
+}
+
+.metric-danger {
+  background: #fff5f3;
+}
+
+.metric-danger:hover {
+  background: #ffe7e2;
+}
+
+.dashboard-sales {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e1e6ee;
+}
+
+.dashboard-sales-form {
+  display: grid;
+  grid-template-columns:
+    auto minmax(8rem, 10rem)
+    auto minmax(8rem, 10rem)
+    auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.sales-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.sales-primary,
+.sales-secondary {
+  display: grid;
+  gap: 0.7rem;
+  min-height: 6.5rem;
+  padding: 0.85rem;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.sales-primary strong {
+  color: #111827;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.sales-secondary strong {
+  color: #111827;
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.dashboard-activity {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e1e6ee;
+}
+
+.dashboard-block-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.dashboard-block-heading h3 {
+  color: #111827;
+  font-size: 1rem;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.dashboard-movement-list {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.dashboard-movement {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.75rem;
+  border: 1px solid #e1e7ef;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.dashboard-movement-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.dashboard-movement-date,
+.dashboard-movement-note {
+  color: #667386;
+  font-size: 0.82rem;
+}
+
 .section-heading {
   display: flex;
   align-items: center;
@@ -337,6 +493,24 @@ td {
 
 tbody tr:hover {
   background: #f8fafc;
+}
+
+.product-main-row.has-product-tags td {
+  border-bottom: 0;
+}
+
+.product-tags-row {
+  background: #fbfdff;
+}
+
+.product-tags-row:hover {
+  background: #f8fafc;
+}
+
+.product-tags-cell {
+  padding: 0.45rem 1rem 0.7rem;
+  border-top: 1px solid #edf0f5;
+  border-bottom-color: #dfe6ef;
 }
 
 .product-name-cell {
@@ -480,9 +654,7 @@ tbody tr:hover {
 }
 
 .product-tag-list {
-  margin-top: 0.35rem;
-  flex-wrap: nowrap;
-  overflow: hidden;
+  margin-top: 0;
 }
 
 .tag-chip {
@@ -780,7 +952,7 @@ tbody tr:hover {
   }
 
   .tabs {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
   }
 
   .tab-button {
@@ -794,6 +966,14 @@ tbody tr:hover {
 
   .api-control {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .dashboard-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sales-summary-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -818,9 +998,23 @@ tbody tr:hover {
     flex-direction: column;
   }
 
+  .dashboard-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-sales-form {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-block-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .form-actions button,
   .section-actions button,
   .api-control button,
+  .dashboard-block-heading button,
   .pagination-actions button {
     width: 100%;
   }

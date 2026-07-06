@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Generic, Literal, TypeVar
 from pydantic import (
     BaseModel,
@@ -205,11 +205,20 @@ class StockMovementResponse(BaseModel):
     lines: list[StockMovementLineResponse]
 
 
+class StockMovementSalesSummaryResponse(BaseModel):
+    revenue: int
+    units_sold: int
+    sale_operations: int
+    date_from: date
+    date_to: date
+
+
 class ProductSummaryResponse(BaseModel):
     total_products: int
     total_units: int
     inventory_value: int
     low_stock: int
+    out_of_stock: int
 
 
 class PaginatedResponse(BaseModel, Generic[ItemT]):

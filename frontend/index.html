@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Coregrid | Остатки</title>
+    <title>Coregrid | Дашборд</title>
     <link href="css/style.css" rel="stylesheet">
     <script src="js/app.js" defer></script>
   </head>
@@ -15,7 +15,8 @@
         </div>
 
         <nav class="tabs" role="tablist" aria-label="Разделы Coregrid">
-          <button class="tab-button active" id="tab-products" type="button" role="tab" aria-selected="true" aria-controls="panel-products" data-tab-target="products">Остатки</button>
+          <button class="tab-button active" id="tab-dashboard" type="button" role="tab" aria-selected="true" aria-controls="panel-dashboard" data-tab-target="dashboard">Дашборд</button>
+          <button class="tab-button" id="tab-products" type="button" role="tab" aria-selected="false" aria-controls="panel-products" data-tab-target="products">Остатки</button>
           <button class="tab-button" id="tab-suppliers" type="button" role="tab" aria-selected="false" aria-controls="panel-suppliers" data-tab-target="suppliers">Поставщики</button>
           <button class="tab-button" id="tab-companies" type="button" role="tab" aria-selected="false" aria-controls="panel-companies" data-tab-target="companies">Компании</button>
           <button class="tab-button" id="tab-stock-movements" type="button" role="tab" aria-selected="false" aria-controls="panel-stock-movements" data-tab-target="stockMovements">История движений</button>
@@ -33,7 +34,84 @@
       <div class="app-main">
         <section class="notice hidden" id="notice" aria-live="polite"></section>
 
-      <section class="tab-panel" id="panel-products" role="tabpanel" aria-labelledby="tab-products" data-tab-panel="products">
+      <section class="tab-panel" id="panel-dashboard" role="tabpanel" aria-labelledby="tab-dashboard" data-tab-panel="dashboard">
+        <section class="workspace">
+          <section class="data-panel dashboard-panel" aria-labelledby="dashboard-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Обзор</p>
+                <h2 id="dashboard-title">Дашборд склада</h2>
+              </div>
+              <div class="section-actions">
+                <button id="dashboard-add-product-button" type="button">Добавить товар</button>
+                <button class="secondary-button" id="dashboard-add-movement-button" type="button">Добавить движение</button>
+                <button class="secondary-button" id="dashboard-refresh-button" type="button">Обновить</button>
+              </div>
+            </div>
+
+            <div class="dashboard-grid">
+              <section class="dashboard-metrics" aria-label="Показатели склада">
+                <div class="metric-tile">
+                  <span class="metric-label">Товаров</span>
+                  <strong id="dashboard-total-products">0</strong>
+                </div>
+                <button class="metric-tile metric-action" id="dashboard-low-stock-button" type="button">
+                  <span class="metric-label">Мало на складе</span>
+                  <strong id="dashboard-low-stock">0</strong>
+                </button>
+                <button class="metric-tile metric-action metric-danger" id="dashboard-out-of-stock-button" type="button">
+                  <span class="metric-label">Нет на складе</span>
+                  <strong id="dashboard-out-of-stock">0</strong>
+                </button>
+              </section>
+
+              <section class="dashboard-sales" aria-labelledby="dashboard-sales-title">
+                <div class="dashboard-block-heading">
+                  <div>
+                    <p class="eyebrow">Продажи</p>
+                    <h3 id="dashboard-sales-title">Продажи за период</h3>
+                  </div>
+                  <form class="dashboard-sales-form" id="dashboard-sales-form">
+                    <label for="dashboard-sales-date-from">С</label>
+                    <input id="dashboard-sales-date-from" name="date_from" type="date" required>
+                    <label for="dashboard-sales-date-to">По</label>
+                    <input id="dashboard-sales-date-to" name="date_to" type="date" required>
+                    <button class="secondary-button" type="submit">Показать</button>
+                  </form>
+                </div>
+
+                <div class="sales-summary-grid">
+                  <div class="sales-primary">
+                    <span class="metric-label">Выручка</span>
+                    <strong id="dashboard-sales-revenue">0</strong>
+                  </div>
+                  <div class="sales-secondary">
+                    <span class="metric-label">Продано единиц</span>
+                    <strong id="dashboard-sales-units">0</strong>
+                  </div>
+                  <div class="sales-secondary">
+                    <span class="metric-label">Операций продаж</span>
+                    <strong id="dashboard-sales-operations">0</strong>
+                  </div>
+                </div>
+              </section>
+
+              <section class="dashboard-activity" aria-labelledby="dashboard-activity-title">
+                <div class="dashboard-block-heading">
+                  <div>
+                    <p class="eyebrow">История</p>
+                    <h3 id="dashboard-activity-title">Последние движения</h3>
+                  </div>
+                  <button class="secondary-button" id="dashboard-view-movements-button" type="button">Открыть историю</button>
+                </div>
+                <div class="dashboard-movement-list" id="dashboard-movement-list"></div>
+              </section>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <section class="tab-panel hidden" id="panel-products" role="tabpanel" aria-labelledby="tab-products" data-tab-panel="products">
         <section class="workspace">
           <section class="data-panel" aria-labelledby="products-title">
             <div class="section-heading">

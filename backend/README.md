@@ -120,6 +120,7 @@ Paginated responses use:
 #### `GET /products/summary`
 
 - Returns global product totals for dashboard summary tiles
+- Includes product count, total units, purchase-value inventory total, low-stock count, and out-of-stock count
 
 #### `GET /products/{id}`
 
@@ -166,6 +167,14 @@ Product `stock_status` values:
 #### `GET /stock-movements`
 
 - Returns a paginated list of stock movements with their lines
+- Supports `order=oldest` by default and `order=latest` for recent activity panels
+
+#### `GET /stock-movements/sales-summary`
+
+- Returns estimated sales totals for a calendar date range
+- Requires `date_from=YYYY-MM-DD` and `date_to=YYYY-MM-DD`
+- Counts only outgoing stock movements
+- Returns estimated revenue, sold units, and sale operation count
 
 #### `GET /stock-movements/{id}`
 

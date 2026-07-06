@@ -1,14 +1,24 @@
+from datetime import date, datetime, time, timedelta
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 
 from app.models import Product, StockMovement, StockMovementLine
-from app.schemas import PaginatedResponse, StockMovementCreate, StockMovementResponse
+from app.schemas import (
+    PaginatedResponse,
+    StockMovementCreate,
+    StockMovementResponse,
+    StockMovementSalesSummaryResponse,
+)
 from devs import DbSession
 from errors import commit_or_raise
 from pagination import DEFAULT_PAGE_SIZE, PageNumber, PageSize, paginate
 
 
 router = APIRouter(tags=["stock movements"])
+StockMovementOrder = Literal["oldest", "latest"]
 
 
 @router.post("/stock-movements", response_model=StockMovementResponse, status_code=201)
@@ -71,14 +81,61 @@ def get_stock_movements(
     db: DbSession,
     page: PageNumber = 1,
     page_size: PageSize = DEFAULT_PAGE_SIZE,
+    order: StockMovementOrder = "oldest",
 ) -> dict[str, object]:
+    sort_column = StockMovement.id.desc() if order == "latest" else StockMovement.id
     query = (
         db.query(StockMovement)
         .options(selectinload(StockMovement.lines))
-        .order_by(StockMovement.id)
+        .order_by(sort_column)
     )
 
     return paginate(query, page, page_size)
+
+
+@router.get(
+    "/stock-movements/sales-summary",
+    response_model=StockMovementSalesSummaryResponse,
+)
+def get_stock_movement_sales_summary(
+    db: DbSession,
+    date_from: date,
+    date_to: date,
+) -> StockMovementSalesSummaryResponse:
+    if date_from > date_to:
+        raise HTTPException(status_code=422, detail="date_from cannot be after date_to")
+
+    start_at = datetime.combine(date_from, time.min)
+    end_at = datetime.combine(date_to + timedelta(days=1), time.min)
+
+    revenue, units_sold, sale_operations = (
+        db.query(
+            func.coalesce(
+                func.sum(
+                    func.abs(StockMovementLine.quantity_delta)
+                    * func.coalesce(StockMovementLine.unit_price_snapshot, 0)
+                ),
+                0,
+            ),
+            func.coalesce(func.sum(func.abs(StockMovementLine.quantity_delta)), 0),
+            func.count(func.distinct(StockMovement.id)),
+        )
+        .join(StockMovementLine)
+        .filter(
+            StockMovement.movement_type == "out",
+            StockMovement.created_at >= start_at,
+            StockMovement.created_at < end_at,
+        )
+        .one()
+    )
+
+    return StockMovementSalesSummaryResponse(
+        revenue=int(revenue),
+        units_sold=int(units_sold),
+        sale_operations=int(sale_operations),
+        date_from=date_from,
+        date_to=date_to,
+    )
 
 
 @router.get("/stock-movements/{id}", response_model=StockMovementResponse)

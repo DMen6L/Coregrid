@@ -4,11 +4,12 @@ const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 const DEFAULT_PRODUCT_PAGE_SIZE = 25;
 const DEFAULT_LOOKUP_PAGE_SIZE = 10;
 const DEFAULT_MOVEMENT_PAGE_SIZE = 25;
+const DEFAULT_DASHBOARD_MOVEMENT_PAGE_SIZE = 5;
 const DEFAULT_MOVEMENT_PRODUCT_SEARCH_PAGE_SIZE = 10;
 const MOVEMENT_PRODUCT_SEARCH_DELAY_MS = 300;
 const DEFAULT_TAG_SEARCH_PAGE_SIZE = 10;
 const TAG_SEARCH_DELAY_MS = 250;
-const PRODUCT_ROW_TAG_LIMIT = 3;
+const PRODUCT_ROW_TAG_LIMIT = 6;
 
 const STOCK_STATUS_LABELS = {
   available: "В наличии",
@@ -33,6 +34,8 @@ const BACKEND_ERROR_MESSAGES = {
     "Движение не может сделать остаток товара отрицательным.",
   "sale_price cannot be lower than floor_price":
     "Цена продажи не может быть ниже минимальной цены.",
+  "date_from cannot be after date_to":
+    "Дата начала не может быть позже даты окончания.",
 };
 
 const FIELD_LABELS = {
@@ -58,13 +61,18 @@ const state = {
   suppliers: [],
   products: [],
   stockMovements: [],
+  dashboardMovements: [],
+  productSummary: createEmptyProductSummary(),
+  salesDateFrom: getTodayDateInputValue(),
+  salesDateTo: getTodayDateInputValue(),
+  salesSummary: createEmptySalesSummary(),
   pagination: {
     companies: createPageState(DEFAULT_LOOKUP_PAGE_SIZE),
     suppliers: createPageState(DEFAULT_LOOKUP_PAGE_SIZE),
     products: createPageState(DEFAULT_PRODUCT_PAGE_SIZE),
     stockMovements: createPageState(DEFAULT_MOVEMENT_PAGE_SIZE),
   },
-  activeTab: "products",
+  activeTab: "dashboard",
   activeDrawerForm: null,
   stockMovementsLoaded: false,
   movementProductCache: new Map(),
@@ -97,6 +105,24 @@ const refs = {
   addSupplierButton: document.querySelector("#add-supplier-button"),
   addCompanyButton: document.querySelector("#add-company-button"),
   addMovementButton: document.querySelector("#add-movement-button"),
+  dashboardAddProductButton: document.querySelector("#dashboard-add-product-button"),
+  dashboardAddMovementButton: document.querySelector("#dashboard-add-movement-button"),
+  dashboardRefreshButton: document.querySelector("#dashboard-refresh-button"),
+  dashboardLowStockButton: document.querySelector("#dashboard-low-stock-button"),
+  dashboardOutOfStockButton: document.querySelector("#dashboard-out-of-stock-button"),
+  dashboardViewMovementsButton: document.querySelector(
+    "#dashboard-view-movements-button",
+  ),
+  dashboardTotalProducts: document.querySelector("#dashboard-total-products"),
+  dashboardLowStock: document.querySelector("#dashboard-low-stock"),
+  dashboardOutOfStock: document.querySelector("#dashboard-out-of-stock"),
+  dashboardSalesForm: document.querySelector("#dashboard-sales-form"),
+  dashboardSalesDateFrom: document.querySelector("#dashboard-sales-date-from"),
+  dashboardSalesDateTo: document.querySelector("#dashboard-sales-date-to"),
+  dashboardSalesRevenue: document.querySelector("#dashboard-sales-revenue"),
+  dashboardSalesUnits: document.querySelector("#dashboard-sales-units"),
+  dashboardSalesOperations: document.querySelector("#dashboard-sales-operations"),
+  dashboardMovementList: document.querySelector("#dashboard-movement-list"),
   refreshButton: document.querySelector("#refresh-button"),
   productSearch: document.querySelector("#product-search"),
   productSearchTagSuggestions: document.querySelector(
@@ -156,6 +182,8 @@ document.addEventListener("DOMContentLoaded", init);
 
 function init() {
   refs.apiBase.value = state.apiBase;
+  refs.dashboardSalesDateFrom.value = state.salesDateFrom;
+  refs.dashboardSalesDateTo.value = state.salesDateTo;
 
   refs.tabButtons.forEach((button) => {
     button.addEventListener("click", handleTabClick);
@@ -168,6 +196,19 @@ function init() {
   refs.addSupplierButton.addEventListener("click", openSupplierCreate);
   refs.addCompanyButton.addEventListener("click", openCompanyCreate);
   refs.addMovementButton.addEventListener("click", openMovementCreate);
+  refs.dashboardAddProductButton.addEventListener("click", openProductCreate);
+  refs.dashboardAddMovementButton.addEventListener("click", openMovementCreate);
+  refs.dashboardRefreshButton.addEventListener("click", loadDashboard);
+  refs.dashboardLowStockButton.addEventListener("click", () => {
+    openProductsWithStockFilter("low");
+  });
+  refs.dashboardOutOfStockButton.addEventListener("click", () => {
+    openProductsWithStockFilter("empty");
+  });
+  refs.dashboardViewMovementsButton.addEventListener("click", () => {
+    activateTab("stockMovements");
+  });
+  refs.dashboardSalesForm.addEventListener("submit", handleDashboardSalesSubmit);
   refs.refreshButton.addEventListener("click", loadAll);
   refs.productSearch.addEventListener("input", handleSearchInput);
   refs.productSearch.addEventListener("keydown", handleSearchKeydown);
@@ -212,12 +253,25 @@ async function loadAll(options = {}) {
   setBusy(true);
 
   try {
-    const [companies, suppliers, products] = await Promise.all([
+    const [
+      productSummary,
+      salesSummary,
+      dashboardMovements,
+      companies,
+      suppliers,
+      products,
+    ] = await Promise.all([
+      request("/products/summary"),
+      request(buildSalesSummaryPath()),
+      request(buildDashboardMovementsPath()),
       request(buildPagePath("/companies", state.pagination.companies)),
       request(buildPagePath("/suppliers", state.pagination.suppliers)),
       request(buildProductsPath()),
     ]);
 
+    state.productSummary = productSummary;
+    state.salesSummary = salesSummary;
+    state.dashboardMovements = dashboardMovements.items;
     applyPage("companies", companies);
     applyPage("suppliers", suppliers);
     applyPage("products", products);
@@ -227,6 +281,28 @@ async function loadAll(options = {}) {
     if (!options.quiet) {
       showNotice("Данные загружены.");
     }
+  } catch (error) {
+    showNotice(error.message, true);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function loadDashboard() {
+  setBusy(true);
+
+  try {
+    const [productSummary, salesSummary, dashboardMovements] = await Promise.all([
+      request("/products/summary"),
+      request(buildSalesSummaryPath()),
+      request(buildDashboardMovementsPath()),
+    ]);
+
+    state.productSummary = productSummary;
+    state.salesSummary = salesSummary;
+    state.dashboardMovements = dashboardMovements.items;
+    render();
+    showNotice("Дашборд обновлен.");
   } catch (error) {
     showNotice(error.message, true);
   } finally {
@@ -275,6 +351,38 @@ function createPageState(pageSize) {
   };
 }
 
+function createEmptyProductSummary() {
+  return {
+    total_products: 0,
+    total_units: 0,
+    inventory_value: 0,
+    low_stock: 0,
+    out_of_stock: 0,
+  };
+}
+
+function createEmptySalesSummary(
+  dateFrom = getTodayDateInputValue(),
+  dateTo = dateFrom,
+) {
+  return {
+    revenue: 0,
+    units_sold: 0,
+    sale_operations: 0,
+    date_from: dateFrom,
+    date_to: dateTo,
+  };
+}
+
+function getTodayDateInputValue() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 function buildProductsPath() {
   return buildPagePath("/products", state.pagination.products, {
     search: state.searchTerm,
@@ -302,6 +410,25 @@ function buildMovementProductSearchPath(searchTerm) {
   });
 
   return `/products?${query.toString()}`;
+}
+
+function buildDashboardMovementsPath() {
+  const query = new URLSearchParams({
+    page: "1",
+    page_size: String(DEFAULT_DASHBOARD_MOVEMENT_PAGE_SIZE),
+    order: "latest",
+  });
+
+  return `/stock-movements?${query.toString()}`;
+}
+
+function buildSalesSummaryPath() {
+  const query = new URLSearchParams({
+    date_from: state.salesDateFrom,
+    date_to: state.salesDateTo,
+  });
+
+  return `/stock-movements/sales-summary?${query.toString()}`;
 }
 
 function buildPagePath(path, pagination, params = {}) {
@@ -433,6 +560,7 @@ function translateValidationMessage(message, field = null) {
 
 function render() {
   renderTabs();
+  renderDashboard();
   renderProductTable();
   renderSelectedSearchTags();
   renderProductFormTags();
@@ -458,6 +586,50 @@ function renderTabs() {
   });
 }
 
+function renderDashboard() {
+  const summary = state.productSummary || createEmptyProductSummary();
+  const salesSummary = state.salesSummary || createEmptySalesSummary(
+    state.salesDateFrom,
+    state.salesDateTo,
+  );
+
+  refs.dashboardTotalProducts.textContent = formatNumber(summary.total_products);
+  refs.dashboardLowStock.textContent = formatNumber(summary.low_stock);
+  refs.dashboardOutOfStock.textContent = formatNumber(summary.out_of_stock ?? 0);
+  refs.dashboardSalesDateFrom.value = state.salesDateFrom;
+  refs.dashboardSalesDateTo.value = state.salesDateTo;
+  refs.dashboardSalesRevenue.textContent = formatNumber(salesSummary.revenue);
+  refs.dashboardSalesUnits.textContent = formatNumber(salesSummary.units_sold);
+  refs.dashboardSalesOperations.textContent = formatNumber(
+    salesSummary.sale_operations,
+  );
+  renderDashboardMovements();
+}
+
+function renderDashboardMovements() {
+  if (state.dashboardMovements.length === 0) {
+    refs.dashboardMovementList.innerHTML = `
+      <div class="empty-state">Движений пока нет.</div>
+    `;
+    return;
+  }
+
+  refs.dashboardMovementList.innerHTML = state.dashboardMovements
+    .map(
+      (movement) => `
+        <article class="dashboard-movement">
+          <div class="dashboard-movement-header">
+            <span class="status-pill">${escapeHtml(MOVEMENT_TYPE_LABELS[movement.movement_type] || movement.movement_type)}</span>
+            <span class="dashboard-movement-date">${formatDate(movement.created_at)}</span>
+          </div>
+          ${renderMovementLines(movement.lines)}
+          ${movement.note ? `<div class="dashboard-movement-note">${escapeHtml(movement.note)}</div>` : ""}
+        </article>
+      `,
+    )
+    .join("");
+}
+
 function renderProductTable() {
   if (state.products.length === 0) {
     refs.productTableBody.innerHTML = `
@@ -475,13 +647,13 @@ function renderProductTable() {
       const companyName = product.company_name ?? getCompanyName(product.company_id);
       const supplierName =
         product.supplier_name ?? getSupplierName(product.supplier_id);
+      const productHasTags = Boolean(product.tags?.length);
 
       return `
-        <tr>
+        <tr class="product-main-row${productHasTags ? " has-product-tags" : ""}">
           <td>
             <div class="product-name-cell">
               <strong class="product-name">${escapeHtml(product.name)}</strong>
-              ${renderProductTags(product.tags)}
             </div>
           </td>
           <td>${formatNumber(product.purchase_price)}</td>
@@ -499,6 +671,7 @@ function renderProductTable() {
             </div>
           </td>
         </tr>
+        ${renderProductTagRow(product.tags)}
       `;
     })
     .join("");
@@ -510,6 +683,20 @@ function renderStockStatus(product) {
   const className = status === "low" || status === "out" ? ` status-${status}` : "";
 
   return `<span class="status-pill${className}">${escapeHtml(label)}</span>`;
+}
+
+function renderProductTagRow(tags = []) {
+  if (!tags.length) {
+    return "";
+  }
+
+  return `
+    <tr class="product-tags-row">
+      <td class="product-tags-cell" colspan="10">
+        ${renderProductTags(tags)}
+      </td>
+    </tr>
+  `;
 }
 
 function renderProductTags(tags = []) {
@@ -839,6 +1026,10 @@ function openMovementCreate() {
 function handleTabClick(event) {
   const tab = event.currentTarget.dataset.tabTarget;
 
+  activateTab(tab);
+}
+
+function activateTab(tab) {
   if (tab === state.activeTab) {
     return;
   }
@@ -849,6 +1040,52 @@ function handleTabClick(event) {
 
   if (tab === "stockMovements" && !state.stockMovementsLoaded) {
     loadPage("stockMovements");
+  }
+}
+
+function openProductsWithStockFilter(stockFilter) {
+  closeDrawer();
+  state.stockFilter = stockFilter;
+  state.searchTerm = "";
+  state.selectedTagFilters = [];
+  state.pagination.products.page = 1;
+  refs.stockFilter.value = stockFilter;
+  refs.productSearch.value = "";
+  hideTagSuggestions(refs.productSearchTagSuggestions);
+  state.activeTab = "products";
+  renderTabs();
+  renderSelectedSearchTags();
+  loadPage("products");
+}
+
+async function handleDashboardSalesSubmit(event) {
+  event.preventDefault();
+
+  const dateFrom = refs.dashboardSalesDateFrom.value;
+  const dateTo = refs.dashboardSalesDateTo.value;
+
+  if (!dateFrom || !dateTo) {
+    showNotice("Укажите период продаж.", true);
+    return;
+  }
+
+  if (dateFrom > dateTo) {
+    showNotice("Дата начала не может быть позже даты окончания.", true);
+    return;
+  }
+
+  state.salesDateFrom = dateFrom;
+  state.salesDateTo = dateTo;
+  setBusy(true);
+
+  try {
+    state.salesSummary = await request(buildSalesSummaryPath());
+    renderDashboard();
+    showNotice("Продажи обновлены.");
+  } catch (error) {
+    showNotice(error.message, true);
+  } finally {
+    setBusy(false);
   }
 }
 
@@ -1775,11 +2012,23 @@ async function handleMovementSubmit(event) {
     closeDrawer();
     state.pagination.stockMovements.page = 1;
 
-    const [products, stockMovements] = await Promise.all([
+    const [
+      productSummary,
+      salesSummary,
+      dashboardMovements,
+      products,
+      stockMovements,
+    ] = await Promise.all([
+      request("/products/summary"),
+      request(buildSalesSummaryPath()),
+      request(buildDashboardMovementsPath()),
       request(buildProductsPath()),
       request(getPagePath("stockMovements")),
     ]);
 
+    state.productSummary = productSummary;
+    state.salesSummary = salesSummary;
+    state.dashboardMovements = dashboardMovements.items;
     applyPage("products", products);
     applyPage("stockMovements", stockMovements);
     state.stockMovementsLoaded = true;
@@ -1874,6 +2123,15 @@ function setBusy(isBusy) {
   refs.addSupplierButton.disabled = isBusy;
   refs.addCompanyButton.disabled = isBusy;
   refs.addMovementButton.disabled = isBusy;
+  refs.dashboardAddProductButton.disabled = isBusy;
+  refs.dashboardAddMovementButton.disabled = isBusy;
+  refs.dashboardRefreshButton.disabled = isBusy;
+  refs.dashboardLowStockButton.disabled = isBusy;
+  refs.dashboardOutOfStockButton.disabled = isBusy;
+  refs.dashboardViewMovementsButton.disabled = isBusy;
+  refs.dashboardSalesDateFrom.disabled = isBusy;
+  refs.dashboardSalesDateTo.disabled = isBusy;
+  refs.dashboardSalesForm.querySelector("button").disabled = isBusy;
   refs.refreshButton.disabled = isBusy;
   refs.productSubmit.disabled = isBusy;
   refs.addProductTagButton.disabled = isBusy;
