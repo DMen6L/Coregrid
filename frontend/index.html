@@ -10,6 +10,7 @@
     <script src="js/state.js" defer></script>
     <script src="js/api.js" defer></script>
     <script src="js/render.js" defer></script>
+    <script src="js/routing.js" defer></script>
     <script src="js/drawer.js" defer></script>
     <script src="js/products.js" defer></script>
     <script src="js/lookups.js" defer></script>
@@ -161,6 +162,23 @@
                 <option value="low">Мало</option>
                 <option value="empty">Нет на складе</option>
               </select>
+
+              <label for="product-sort">Сортировка</label>
+              <div class="product-sort-controls">
+                <select id="product-sort">
+                  <option value="created_at">Дата создания</option>
+                  <option value="name">Название</option>
+                  <option value="quantity">Количество</option>
+                  <option value="stock_status">Статус</option>
+                  <option value="inventory_value">Стоимость остатков</option>
+                  <option value="company">Компания</option>
+                  <option value="supplier">Поставщик</option>
+                </select>
+                <select id="product-sort-order" aria-label="Порядок сортировки">
+                  <option value="asc">По возрастанию</option>
+                  <option value="desc">По убыванию</option>
+                </select>
+              </div>
             </div>
 
             <div class="table-wrap">

@@ -119,6 +119,8 @@ Paginated responses use:
 - Supports repeated exact `tags` filtering by tag name; products must match all selected tags
 - Keeps legacy exact `tag` filtering by tag name or tag id
 - Supports `stock` values: `all`, `available`, `low`, `empty`
+- Supports `sort` values: `name`, `quantity`, `stock_status`, `inventory_value`, `company`, `supplier`, `created_at`
+- Supports `order` values: `asc`, `desc`
 
 #### `GET /products/summary`
 

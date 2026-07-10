@@ -24,6 +24,8 @@ const state = {
   editingProductId: null,
   searchTerm: "",
   stockFilter: "all",
+  productSort: DEFAULT_PRODUCT_SORT,
+  productSortOrder: DEFAULT_PRODUCT_SORT_ORDER,
 };
 
 let movementLineCounter = 0;
@@ -77,6 +79,8 @@ const refs = {
   ),
   selectedSearchTags: document.querySelector("#selected-search-tags"),
   stockFilter: document.querySelector("#stock-filter"),
+  productSort: document.querySelector("#product-sort"),
+  productSortOrder: document.querySelector("#product-sort-order"),
   productTableBody: document.querySelector("#products-table-body"),
   productPagination: document.querySelector("#product-pagination"),
   productPageInfo: document.querySelector("#product-page-info"),

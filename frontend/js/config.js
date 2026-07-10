@@ -11,6 +11,23 @@ const MOVEMENT_PRODUCT_SEARCH_DELAY_MS = 300;
 const DEFAULT_TAG_SEARCH_PAGE_SIZE = 10;
 const TAG_SEARCH_DELAY_MS = 250;
 const PRODUCT_ROW_TAG_LIMIT = 6;
+const DEFAULT_PRODUCT_SORT = "created_at";
+const DEFAULT_PRODUCT_SORT_ORDER = "asc";
+
+const PRODUCT_SORT_LABELS = {
+  name: "Название",
+  quantity: "Количество",
+  stock_status: "Статус",
+  inventory_value: "Стоимость остатков",
+  company: "Компания",
+  supplier: "Поставщик",
+  created_at: "Дата создания",
+};
+
+const PRODUCT_SORT_ORDER_LABELS = {
+  asc: "По возрастанию",
+  desc: "По убыванию",
+};
 
 const STOCK_STATUS_LABELS = {
   available: "В наличии",

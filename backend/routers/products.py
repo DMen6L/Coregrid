@@ -22,6 +22,16 @@ from pagination import DEFAULT_PAGE_SIZE, PageNumber, PageSize, paginate
 
 router = APIRouter(prefix="/products", tags=["products"])
 ProductStockFilter = Literal["all", "available", "low", "empty"]
+ProductSort = Literal[
+    "name",
+    "quantity",
+    "stock_status",
+    "inventory_value",
+    "company",
+    "supplier",
+    "created_at",
+]
+SortOrder = Literal["asc", "desc"]
 SALE_PRICE_FLOOR_ERROR = "sale_price cannot be lower than floor_price"
 TAGS_NULL_ERROR = "tags cannot be null"
 QUANTITY_UNIT_NULL_ERROR = "quantity_unit cannot be null"
@@ -94,6 +104,8 @@ def get_products(
     stock: ProductStockFilter = "all",
     tag: Annotated[str | None, Query(max_length=50)] = None,
     tags: Annotated[list[TagName] | None, Query()] = None,
+    sort: ProductSort = "created_at",
+    order: SortOrder = "asc",
 ) -> dict[str, object]:
     query = db.query(Product).options(
         selectinload(Product.company),
@@ -134,7 +146,53 @@ def get_products(
     elif stock == "empty":
         query = query.filter(Product.quantity == 0)
 
-    return paginate(query.order_by(Product.id), page, page_size)
+    return paginate(apply_product_sorting(query, sort, order), page, page_size)
+
+
+def apply_product_sorting(query, sort: ProductSort, order: SortOrder):
+    is_desc = order == "desc"
+
+    if sort == "company":
+        sort_expression = Company.name.desc() if is_desc else Company.name.asc()
+        return query.outerjoin(Product.company).order_by(
+            Company.name.is_(None),
+            sort_expression,
+            Product.id,
+        )
+
+    if sort == "supplier":
+        sort_expression = Supplier.name.desc() if is_desc else Supplier.name.asc()
+        return query.outerjoin(Product.supplier).order_by(
+            Supplier.name.is_(None),
+            sort_expression,
+            Product.id,
+        )
+
+    if sort == "stock_status":
+        status_sort = case(
+            (Product.quantity == 0, 0),
+            (
+                and_(
+                    Product.quantity > 0,
+                    Product.quantity <= Product.low_stock_threshold,
+                ),
+                1,
+            ),
+            else_=2,
+        )
+        sort_expression = status_sort.desc() if is_desc else status_sort.asc()
+        return query.order_by(sort_expression, Product.id)
+
+    sort_expressions = {
+        "name": Product.name,
+        "quantity": Product.quantity,
+        "inventory_value": Product.purchase_price * Product.quantity,
+        "created_at": Product.created_at,
+    }
+    sort_expression = sort_expressions[sort]
+    sort_expression = sort_expression.desc() if is_desc else sort_expression.asc()
+
+    return query.order_by(sort_expression, Product.id)
 
 
 def validate_product_pricing_update(

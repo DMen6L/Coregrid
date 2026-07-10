@@ -14,7 +14,11 @@ function openDrawer(formType, eyebrow, title) {
   document.body.classList.add("drawer-open");
 }
 
-function closeDrawer() {
+function closeDrawer(options = {}) {
+  if (options.syncRoute !== false && closeRoutedModal()) {
+    return;
+  }
+
   const activeForm = state.activeDrawerForm;
 
   if (!activeForm) {
@@ -62,32 +66,48 @@ function handleDocumentKeydown(event) {
   }
 }
 
-function openProductCreate() {
+function showProductCreateWorkflow() {
   resetProductForm();
   openDrawer("product", "Редактор", "Добавить товар");
   updateProductPricingPreview();
   refs.productName.focus();
 }
 
-function openSupplierCreate() {
+function openProductCreate() {
+  navigateToProductCreate();
+}
+
+function showSupplierCreateWorkflow() {
   refs.supplierForm.reset();
   openDrawer("supplier", "Редактор", "Добавить поставщика");
   refs.supplierName.focus();
 }
 
-function openCompanyCreate() {
+function openSupplierCreate() {
+  navigateToSupplierCreate();
+}
+
+function showCompanyCreateWorkflow() {
   refs.companyForm.reset();
   openDrawer("company", "Редактор", "Добавить компанию");
   refs.companyName.focus();
 }
 
-function openMovementCreate() {
+function openCompanyCreate() {
+  navigateToCompanyCreate();
+}
+
+function showMovementCreateWorkflow() {
   resetMovementForm();
   openDrawer("movement", "Операция", "Добавить движение");
   refs.movementType.focus();
 }
 
-function openSaleCreate() {
+function openMovementCreate() {
+  navigateToMovementCreate();
+}
+
+function showSaleCreateWorkflow() {
   resetSaleForm();
   openDrawer("sale", "Продажа", "Новая продажа");
   refs.saleLines
@@ -95,18 +115,28 @@ function openSaleCreate() {
     ?.focus();
 }
 
+function openSaleCreate() {
+  navigateToSaleCreate();
+}
+
 function handleTabClick(event) {
   const tab = event.currentTarget.dataset.tabTarget;
 
-  activateTab(tab);
+  navigateToSection(tab);
 }
 
-function activateTab(tab) {
-  if (tab === state.activeTab) {
+function activateTab(tab, options = {}) {
+  if (options.syncRoute !== false) {
+    navigateToSection(tab);
     return;
   }
 
-  closeDrawer();
+  if (tab === state.activeTab) {
+    renderTabs();
+    return;
+  }
+
+  closeDrawer({ syncRoute: false });
   state.activeTab = tab;
   renderTabs();
 
@@ -124,8 +154,7 @@ function openProductsWithStockFilter(stockFilter) {
   refs.stockFilter.value = stockFilter;
   refs.productSearch.value = "";
   hideTagSuggestions(refs.productSearchTagSuggestions);
-  state.activeTab = "products";
-  renderTabs();
+  navigateToSection("products");
   renderSelectedSearchTags();
   loadPage("products");
 }

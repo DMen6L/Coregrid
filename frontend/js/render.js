@@ -3,6 +3,7 @@ function render() {
   renderDashboard();
   renderProductTable();
   renderSelectedSearchTags();
+  renderProductSortControls();
   renderProductFormTags();
   renderSelects();
   renderLookupTable("company");
@@ -372,6 +373,11 @@ function renderSelectedSearchTags() {
     .map((tagName) => renderTagChip(tagName, { removeAction: "search-tag" }))
     .join("");
   refs.selectedSearchTags.classList.remove("hidden");
+}
+
+function renderProductSortControls() {
+  refs.productSort.value = state.productSort;
+  refs.productSortOrder.value = state.productSortOrder;
 }
 
 function renderProductFormTags() {

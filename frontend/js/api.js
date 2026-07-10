@@ -96,6 +96,8 @@ function buildProductsPath() {
     search: state.searchTerm,
     tags: state.selectedTagFilters,
     stock: state.stockFilter,
+    sort: state.productSort,
+    order: state.productSortOrder,
   });
 }
 

@@ -139,8 +139,37 @@ function getProductSearchText(value) {
 
 function handleStockFilterChange(event) {
   state.stockFilter = event.target.value;
+  reloadProductsAfterFilterChange();
+}
+
+function handleProductSortChange(event) {
+  state.productSort = normalizeProductSort(event.target.value);
+  reloadProductsAfterFilterChange();
+}
+
+function handleProductSortOrderChange(event) {
+  state.productSortOrder = normalizeProductSortOrder(event.target.value);
+  reloadProductsAfterFilterChange();
+}
+
+function reloadProductsAfterFilterChange() {
   state.pagination.products.page = 1;
   loadPage("products");
+}
+
+function normalizeProductSort(productSort) {
+  return Object.prototype.hasOwnProperty.call(PRODUCT_SORT_LABELS, productSort)
+    ? productSort
+    : DEFAULT_PRODUCT_SORT;
+}
+
+function normalizeProductSortOrder(productSortOrder) {
+  return Object.prototype.hasOwnProperty.call(
+    PRODUCT_SORT_ORDER_LABELS,
+    productSortOrder,
+  )
+    ? productSortOrder
+    : DEFAULT_PRODUCT_SORT_ORDER;
 }
 
 function calculateProductFloorPrice() {
@@ -382,13 +411,38 @@ function handleProductTableClick(event) {
 }
 
 function startProductEdit(productId) {
+  navigateToProductEdit(productId);
+}
+
+async function showProductEditWorkflow(productId) {
   const product = state.products.find((item) => item.id === productId);
 
-  if (!product) {
-    showNotice("Товар не найден в текущих данных.", true);
+  if (product) {
+    fillProductEditForm(product);
     return;
   }
 
+  setBusy(true);
+
+  try {
+    const loadedProduct = await request(`/products/${productId}`);
+    const currentRoute = getCurrentRoute();
+
+    if (currentRoute.modal !== "productEdit" || currentRoute.id !== productId) {
+      return;
+    }
+
+    rememberMovementProducts([loadedProduct]);
+    fillProductEditForm(loadedProduct);
+  } catch (error) {
+    showNotice(error.message, true);
+    navigateToSection("products");
+  } finally {
+    setBusy(false);
+  }
+}
+
+function fillProductEditForm(product) {
   state.editingProductId = product.id;
   renderSelects();
   refs.productId.value = product.id;

@@ -53,7 +53,7 @@ Automated tests to check responses of FastAPI.
 Currently includes CRUD, validation, delete behavior, pagination behavior,
 product tags, product pricing rules, quantity units, stock movement behavior,
 explicit sales, sales summaries, dashboard daily totals, bestseller rankings,
-and low-stock threshold behavior.
+product sorting, and low-stock threshold behavior.
 
 - Needed to lower amount of manual testing of endpoints.
 

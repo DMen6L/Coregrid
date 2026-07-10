@@ -1,6 +1,6 @@
 document.addEventListener("DOMContentLoaded", init);
 
-function init() {
+async function init() {
   refs.apiBase.value = state.apiBase;
   refs.dashboardSalesDateFrom.value = state.salesDateFrom;
   refs.dashboardSalesDateTo.value = state.salesDateTo;
@@ -39,6 +39,8 @@ function init() {
   );
   refs.selectedSearchTags.addEventListener("click", handleSelectedSearchTagsClick);
   refs.stockFilter.addEventListener("change", handleStockFilterChange);
+  refs.productSort.addEventListener("change", handleProductSortChange);
+  refs.productSortOrder.addEventListener("change", handleProductSortOrderChange);
   refs.productPurchasePrice.addEventListener("input", updateProductPricingPreview);
   refs.productMarginPercent.addEventListener("input", updateProductPricingPreview);
   refs.productForm.addEventListener("submit", handleProductSubmit);
@@ -71,5 +73,6 @@ function init() {
   refs.saleLines.addEventListener("input", handleSaleLineListInput);
 
   updateMovementQuantityMode();
-  loadAll();
+  await loadAll();
+  initializeRouting();
 }

@@ -771,6 +771,76 @@ def test_product_pagination_supports_multiple_tag_filters():
     )
 
 
+def test_product_pagination_supports_sorting():
+    alpha_company = create_company(name="Alpha Company", iin="111111111111")
+    beta_company = create_company(name="Beta Company", iin="222222222222")
+    alpha_supplier = create_supplier(
+        name="Alpha Supplier",
+        phone_number="+77000000001",
+    )
+    beta_supplier = create_supplier(
+        name="Beta Supplier",
+        phone_number="+77000000002",
+    )
+    low_product = create_product(
+        name="Gamma Product",
+        purchase_price=100,
+        quantity=2,
+        company_id=beta_company["id"],
+        supplier_id=alpha_supplier["id"],
+    )
+    available_product = create_product(
+        name="Alpha Product",
+        purchase_price=50,
+        quantity=10,
+        company_id=alpha_company["id"],
+        supplier_id=beta_supplier["id"],
+    )
+    empty_product = create_product(
+        name="Beta Product",
+        purchase_price=200,
+        quantity=0,
+    )
+
+    assert_page(
+        client.get("/products?sort=name&order=asc&page_size=10"),
+        [available_product, empty_product, low_product],
+        page_size=10,
+    )
+    assert_page(
+        client.get("/products?sort=quantity&order=desc&page=1&page_size=2"),
+        [available_product, low_product],
+        total=3,
+        page=1,
+        page_size=2,
+    )
+    assert_page(
+        client.get("/products?sort=stock_status&order=asc&page_size=10"),
+        [empty_product, low_product, available_product],
+        page_size=10,
+    )
+    assert_page(
+        client.get("/products?sort=inventory_value&order=desc&page_size=10"),
+        [available_product, low_product, empty_product],
+        page_size=10,
+    )
+    assert_page(
+        client.get("/products?sort=company&order=asc&page_size=10"),
+        [available_product, low_product, empty_product],
+        page_size=10,
+    )
+    assert_page(
+        client.get("/products?sort=supplier&order=desc&page_size=10"),
+        [available_product, low_product, empty_product],
+        page_size=10,
+    )
+
+
+def test_product_pagination_rejects_invalid_sorting_params():
+    assert client.get("/products?sort=unknown").status_code == 422
+    assert client.get("/products?order=sideways").status_code == 422
+
+
 def test_product_summary_returns_global_inventory_totals():
     create_product(
         name="Low Product",
