@@ -240,6 +240,11 @@ class StockMovement(Base):
         cascade="all, delete-orphan",
         order_by="StockMovementLine.id",
     )
+    sale: Mapped["Sale"] = relationship(
+        back_populates="stock_movement",
+        passive_deletes=True,
+        uselist=False,
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -311,3 +316,42 @@ class StockMovementLine(Base):
             name="ck_stock_movement_lines_quantity_unit_snapshot_not_empty",
         ),
     )
+
+
+class Sale(Base):
+    __tablename__ = "sales"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    stock_movement_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("stock_movements.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    note: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+    )
+
+    stock_movement: Mapped["StockMovement"] = relationship(back_populates="sale")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "stock_movement_id",
+            name="uq_sales_stock_movement_id",
+        ),
+    )
+
+    @property
+    def lines(self) -> list["StockMovementLine"]:
+        return self.stock_movement.lines
+
+    @property
+    def revenue(self) -> int:
+        return sum(
+            abs(line.quantity_delta) * (line.unit_price_snapshot or 0)
+            for line in self.lines
+        )

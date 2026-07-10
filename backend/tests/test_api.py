@@ -15,7 +15,7 @@ def truncate_database():
     with SessionLocal() as session:
         session.execute(
             text(
-                "TRUNCATE TABLE product_tags, tags, stock_movement_lines, "
+                "TRUNCATE TABLE sales, product_tags, tags, stock_movement_lines, "
                 "stock_movements, products, companies, suppliers "
                 "RESTART IDENTITY CASCADE"
             )
@@ -95,6 +95,27 @@ def create_stock_movement(movement_type="in", note=None, lines=None):
     return response.json()
 
 
+def create_sale(note=None, lines=None):
+    if lines is None:
+        product = create_product()
+        sale_lines = [
+            {
+                "product_id": product["id"],
+                "quantity": 1,
+                "unit_price": product["sale_price"],
+            }
+        ]
+    else:
+        sale_lines = lines
+    payload = {
+        "note": note,
+        "lines": sale_lines,
+    }
+    response = client.post("/sales", json=payload)
+    assert response.status_code == 201
+    return response.json()
+
+
 def set_stock_movement_created_at(movement_id, created_at):
     with SessionLocal() as session:
         session.execute(
@@ -104,6 +125,19 @@ def set_stock_movement_created_at(movement_id, created_at):
                 "WHERE id = :movement_id"
             ),
             {"movement_id": movement_id, "created_at": created_at},
+        )
+        session.commit()
+
+
+def set_sale_created_at(sale_id, created_at):
+    with SessionLocal() as session:
+        session.execute(
+            text(
+                "UPDATE sales "
+                "SET created_at = :created_at "
+                "WHERE id = :sale_id"
+            ),
+            {"sale_id": sale_id, "created_at": created_at},
         )
         session.commit()
 
@@ -468,6 +502,144 @@ def test_stock_movement_line_snapshots_quantity_unit():
     assert history_response.json()["lines"][0]["quantity_unit_snapshot"] == "кг"
 
 
+def test_sale_create_decreases_stock_and_creates_linked_movement():
+    product = create_product(
+        name="Sale Workflow Product",
+        sale_price=300,
+        quantity=5,
+        quantity_unit="м",
+    )
+
+    response = client.post(
+        "/sales",
+        json={
+            "note": "Counter sale",
+            "lines": [
+                {
+                    "product_id": product["id"],
+                    "quantity": 2,
+                    "unit_price": 250,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 201
+    sale = response.json()
+    assert sale["note"] == "Counter sale"
+    assert sale["revenue"] == 500
+    assert sale["stock_movement_id"] > 0
+    assert len(sale["lines"]) == 1
+    assert sale["lines"][0]["product_id"] == product["id"]
+    assert sale["lines"][0]["quantity_delta"] == -2
+    assert sale["lines"][0]["quantity_before"] == 5
+    assert sale["lines"][0]["quantity_after"] == 3
+    assert sale["lines"][0]["unit_price_snapshot"] == 250
+    assert sale["lines"][0]["quantity_unit_snapshot"] == "м"
+
+    get_product_response = client.get(f"/products/{product['id']}")
+    assert get_product_response.status_code == 200
+    assert get_product_response.json()["quantity"] == 3
+
+    movement_response = client.get(f"/stock-movements/{sale['stock_movement_id']}")
+    assert movement_response.status_code == 200
+    assert movement_response.json()["movement_type"] == "out"
+    assert movement_response.json()["note"] == "Counter sale"
+    assert movement_response.json()["lines"] == sale["lines"]
+
+    get_sale_response = client.get(f"/sales/{sale['id']}")
+    assert get_sale_response.status_code == 200
+    assert get_sale_response.json() == sale
+
+    list_response = client.get("/sales")
+    assert_page(list_response, [sale])
+
+
+def test_sale_with_multiple_lines_updates_all_products():
+    first_product = create_product(
+        name="First Sale Product",
+        sale_price=100,
+        quantity=5,
+    )
+    second_product = create_product(
+        name="Second Sale Product",
+        purchase_price=200,
+        sale_price=250,
+        quantity=4,
+        quantity_unit="кг",
+    )
+
+    sale = create_sale(
+        lines=[
+            {
+                "product_id": first_product["id"],
+                "quantity": 2,
+                "unit_price": 90,
+            },
+            {
+                "product_id": second_product["id"],
+                "quantity": 3,
+                "unit_price": 225,
+            },
+        ],
+    )
+
+    assert sale["revenue"] == 855
+    assert [line["quantity_delta"] for line in sale["lines"]] == [-2, -3]
+    assert [line["quantity_after"] for line in sale["lines"]] == [3, 1]
+    assert [line["unit_price_snapshot"] for line in sale["lines"]] == [90, 225]
+    assert [line["quantity_unit_snapshot"] for line in sale["lines"]] == ["шт", "кг"]
+
+
+def test_sale_that_would_make_quantity_negative_is_rejected():
+    product = create_product(quantity=2)
+
+    response = client.post(
+        "/sales",
+        json={
+            "lines": [
+                {
+                    "product_id": product["id"],
+                    "quantity": 3,
+                    "unit_price": product["sale_price"],
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": "Sale would make product quantity negative"
+    }
+
+    get_product_response = client.get(f"/products/{product['id']}")
+    assert get_product_response.status_code == 200
+    assert get_product_response.json()["quantity"] == 2
+
+
+def test_sale_missing_product_returns_not_found():
+    response = client.post(
+        "/sales",
+        json={"lines": [{"product_id": 999, "quantity": 1, "unit_price": 100}]},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Product not found"}
+
+
+def test_stock_movement_out_does_not_create_sale():
+    product = create_product(quantity=5)
+    movement = create_stock_movement(
+        movement_type="out",
+        lines=[{"product_id": product["id"], "quantity_delta": -1}],
+    )
+
+    response = client.get("/sales")
+
+    assert_page(response, [])
+    assert movement["movement_type"] == "out"
+
+
 def test_collection_pagination_limits_results():
     companies = [
         create_company(name=f"Company {index}", iin=f"10000000000{index}")
@@ -637,19 +809,31 @@ def test_stock_movement_sales_summary_uses_outgoing_movements_in_date_range():
         name="Second Sale Product",
         purchase_price=200,
         sale_price=250,
-        quantity=10,
+        quantity=1,
         quantity_unit="мл",
     )
-    included_sale = create_stock_movement(
-        movement_type="out",
+    included_sale = create_sale(
         lines=[
-            {"product_id": product["id"], "quantity_delta": -2},
-            {"product_id": second_product["id"], "quantity_delta": -1},
+            {
+                "product_id": product["id"],
+                "quantity": 2,
+                "unit_price": 140,
+            },
+            {
+                "product_id": second_product["id"],
+                "quantity": 1,
+                "unit_price": 225,
+            },
         ],
     )
-    next_day_sale = create_stock_movement(
-        movement_type="out",
-        lines=[{"product_id": product["id"], "quantity_delta": -3}],
+    next_day_sale = create_sale(
+        lines=[
+            {
+                "product_id": product["id"],
+                "quantity": 3,
+                "unit_price": 125,
+            }
+        ],
     )
     incoming_movement = create_stock_movement(
         movement_type="in",
@@ -659,11 +843,15 @@ def test_stock_movement_sales_summary_uses_outgoing_movements_in_date_range():
         movement_type="adjustment",
         lines=[{"product_id": product["id"], "quantity_delta": -1}],
     )
-    set_stock_movement_created_at(
+    generic_outgoing_movement = create_stock_movement(
+        movement_type="out",
+        lines=[{"product_id": product["id"], "quantity_delta": -4}],
+    )
+    set_sale_created_at(
         included_sale["id"],
         datetime(2026, 7, 5, 10, 0),
     )
-    set_stock_movement_created_at(
+    set_sale_created_at(
         next_day_sale["id"],
         datetime(2026, 7, 6, 9, 0),
     )
@@ -674,6 +862,10 @@ def test_stock_movement_sales_summary_uses_outgoing_movements_in_date_range():
     set_stock_movement_created_at(
         adjustment_movement["id"],
         datetime(2026, 7, 5, 13, 0),
+    )
+    set_stock_movement_created_at(
+        generic_outgoing_movement["id"],
+        datetime(2026, 7, 5, 14, 0),
     )
 
     one_day_response = client.get(
@@ -687,7 +879,7 @@ def test_stock_movement_sales_summary_uses_outgoing_movements_in_date_range():
 
     assert one_day_response.status_code == 200
     assert one_day_response.json() == {
-        "revenue": 550,
+        "revenue": 505,
         "units_sold": 3,
         "units_sold_by_unit": [
             {"quantity_unit": "мл", "quantity": 1},
@@ -696,7 +888,7 @@ def test_stock_movement_sales_summary_uses_outgoing_movements_in_date_range():
         "daily_totals": [
             {
                 "date": "2026-07-05",
-                "revenue": 550,
+                "revenue": 505,
                 "units_sold": 3,
                 "units_sold_by_unit": [
                     {"quantity_unit": "мл", "quantity": 1},
@@ -705,13 +897,39 @@ def test_stock_movement_sales_summary_uses_outgoing_movements_in_date_range():
                 "sale_operations": 1,
             },
         ],
+        "best_sellers": [
+            {
+                "product_id": product["id"],
+                "product_name": "Sale Product",
+                "revenue": 280,
+                "units_sold_by_unit": [
+                    {"quantity_unit": "шт", "quantity": 2},
+                ],
+                "sale_operations": 1,
+                "current_quantity": 15,
+                "current_quantity_unit": "шт",
+                "stock_status": "available",
+            },
+            {
+                "product_id": second_product["id"],
+                "product_name": "Second Sale Product",
+                "revenue": 225,
+                "units_sold_by_unit": [
+                    {"quantity_unit": "мл", "quantity": 1},
+                ],
+                "sale_operations": 1,
+                "current_quantity": 0,
+                "current_quantity_unit": "мл",
+                "stock_status": "out",
+            },
+        ],
         "sale_operations": 1,
         "date_from": "2026-07-05",
         "date_to": "2026-07-05",
     }
     assert range_response.status_code == 200
     assert range_response.json() == {
-        "revenue": 1000,
+        "revenue": 880,
         "units_sold": 6,
         "units_sold_by_unit": [
             {"quantity_unit": "мл", "quantity": 1},
@@ -720,7 +938,7 @@ def test_stock_movement_sales_summary_uses_outgoing_movements_in_date_range():
         "daily_totals": [
             {
                 "date": "2026-07-05",
-                "revenue": 550,
+                "revenue": 505,
                 "units_sold": 3,
                 "units_sold_by_unit": [
                     {"quantity_unit": "мл", "quantity": 1},
@@ -730,7 +948,7 @@ def test_stock_movement_sales_summary_uses_outgoing_movements_in_date_range():
             },
             {
                 "date": "2026-07-06",
-                "revenue": 450,
+                "revenue": 375,
                 "units_sold": 3,
                 "units_sold_by_unit": [
                     {"quantity_unit": "шт", "quantity": 3},
@@ -743,6 +961,32 @@ def test_stock_movement_sales_summary_uses_outgoing_movements_in_date_range():
                 "units_sold": 0,
                 "units_sold_by_unit": [],
                 "sale_operations": 0,
+            },
+        ],
+        "best_sellers": [
+            {
+                "product_id": product["id"],
+                "product_name": "Sale Product",
+                "revenue": 655,
+                "units_sold_by_unit": [
+                    {"quantity_unit": "шт", "quantity": 5},
+                ],
+                "sale_operations": 2,
+                "current_quantity": 15,
+                "current_quantity_unit": "шт",
+                "stock_status": "available",
+            },
+            {
+                "product_id": second_product["id"],
+                "product_name": "Second Sale Product",
+                "revenue": 225,
+                "units_sold_by_unit": [
+                    {"quantity_unit": "мл", "quantity": 1},
+                ],
+                "sale_operations": 1,
+                "current_quantity": 0,
+                "current_quantity_unit": "мл",
+                "stock_status": "out",
             },
         ],
         "sale_operations": 2,
@@ -778,10 +1022,45 @@ def test_stock_movement_sales_summary_returns_zero_daily_totals_without_sales():
                 "sale_operations": 0,
             },
         ],
+        "best_sellers": [],
         "sale_operations": 0,
         "date_from": "2026-07-05",
         "date_to": "2026-07-06",
     }
+
+
+def test_stock_movement_sales_summary_limits_best_sellers_and_orders_ties():
+    sale_ids = []
+
+    for index in range(6):
+        product = create_product(
+            name=f"Ranked Product {index + 1}",
+            sale_price=100,
+            quantity=2,
+        )
+        sale = create_sale(
+            lines=[
+                {
+                    "product_id": product["id"],
+                    "quantity": 1,
+                    "unit_price": 100,
+                }
+            ]
+        )
+        sale_ids.append(sale["id"])
+
+    for sale_id in sale_ids:
+        set_sale_created_at(sale_id, datetime(2026, 7, 5, 10, 0))
+
+    response = client.get(
+        "/stock-movements/sales-summary"
+        "?date_from=2026-07-05&date_to=2026-07-05"
+    )
+
+    assert response.status_code == 200
+    best_sellers = response.json()["best_sellers"]
+    assert len(best_sellers) == 5
+    assert [item["product_id"] for item in best_sellers] == [1, 2, 3, 4, 5]
 
 
 def test_stock_movement_sales_summary_rejects_invalid_date_range():
@@ -838,6 +1117,8 @@ def test_stock_movement_pagination_limits_history_results():
         "/products?stock=invalid",
         "/stock-movements?page=0",
         "/products/1/movements?page_size=101",
+        "/sales?page=0",
+        "/sales?page_size=101",
     ],
 )
 def test_pagination_query_validation_errors_return_unprocessable_entity(path):
@@ -849,11 +1130,14 @@ def test_pagination_query_validation_errors_return_unprocessable_entity(path):
 def test_stock_movement_missing_rows_return_not_found():
     missing_movement_response = client.get("/stock-movements/999")
     missing_product_history_response = client.get("/products/999/movements")
+    missing_sale_response = client.get("/sales/999")
 
     assert missing_movement_response.status_code == 404
     assert missing_movement_response.json() == {"detail": "Stock movement not found"}
     assert missing_product_history_response.status_code == 404
     assert missing_product_history_response.json() == {"detail": "Product not found"}
+    assert missing_sale_response.status_code == 404
+    assert missing_sale_response.json() == {"detail": "Sale not found"}
 
 
 def test_product_can_be_created_without_company_or_supplier():
@@ -1257,6 +1541,33 @@ def test_patch_product_can_clear_company_and_supplier_relationships():
                 "lines": [
                     {"product_id": 1, "quantity_delta": 1},
                     {"product_id": 1, "quantity_delta": 2},
+                ],
+            },
+        ),
+        ("/sales", {"lines": []}),
+        ("/sales", {"lines": [{"product_id": 1, "quantity": 1}]}),
+        (
+            "/sales",
+            {"lines": [{"product_id": 1, "quantity": 0, "unit_price": 100}]},
+        ),
+        (
+            "/sales",
+            {"lines": [{"product_id": 1, "quantity": -1, "unit_price": 100}]},
+        ),
+        (
+            "/sales",
+            {"lines": [{"product_id": 1, "quantity": 1, "unit_price": 0}]},
+        ),
+        (
+            "/sales",
+            {"lines": [{"product_id": 1, "quantity": 1, "unit_price": -1}]},
+        ),
+        (
+            "/sales",
+            {
+                "lines": [
+                    {"product_id": 1, "quantity": 1, "unit_price": 100},
+                    {"product_id": 1, "quantity": 2, "unit_price": 100},
                 ],
             },
         ),

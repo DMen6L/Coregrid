@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import companies, products, stock_movements, suppliers, tags
+from routers import companies, products, sales, stock_movements, suppliers, tags
 
 
 LOCAL_DEVELOPMENT_ORIGINS = [
@@ -23,6 +23,7 @@ app.add_middleware(
 app.include_router(companies.router)
 app.include_router(suppliers.router)
 app.include_router(products.router)
+app.include_router(sales.router)
 app.include_router(stock_movements.router)
 app.include_router(tags.router)
 

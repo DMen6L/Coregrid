@@ -81,6 +81,16 @@ Stores the header of each stock change transaction.
 - `note` optional text note for the stock movement
 - `created_at` time when the stock movement was created
 
+### Sales
+
+Stores commercial sale records linked to the outgoing stock movement that
+changed inventory.
+
+- `id` unique identifier of each sale
+- `stock_movement_id` unique reference to the outgoing stock movement created for the sale
+- `note` optional text note for the sale
+- `created_at` time when the sale was created
+
 ### Stock movement lines
 
 Stores the product-level changes inside a stock movement.
@@ -91,7 +101,7 @@ Stores the product-level changes inside a stock movement.
 - `quantity_delta` amount of stock change, positive or negative
 - `quantity_before` product quantity before the movement line
 - `quantity_after` product quantity after the movement line
-- `unit_price_snapshot` product sale price copied when the movement was created
+- `unit_price_snapshot` sale price copied when the movement was created; sales use the entered actual line price
 - `quantity_unit_snapshot` product quantity unit copied when the movement was created
 
 See [stock movements design](STOCK_MOVEMENTS.md) for the detailed API and

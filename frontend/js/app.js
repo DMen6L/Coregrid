@@ -20,7 +20,7 @@ const STOCK_STATUS_LABELS = {
 
 const MOVEMENT_TYPE_LABELS = {
   in: "Приход",
-  out: "Расход",
+  out: "Списание",
   adjustment: "Корректировка",
 };
 
@@ -33,6 +33,8 @@ const BACKEND_ERROR_MESSAGES = {
   "Product not found": "Товар не найден.",
   "Stock movement would make product quantity negative":
     "Движение не может сделать остаток товара отрицательным.",
+  "Sale would make product quantity negative":
+    "Продажа не может сделать остаток товара отрицательным.",
   "sale_price cannot be lower than floor_price":
     "Цена продажи не может быть ниже минимальной цены.",
   "date_from cannot be after date_to":
@@ -54,6 +56,7 @@ const FIELD_LABELS = {
   movement_type: "Тип движения",
   product_id: "Товар",
   quantity_delta: "Изменение",
+  unit_price: "Цена",
   note: "Заметка",
 };
 
@@ -86,6 +89,7 @@ const state = {
 };
 
 let movementLineCounter = 0;
+let saleLineCounter = 0;
 let movementProductSearchCounter = 0;
 const movementProductSearchTimers = new Map();
 let tagSearchCounter = 0;
@@ -108,6 +112,7 @@ const refs = {
   addCompanyButton: document.querySelector("#add-company-button"),
   addMovementButton: document.querySelector("#add-movement-button"),
   dashboardAddProductButton: document.querySelector("#dashboard-add-product-button"),
+  dashboardAddSaleButton: document.querySelector("#dashboard-add-sale-button"),
   dashboardAddMovementButton: document.querySelector("#dashboard-add-movement-button"),
   dashboardRefreshButton: document.querySelector("#dashboard-refresh-button"),
   dashboardLowStockButton: document.querySelector("#dashboard-low-stock-button"),
@@ -125,6 +130,7 @@ const refs = {
   dashboardSalesUnits: document.querySelector("#dashboard-sales-units"),
   dashboardSalesOperations: document.querySelector("#dashboard-sales-operations"),
   dashboardSalesChart: document.querySelector("#dashboard-sales-chart"),
+  dashboardBestSellers: document.querySelector("#dashboard-best-sellers"),
   dashboardMovementList: document.querySelector("#dashboard-movement-list"),
   refreshButton: document.querySelector("#refresh-button"),
   productSearch: document.querySelector("#product-search"),
@@ -180,6 +186,12 @@ const refs = {
   movementLines: document.querySelector("#movement-form-lines"),
   movementNote: document.querySelector("#movement-note"),
   movementSubmit: document.querySelector("#movement-submit"),
+  saleForm: document.querySelector("#sale-form"),
+  addSaleLineButton: document.querySelector("#add-sale-line-button"),
+  saleLines: document.querySelector("#sale-form-lines"),
+  saleTotal: document.querySelector("#sale-form-total"),
+  saleNote: document.querySelector("#sale-note"),
+  saleSubmit: document.querySelector("#sale-submit"),
 };
 
 document.addEventListener("DOMContentLoaded", init);
@@ -201,6 +213,7 @@ function init() {
   refs.addCompanyButton.addEventListener("click", openCompanyCreate);
   refs.addMovementButton.addEventListener("click", openMovementCreate);
   refs.dashboardAddProductButton.addEventListener("click", openProductCreate);
+  refs.dashboardAddSaleButton.addEventListener("click", openSaleCreate);
   refs.dashboardAddMovementButton.addEventListener("click", openMovementCreate);
   refs.dashboardRefreshButton.addEventListener("click", loadDashboard);
   refs.dashboardLowStockButton.addEventListener("click", () => {
@@ -248,6 +261,10 @@ function init() {
   refs.movementLines.addEventListener("click", handleMovementLineListClick);
   refs.movementLines.addEventListener("input", handleMovementLineListInput);
   refs.movementType.addEventListener("change", updateMovementQuantityMode);
+  refs.saleForm.addEventListener("submit", handleSaleSubmit);
+  refs.addSaleLineButton.addEventListener("click", () => addSaleLine());
+  refs.saleLines.addEventListener("click", handleSaleLineListClick);
+  refs.saleLines.addEventListener("input", handleSaleLineListInput);
 
   updateMovementQuantityMode();
   loadAll();
@@ -375,6 +392,7 @@ function createEmptySalesSummary(
     sale_operations: 0,
     units_sold_by_unit: [],
     daily_totals: [],
+    best_sellers: [],
     date_from: dateFrom,
     date_to: dateTo,
   };
@@ -642,7 +660,46 @@ function renderDashboard() {
     salesSummary.sale_operations,
   );
   renderSalesChart(salesSummary);
+  renderBestSellers(salesSummary.best_sellers || []);
   renderDashboardMovements();
+}
+
+function renderBestSellers(bestSellers) {
+  if (!bestSellers.length) {
+    refs.dashboardBestSellers.innerHTML = `
+      <div class="best-sellers-empty">За выбранный период продаж нет.</div>
+    `;
+    return;
+  }
+
+  const maxRevenue = Math.max(...bestSellers.map((item) => item.revenue), 1);
+
+  refs.dashboardBestSellers.innerHTML = bestSellers
+    .map((item, index) => {
+      const barWidth = roundChartValue((item.revenue / maxRevenue) * 100);
+
+      return `
+        <div class="best-seller-row">
+          <span class="best-seller-rank">${index + 1}</span>
+          <div class="best-seller-main">
+            <div class="best-seller-title-row">
+              <strong class="best-seller-name">${escapeHtml(item.product_name)}</strong>
+              <strong class="best-seller-revenue">${formatNumber(item.revenue)}</strong>
+            </div>
+            <div class="best-seller-bar" aria-hidden="true">
+              <span style="width: ${barWidth}%"></span>
+            </div>
+            <div class="best-seller-stats">
+              <span>Продано: ${escapeHtml(formatQuantityGroups(item.units_sold_by_unit))}</span>
+              <span>Продаж: ${formatNumber(item.sale_operations)}</span>
+              <span>Остаток: ${escapeHtml(formatQuantity(item.current_quantity, item.current_quantity_unit))}</span>
+              ${renderStockStatus(item)}
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
 }
 
 function renderSalesChart(salesSummary) {
@@ -1151,6 +1208,7 @@ function openDrawer(formType, eyebrow, title) {
   state.activeDrawerForm = formType;
   refs.drawerEyebrow.textContent = eyebrow;
   refs.drawerTitle.textContent = title;
+  refs.drawer.dataset.activeForm = formType;
 
   refs.drawerForms.forEach((form) => {
     form.classList.toggle("hidden", form.dataset.drawerForm !== formType);
@@ -1173,6 +1231,7 @@ function closeDrawer() {
   refs.drawer.classList.add("hidden");
   refs.drawerBackdrop.classList.add("hidden");
   refs.drawer.setAttribute("aria-hidden", "true");
+  delete refs.drawer.dataset.activeForm;
   document.body.classList.remove("drawer-open");
   resetDrawerForm(activeForm);
 }
@@ -1195,6 +1254,11 @@ function resetDrawerForm(formType) {
 
   if (formType === "movement") {
     resetMovementForm();
+    return;
+  }
+
+  if (formType === "sale") {
+    resetSaleForm();
   }
 }
 
@@ -1227,6 +1291,14 @@ function openMovementCreate() {
   resetMovementForm();
   openDrawer("movement", "Операция", "Добавить движение");
   refs.movementType.focus();
+}
+
+function openSaleCreate() {
+  resetSaleForm();
+  openDrawer("sale", "Продажа", "Новая продажа");
+  refs.saleLines
+    .querySelector("[data-movement-product-search]")
+    ?.focus();
 }
 
 function handleTabClick(event) {
@@ -1850,6 +1922,15 @@ function resetMovementForm() {
   updateMovementQuantityMode();
 }
 
+function resetSaleForm() {
+  refs.saleForm.reset();
+  clearMovementProductSearchTimers();
+  refs.saleLines.innerHTML = "";
+  addSaleLine(null, 1, { focus: false });
+  updateSaleLineRemoveState();
+  updateSaleFormTotal();
+}
+
 function addMovementLine(product = null, quantity = 1, options = {}) {
   movementLineCounter += 1;
 
@@ -1894,8 +1975,74 @@ function addMovementLine(product = null, quantity = 1, options = {}) {
   }
 }
 
+function addSaleLine(product = null, quantity = 1, options = {}) {
+  saleLineCounter += 1;
+
+  const lineId = `sale-${saleLineCounter}`;
+  const productSearchInputId = `sale-product-search-${saleLineCounter}`;
+  const productInputId = `sale-product-${saleLineCounter}`;
+  const quantityInputId = `sale-quantity-${saleLineCounter}`;
+  const priceInputId = `sale-unit-price-${saleLineCounter}`;
+  const unitPrice = product?.sale_price ?? "";
+  const quantityUnit = normalizeQuantityUnit(product?.quantity_unit);
+  const selectedProductMarkup = product
+    ? renderMovementSelectedProduct(product, { showSalePrice: false })
+    : "";
+
+  refs.saleLines.insertAdjacentHTML(
+    "beforeend",
+    `
+      <div class="sale-form-line" data-sale-line data-movement-line data-movement-line-id="${lineId}">
+        <div class="movement-line-field sale-line-product">
+          <label for="${productSearchInputId}">Товар</label>
+          <div class="movement-product-picker" data-movement-product-picker>
+            <input id="${productSearchInputId}" data-movement-product-search name="product_search" type="search" autocomplete="off" maxlength="255" placeholder="Начните вводить название" value="${escapeHtml(product?.name ?? "")}">
+            <input id="${productInputId}" data-movement-product-id name="product_id" type="hidden" value="${escapeHtml(product?.id ?? "")}">
+            <div class="movement-product-selected${product ? "" : " hidden"}" data-movement-product-selected>${selectedProductMarkup}</div>
+            <div class="movement-product-suggestions hidden" data-movement-product-suggestions></div>
+          </div>
+        </div>
+        <div class="sale-line-details">
+          <div class="movement-line-field">
+            <label for="${quantityInputId}">Количество, <span data-sale-quantity-unit>${escapeHtml(quantityUnit)}</span></label>
+            <input id="${quantityInputId}" data-sale-quantity name="quantity" type="number" min="1" step="1" value="${escapeHtml(quantity)}" required>
+          </div>
+          <div class="movement-line-field sale-price-field">
+            <label for="${priceInputId}">Цена за единицу</label>
+            <input id="${priceInputId}" data-sale-unit-price name="unit_price" type="number" min="1" step="1" value="${escapeHtml(unitPrice)}" required>
+            <span class="sale-price-reference">
+              Обычная: <strong data-sale-list-price>${product ? formatNumber(product.sale_price) : "—"}</strong>
+              · Минимальная: <strong data-sale-floor-price>${product ? formatNumber(product.floor_price) : "—"}</strong>
+            </span>
+          </div>
+          <div class="sale-line-subtotal">
+            <span>Сумма</span>
+            <strong data-sale-line-subtotal>0</strong>
+          </div>
+          <button class="secondary-button sale-line-remove" type="button" data-remove-sale-line aria-label="Удалить товар" title="Удалить товар">×</button>
+        </div>
+        <span class="sale-line-warning hidden" data-sale-price-warning></span>
+      </div>
+    `,
+  );
+
+  updateSaleLineRemoveState();
+  updateSaleLinePricing(getSaleLineRows().at(-1));
+
+  if (options.focus !== false) {
+    getSaleLineRows()
+      .at(-1)
+      ?.querySelector("[data-movement-product-search]")
+      ?.focus();
+  }
+}
+
 function getMovementLineRows() {
   return [...refs.movementLines.querySelectorAll("[data-movement-line]")];
+}
+
+function getSaleLineRows() {
+  return [...refs.saleLines.querySelectorAll("[data-sale-line]")];
 }
 
 function getMovementQuantityLabel() {
@@ -1907,6 +2054,15 @@ function updateMovementLineRemoveState() {
 
   rows.forEach((row) => {
     const button = row.querySelector("[data-remove-movement-line]");
+    button.disabled = rows.length <= 1;
+  });
+}
+
+function updateSaleLineRemoveState() {
+  const rows = getSaleLineRows();
+
+  rows.forEach((row) => {
+    const button = row.querySelector("[data-remove-sale-line]");
     button.disabled = rows.length <= 1;
   });
 }
@@ -1933,6 +2089,29 @@ function handleMovementLineListClick(event) {
   updateMovementLineRemoveState();
 }
 
+function handleSaleLineListClick(event) {
+  const productButton = event.target.closest("[data-select-movement-product]");
+
+  if (productButton) {
+    const row = productButton.closest("[data-sale-line]");
+    selectMovementProduct(row, Number(productButton.dataset.productId));
+    return;
+  }
+
+  const button = event.target.closest("[data-remove-sale-line]");
+
+  if (!button || button.disabled) {
+    return;
+  }
+
+  const row = button.closest("[data-sale-line]");
+
+  clearMovementProductSearchTimer(row);
+  row?.remove();
+  updateSaleLineRemoveState();
+  updateSaleFormTotal();
+}
+
 function handleMovementLineListInput(event) {
   const input = event.target.closest("[data-movement-product-search]");
 
@@ -1944,6 +2123,28 @@ function handleMovementLineListInput(event) {
 
   clearMovementProductSelection(row);
   scheduleMovementProductSearch(row, input.value);
+}
+
+function handleSaleLineListInput(event) {
+  const input = event.target.closest("[data-movement-product-search]");
+
+  if (input) {
+    const row = input.closest("[data-sale-line]");
+
+    clearMovementProductSelection(row);
+    scheduleMovementProductSearch(row, input.value);
+    return;
+  }
+
+  const pricingInput = event.target.closest(
+    "[data-sale-quantity], [data-sale-unit-price]",
+  );
+
+  if (!pricingInput) {
+    return;
+  }
+
+  updateSaleLinePricing(pricingInput.closest("[data-sale-line]"));
 }
 
 function clearMovementProductSearchTimers() {
@@ -2069,9 +2270,12 @@ function selectMovementProduct(row, productId) {
   row.querySelector("[data-movement-product-id]").value = product.id;
 
   const selected = row.querySelector("[data-movement-product-selected]");
-  selected.innerHTML = renderMovementSelectedProduct(product);
+  selected.innerHTML = renderMovementSelectedProduct(product, {
+    showSalePrice: !row.matches("[data-sale-line]"),
+  });
   selected.classList.remove("hidden");
   hideMovementProductSuggestions(row);
+  fillSaleLineProductPrice(row, product);
 }
 
 function clearMovementProductSelection(row) {
@@ -2085,6 +2289,13 @@ function clearMovementProductSelection(row) {
   productIdInput.value = "";
   selected.innerHTML = "";
   selected.classList.add("hidden");
+
+  if (row?.matches("[data-sale-line]")) {
+    const unitPriceInput = row.querySelector("[data-sale-unit-price]");
+    unitPriceInput.value = "";
+    updateSaleLineProductContext(row, null);
+    updateSaleLinePricing(row);
+  }
 }
 
 function getCachedMovementProduct(productId) {
@@ -2100,10 +2311,14 @@ function rememberMovementProducts(products) {
   });
 }
 
-function renderMovementSelectedProduct(product) {
+function renderMovementSelectedProduct(product, options = {}) {
+  const salePrice = options.showSalePrice === false
+    ? ""
+    : ` · Продажа: ${formatNumber(product.sale_price)}`;
+
   return `
     <span class="movement-product-selected-name">${escapeHtml(product.name)}</span>
-    <span class="movement-product-selected-meta">Остаток: ${escapeHtml(formatQuantity(product.quantity, product.quantity_unit))} · Продажа: ${formatNumber(product.sale_price)}</span>
+    <span class="movement-product-selected-meta">Остаток: ${escapeHtml(formatQuantity(product.quantity, product.quantity_unit))}${salePrice}</span>
     ${renderMovementSuggestionTags(product.tags)}
   `;
 }
@@ -2118,6 +2333,84 @@ function renderMovementSuggestionTags(tags = []) {
       ${tags.map((tag) => `#${escapeHtml(tag.name)}`).join(" ")}
     </span>
   `;
+}
+
+function fillSaleLineProductPrice(row, product) {
+  if (!row?.matches("[data-sale-line]")) {
+    return;
+  }
+
+  row.querySelector("[data-sale-unit-price]").value = product.sale_price;
+  updateSaleLineProductContext(row, product);
+  updateSaleLinePricing(row);
+}
+
+function updateSaleLineProductContext(row, product) {
+  row.querySelector("[data-sale-quantity-unit]").textContent =
+    normalizeQuantityUnit(product?.quantity_unit);
+  row.querySelector("[data-sale-list-price]").textContent = product
+    ? formatNumber(product.sale_price)
+    : "—";
+  row.querySelector("[data-sale-floor-price]").textContent = product
+    ? formatNumber(product.floor_price)
+    : "—";
+}
+
+function updateSaleLinePricing(row) {
+  if (!row) {
+    return;
+  }
+
+  const productId = Number(row.querySelector("[data-movement-product-id]").value);
+  const unitPrice = Number(row.querySelector("[data-sale-unit-price]").value);
+  const subtotal = getSaleLineSubtotal(row);
+  const product = Number.isInteger(productId)
+    ? getCachedMovementProduct(productId)
+    : null;
+  const subtotalEl = row.querySelector("[data-sale-line-subtotal]");
+  const warningEl = row.querySelector("[data-sale-price-warning]");
+
+  subtotalEl.textContent = formatNumber(subtotal);
+
+  if (
+    product &&
+    Number.isInteger(unitPrice) &&
+    unitPrice >= 1 &&
+    unitPrice < product.floor_price
+  ) {
+    warningEl.textContent = `Ниже минимальной цены ${formatNumber(product.floor_price)}`;
+    warningEl.classList.remove("hidden");
+  } else {
+    warningEl.textContent = "";
+    warningEl.classList.add("hidden");
+  }
+
+  updateSaleFormTotal();
+}
+
+function getSaleLineSubtotal(row) {
+  const quantity = Number(row.querySelector("[data-sale-quantity]").value);
+  const unitPrice = Number(row.querySelector("[data-sale-unit-price]").value);
+
+  if (
+    !Number.isInteger(quantity) ||
+    !Number.isInteger(unitPrice) ||
+    quantity < 1 ||
+    unitPrice < 1
+  ) {
+    return 0;
+  }
+
+  return quantity * unitPrice;
+}
+
+function updateSaleFormTotal() {
+  const total = getSaleLineRows().reduce(
+    (sum, row) => sum + getSaleLineSubtotal(row),
+    0,
+  );
+
+  refs.saleTotal.textContent = formatNumber(total);
 }
 
 function updateMovementQuantityMode() {
@@ -2198,6 +2491,48 @@ function buildMovementPayload() {
   };
 }
 
+function buildSalePayload() {
+  const productIds = new Set();
+  const lines = getSaleLineRows().map((row) => {
+    const productId = Number(row.querySelector("[data-movement-product-id]").value);
+    const quantity = Number(row.querySelector("[data-sale-quantity]").value);
+    const unitPrice = Number(row.querySelector("[data-sale-unit-price]").value);
+
+    if (!Number.isInteger(productId) || productId < 1) {
+      throw new Error("Выберите товар из списка в каждой строке.");
+    }
+
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      throw new Error("Укажите количество больше нуля в каждой строке.");
+    }
+
+    if (!Number.isInteger(unitPrice) || unitPrice < 1) {
+      throw new Error("Укажите цену больше нуля в каждой строке.");
+    }
+
+    if (productIds.has(productId)) {
+      throw new Error("Один товар нельзя добавить в продажу дважды.");
+    }
+
+    productIds.add(productId);
+
+    return {
+      product_id: productId,
+      quantity,
+      unit_price: unitPrice,
+    };
+  });
+
+  if (lines.length === 0) {
+    throw new Error("Добавьте хотя бы одну строку продажи.");
+  }
+
+  return {
+    note: refs.saleNote.value.trim() || null,
+    lines,
+  };
+}
+
 async function handleMovementSubmit(event) {
   event.preventDefault();
 
@@ -2243,6 +2578,58 @@ async function handleMovementSubmit(event) {
     state.stockMovementsLoaded = true;
     render();
     showNotice("Движение добавлено.");
+  } catch (error) {
+    showNotice(error.message, true);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function handleSaleSubmit(event) {
+  event.preventDefault();
+
+  let payload;
+
+  try {
+    payload = buildSalePayload();
+  } catch (error) {
+    showNotice(error.message, true);
+    return;
+  }
+
+  setBusy(true);
+
+  try {
+    await request("/sales", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    closeDrawer();
+    state.pagination.stockMovements.page = 1;
+
+    const [
+      productSummary,
+      salesSummary,
+      dashboardMovements,
+      products,
+      stockMovements,
+    ] = await Promise.all([
+      request("/products/summary"),
+      request(buildSalesSummaryPath()),
+      request(buildDashboardMovementsPath()),
+      request(buildProductsPath()),
+      request(getPagePath("stockMovements")),
+    ]);
+
+    state.productSummary = productSummary;
+    state.salesSummary = salesSummary;
+    state.dashboardMovements = dashboardMovements.items;
+    applyPage("products", products);
+    applyPage("stockMovements", stockMovements);
+    state.stockMovementsLoaded = true;
+    render();
+    showNotice("Продажа добавлена.");
   } catch (error) {
     showNotice(error.message, true);
   } finally {
@@ -2337,15 +2724,20 @@ function formatSignedQuantity(value, unit) {
 }
 
 function formatSalesQuantitySummary(salesSummary) {
-  const unitsByUnit = salesSummary.units_sold_by_unit || [];
+  return formatQuantityGroups(
+    salesSummary.units_sold_by_unit,
+    salesSummary.units_sold,
+  );
+}
 
+function formatQuantityGroups(unitsByUnit = [], fallbackQuantity = 0) {
   if (unitsByUnit.length > 0) {
     return unitsByUnit
       .map((item) => formatQuantity(item.quantity, item.quantity_unit))
       .join(", ");
   }
 
-  return formatQuantity(salesSummary.units_sold || 0, DEFAULT_QUANTITY_UNIT);
+  return formatQuantity(fallbackQuantity || 0, DEFAULT_QUANTITY_UNIT);
 }
 
 function formatDate(value) {
@@ -2369,6 +2761,7 @@ function setBusy(isBusy) {
   refs.addCompanyButton.disabled = isBusy;
   refs.addMovementButton.disabled = isBusy;
   refs.dashboardAddProductButton.disabled = isBusy;
+  refs.dashboardAddSaleButton.disabled = isBusy;
   refs.dashboardAddMovementButton.disabled = isBusy;
   refs.dashboardRefreshButton.disabled = isBusy;
   refs.dashboardLowStockButton.disabled = isBusy;
@@ -2385,6 +2778,8 @@ function setBusy(isBusy) {
   refs.movementRefreshButton.disabled = isBusy;
   refs.addMovementLineButton.disabled = isBusy;
   refs.movementSubmit.disabled = isBusy;
+  refs.addSaleLineButton.disabled = isBusy;
+  refs.saleSubmit.disabled = isBusy;
 }
 
 function escapeHtml(value) {

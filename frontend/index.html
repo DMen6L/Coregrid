@@ -44,6 +44,7 @@
               </div>
               <div class="section-actions">
                 <button id="dashboard-add-product-button" type="button">Добавить товар</button>
+                <button class="secondary-button" id="dashboard-add-sale-button" type="button">Продажа</button>
                 <button class="secondary-button" id="dashboard-add-movement-button" type="button">Добавить движение</button>
                 <button class="secondary-button" id="dashboard-refresh-button" type="button">Обновить</button>
               </div>
@@ -96,6 +97,14 @@
                 </div>
 
                 <div class="sales-chart hidden" id="dashboard-sales-chart" aria-label="Динамика выручки"></div>
+
+                <section class="best-sellers" aria-labelledby="best-sellers-title">
+                  <div class="best-sellers-heading">
+                    <h4 id="best-sellers-title">Лидеры продаж</h4>
+                    <span>Топ-5 по выручке</span>
+                  </div>
+                  <div class="best-sellers-list" id="dashboard-best-sellers"></div>
+                </section>
               </section>
 
               <section class="dashboard-activity" aria-labelledby="dashboard-activity-title">
@@ -396,7 +405,7 @@
             <label for="movement-type">Тип</label>
             <select id="movement-type" name="movement_type" required>
               <option value="in">Приход</option>
-              <option value="out">Расход</option>
+              <option value="out">Списание</option>
               <option value="adjustment">Корректировка</option>
             </select>
 
@@ -412,6 +421,31 @@
             <textarea id="movement-note" name="note" maxlength="500" rows="3"></textarea>
 
             <button id="movement-submit" type="submit">Добавить движение</button>
+          </form>
+
+          <form class="stack-form drawer-form hidden" id="sale-form" data-drawer-form="sale">
+            <div class="sale-form-scroll">
+              <div class="movement-builder">
+                <div class="movement-builder-header">
+                  <span class="movement-builder-title">Товары</span>
+                  <button class="secondary-button" id="add-sale-line-button" type="button">Добавить товар</button>
+                </div>
+                <div class="movement-form-lines" id="sale-form-lines"></div>
+              </div>
+
+              <div class="sale-note-field">
+                <label for="sale-note">Заметка</label>
+                <textarea id="sale-note" name="note" maxlength="500" rows="3"></textarea>
+              </div>
+            </div>
+
+            <div class="sale-form-footer">
+              <div class="sale-form-total">
+                <span>Итого</span>
+                <strong id="sale-form-total">0</strong>
+              </div>
+              <button id="sale-submit" type="submit">Добавить продажу</button>
+            </div>
           </form>
         </div>
       </div>

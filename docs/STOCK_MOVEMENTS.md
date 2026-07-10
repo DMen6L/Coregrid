@@ -7,8 +7,13 @@ The key rule is:
 - `products.quantity` stores the current stock state.
 - stock movement tables store the history of how that quantity changed.
 
-This design is implemented in the backend. Frontend controls for stock
-movements are still a follow-up task.
+This design is implemented in the backend and exposed in the static frontend.
+The frontend can create stock movements, show movement history, show recent
+dashboard movements, and use sales summaries for dashboard reporting.
+
+Sales are now explicit commercial records. A sale creates a linked outgoing
+stock movement internally, but a generic outgoing stock movement is not counted
+as a sale.
 
 ## Purpose
 
@@ -23,11 +28,12 @@ It cannot answer:
 Stock movements add that history. They should support:
 
 - incoming stock
-- outgoing stock
+- outgoing stock for non-sale write-offs or removals
 - manual stock corrections
 - one stock event that changes multiple products
 - product-specific movement history
-- future dashboard and reporting screens
+- dashboard and reporting screens
+- explicit sales linked to outgoing stock movement history
 
 ## Table model
 
@@ -131,8 +137,12 @@ adjustment
 Meaning:
 
 - `in`: stock increased because products were received
-- `out`: stock decreased because products were sold, used, removed, or shipped
+- `out`: stock decreased because products were written off, used, removed, or shipped
 - `adjustment`: stock changed because of recount or manual correction
+
+Commercial sales should use the sales API. The sales API creates an outgoing
+stock movement internally, so inventory history stays complete without treating
+every outgoing movement as revenue.
 
 The frontend may translate these labels for users, but the API/database values
 should stay stable and English-like.
@@ -179,6 +189,10 @@ create `stock_movement_lines` in one database transaction.
 `unit_price_snapshot` should copy the current `Product.sale_price` when the
 movement is created.
 
+For explicit sales, `POST /sales` accepts an actual positive `unit_price` on
+each sale line. That entered price is copied into `unit_price_snapshot`, so
+discounted sales affect revenue and dashboard summaries correctly.
+
 Reason:
 
 - product sale price can change later
@@ -211,6 +225,9 @@ GET /stock-movements?page=1&page_size=25
 GET /stock-movements/sales-summary?date_from=2026-07-05&date_to=2026-07-07
 GET /stock-movements/{id}
 GET /products/{product_id}/movements?page=1&page_size=25
+POST /sales
+GET /sales?page=1&page_size=25
+GET /sales/{id}
 ```
 
 The client sends intent only. It should not send calculated fields.
@@ -277,9 +294,40 @@ Movement collection responses are paginated:
 }
 ```
 
-Sales summary responses include aggregate totals for the selected calendar range
-and `daily_totals` rows for every date in the range. Dates without outgoing
-sales return zero values so dashboard charts can draw a continuous trend.
+Sales summary responses include:
+
+- aggregate revenue for the selected calendar range
+- total sold quantity
+- sold quantities grouped by `quantity_unit_snapshot`
+- sale operation count
+- `daily_totals` rows for every date in the range
+- `best_sellers` with up to five products ranked by actual revenue
+
+Dates without outgoing sales return zero values so dashboard charts can draw a
+continuous trend.
+
+Each `best_sellers` item includes the current product name, revenue, distinct
+sale operation count, sold quantities grouped by their historical unit
+snapshots, and current quantity, unit, and stock status. Revenue ties are
+ordered by product ID. Generic outgoing movements do not affect the ranking.
+
+Sales summary responses count explicit `sales` rows and their linked outgoing
+stock movements. Generic outgoing stock movements are inventory write-offs and
+do not affect sales totals.
+
+## Sales workflow
+
+`POST /sales` accepts positive product quantities and positive actual
+`unit_price` values. The backend creates:
+
+- one `sales` row
+- one linked `stock_movements` row with `movement_type = "out"`
+- one or more `stock_movement_lines` with negative `quantity_delta`
+- price snapshots from the entered sale line prices
+
+The sale response exposes the linked `stock_movement_id`, calculated revenue,
+and the movement line snapshots. Payments, customers, returns, and receipt
+numbers are left for later versions.
 
 ## Pydantic schema direction
 
@@ -297,6 +345,13 @@ Expected response schemas:
 ```text
 StockMovementLineResponse
 StockMovementResponse
+SaleLineCreate
+SaleCreate
+SaleResponse
+StockMovementSalesSummaryUnitResponse
+StockMovementSalesSummaryDailyResponse
+StockMovementSalesSummaryBestSellerResponse
+StockMovementSalesSummaryResponse
 ```
 
 `StockMovementCreate` should use a controlled Python type for movement type,
@@ -364,11 +419,20 @@ Backend endpoint tests should cover:
 - one movement can be fetched by id
 - product-specific movement history can be fetched
 - movement lines snapshot the product quantity unit
+- creating a sale decreases product quantity and creates a linked outgoing movement
+- generic outgoing movements do not create sale records
+- sales summary returns aggregate totals
+- sales summary ignores generic outgoing movements
+- sales summary returns sold quantities grouped by unit
+- sales summary returns daily totals, including zero-sale days
 
 ## Assumptions
 
 - No user/auth tracking in the first version.
 - No supplier/order document tracking in the first version.
 - No decimal money handling in the first version.
-- No frontend movement UI until backend behavior is stable.
+- No payments, customers, discount reasons/approvals, returns, or receipts in
+  the first sales version.
+- The static frontend has movement UI, but direct product quantity editing is
+  still allowed for compatibility.
 - Existing models and schemas stay in single files until they become too large.

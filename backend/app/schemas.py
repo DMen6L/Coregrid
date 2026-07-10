@@ -221,6 +221,34 @@ class StockMovementResponse(BaseModel):
     lines: list[StockMovementLineResponse]
 
 
+class SaleLineCreate(BaseModel):
+    product_id: int = Field(gt=0)
+    quantity: int = Field(gt=0)
+    unit_price: int = Field(gt=0)
+
+
+class SaleCreate(BaseModel):
+    note: str | None = Field(default=None, max_length=500)
+    lines: list[SaleLineCreate] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_lines(self):
+        product_ids = [line.product_id for line in self.lines]
+        if len(product_ids) != len(set(product_ids)):
+            raise ValueError("sale lines cannot repeat product_id")
+
+        return self
+
+
+class SaleResponse(BaseModel):
+    id: int
+    stock_movement_id: int
+    note: str | None
+    created_at: datetime
+    revenue: int
+    lines: list[StockMovementLineResponse]
+
+
 class StockMovementSalesSummaryUnitResponse(BaseModel):
     quantity_unit: str
     quantity: int
@@ -234,11 +262,23 @@ class StockMovementSalesSummaryDailyResponse(BaseModel):
     sale_operations: int
 
 
+class StockMovementSalesSummaryBestSellerResponse(BaseModel):
+    product_id: int
+    product_name: str
+    revenue: int
+    units_sold_by_unit: list[StockMovementSalesSummaryUnitResponse]
+    sale_operations: int
+    current_quantity: int
+    current_quantity_unit: str
+    stock_status: StockStatus
+
+
 class StockMovementSalesSummaryResponse(BaseModel):
     revenue: int
     units_sold: int
     units_sold_by_unit: list[StockMovementSalesSummaryUnitResponse]
     daily_totals: list[StockMovementSalesSummaryDailyResponse]
+    best_sellers: list[StockMovementSalesSummaryBestSellerResponse]
     sale_operations: int
     date_from: date
     date_to: date

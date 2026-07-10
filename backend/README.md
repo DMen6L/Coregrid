@@ -175,11 +175,12 @@ Product `stock_status` values:
 
 #### `GET /stock-movements/sales-summary`
 
-- Returns estimated sales totals for a calendar date range
+- Returns actual sales totals for a calendar date range
 - Requires `date_from=YYYY-MM-DD` and `date_to=YYYY-MM-DD`
-- Counts only outgoing stock movements
-- Returns estimated revenue, sold quantity, sold quantities grouped by unit label, and sale operation count
+- Counts explicit sales and their linked outgoing stock movements
+- Returns revenue from sale line price snapshots, sold quantity, sold quantities grouped by unit label, and sale operation count
 - Includes `daily_totals` with one row per selected calendar day, including zero-sale days, for dashboard charts
+- Includes `best_sellers` with the top five products by actual revenue, unit-aware sold quantities, sale counts, and current stock status
 
 #### `GET /stock-movements/{id}`
 
@@ -188,6 +189,30 @@ Product `stock_status` values:
 #### `GET /products/{product_id}/movements`
 
 - Returns paginated stock movements connected to a product
+
+---
+
+### Sales
+
+#### `POST /sales`
+
+- Creates a commercial sale with one or more product lines
+- Accepts positive line quantities as `quantity`
+- Accepts positive actual sale prices as `unit_price`
+- Creates a linked outgoing stock movement internally
+- Stores each entered `unit_price` as the movement line price snapshot
+- Updates product quantities in the same database transaction
+- Rejects sales that would make product quantity negative
+
+#### `GET /sales`
+
+- Returns a paginated list of sales
+- Supports `order=latest` by default and `order=oldest`
+- Sale responses include linked stock movement id, revenue, note, created date, and movement line snapshots
+
+#### `GET /sales/{id}`
+
+- Returns one sale with linked movement line snapshots
 
 ## Running the server
 

@@ -50,7 +50,10 @@ used by collection endpoints.
 ### `test_api.py`
 
 Automated tests to check responses of FastAPI.
-Currently includes CRUD, validation, delete behavior, pagination behavior, stock movement endpoint tests, and low-stock threshold behavior.
+Currently includes CRUD, validation, delete behavior, pagination behavior,
+product tags, product pricing rules, quantity units, stock movement behavior,
+explicit sales, sales summaries, dashboard daily totals, bestseller rankings,
+and low-stock threshold behavior.
 
 - Needed to lower amount of manual testing of endpoints.
 
@@ -63,4 +66,6 @@ uv run pytest -s
 
 Purpose is to save and generate transaction scripts to dynamically update the tables if such needs occur.
 
-- Current migrations include product constraints, stock movement tables, and product low-stock thresholds.
+- Current migrations include product constraints, stock movement tables, product
+  tags, product low-stock thresholds, product quantity units, and stock movement
+  unit snapshots, and sales backfilled from historical outgoing movements.

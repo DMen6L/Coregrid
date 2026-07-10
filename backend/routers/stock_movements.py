@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 
-from app.models import Product, StockMovement, StockMovementLine
+from app.models import Product, Sale, StockMovement, StockMovementLine
 from app.schemas import (
     PaginatedResponse,
     StockMovementCreate,
@@ -19,6 +19,7 @@ from pagination import DEFAULT_PAGE_SIZE, PageNumber, PageSize, paginate
 
 router = APIRouter(tags=["stock movements"])
 StockMovementOrder = Literal["oldest", "latest"]
+BEST_SELLER_LIMIT = 5
 
 
 @router.post("/stock-movements", response_model=StockMovementResponse, status_code=201)
@@ -110,9 +111,9 @@ def get_stock_movement_sales_summary(
     end_at = datetime.combine(date_to + timedelta(days=1), time.min)
 
     sales_filters = (
+        Sale.created_at >= start_at,
+        Sale.created_at < end_at,
         StockMovement.movement_type == "out",
-        StockMovement.created_at >= start_at,
-        StockMovement.created_at < end_at,
     )
 
     revenue, units_sold, sale_operations = (
@@ -125,9 +126,11 @@ def get_stock_movement_sales_summary(
                 0,
             ),
             func.coalesce(func.sum(func.abs(StockMovementLine.quantity_delta)), 0),
-            func.count(func.distinct(StockMovement.id)),
+            func.count(func.distinct(Sale.id)),
         )
-        .join(StockMovementLine)
+        .select_from(Sale)
+        .join(StockMovement, Sale.stock_movement_id == StockMovement.id)
+        .join(StockMovementLine, StockMovementLine.movement_id == StockMovement.id)
         .filter(*sales_filters)
         .one()
     )
@@ -136,13 +139,15 @@ def get_stock_movement_sales_summary(
             StockMovementLine.quantity_unit_snapshot,
             func.coalesce(func.sum(func.abs(StockMovementLine.quantity_delta)), 0),
         )
-        .join(StockMovement, StockMovementLine.movement_id == StockMovement.id)
+        .select_from(Sale)
+        .join(StockMovement, Sale.stock_movement_id == StockMovement.id)
+        .join(StockMovementLine, StockMovementLine.movement_id == StockMovement.id)
         .filter(*sales_filters)
         .group_by(StockMovementLine.quantity_unit_snapshot)
         .order_by(StockMovementLine.quantity_unit_snapshot)
         .all()
     )
-    sales_day = func.date(StockMovement.created_at).label("sales_day")
+    sales_day = func.date(Sale.created_at).label("sales_day")
     daily_rows = (
         db.query(
             sales_day,
@@ -154,9 +159,11 @@ def get_stock_movement_sales_summary(
                 0,
             ),
             func.coalesce(func.sum(func.abs(StockMovementLine.quantity_delta)), 0),
-            func.count(func.distinct(StockMovement.id)),
+            func.count(func.distinct(Sale.id)),
         )
-        .join(StockMovementLine)
+        .select_from(Sale)
+        .join(StockMovement, Sale.stock_movement_id == StockMovement.id)
+        .join(StockMovementLine, StockMovementLine.movement_id == StockMovement.id)
         .filter(*sales_filters)
         .group_by(sales_day)
         .order_by(sales_day)
@@ -168,12 +175,76 @@ def get_stock_movement_sales_summary(
             StockMovementLine.quantity_unit_snapshot,
             func.coalesce(func.sum(func.abs(StockMovementLine.quantity_delta)), 0),
         )
-        .join(StockMovementLine)
+        .select_from(Sale)
+        .join(StockMovement, Sale.stock_movement_id == StockMovement.id)
+        .join(StockMovementLine, StockMovementLine.movement_id == StockMovement.id)
         .filter(*sales_filters)
         .group_by(sales_day, StockMovementLine.quantity_unit_snapshot)
         .order_by(sales_day, StockMovementLine.quantity_unit_snapshot)
         .all()
     )
+    product_revenue = func.sum(
+        func.abs(StockMovementLine.quantity_delta)
+        * func.coalesce(StockMovementLine.unit_price_snapshot, 0)
+    )
+    best_seller_rows = (
+        db.query(
+            Product,
+            product_revenue.label("revenue"),
+            func.count(func.distinct(Sale.id)).label("sale_operations"),
+        )
+        .select_from(Sale)
+        .join(StockMovement, Sale.stock_movement_id == StockMovement.id)
+        .join(StockMovementLine, StockMovementLine.movement_id == StockMovement.id)
+        .join(Product, Product.id == StockMovementLine.product_id)
+        .filter(*sales_filters)
+        .group_by(Product.id)
+        .order_by(product_revenue.desc(), Product.id)
+        .limit(BEST_SELLER_LIMIT)
+        .all()
+    )
+    best_seller_product_ids = [product.id for product, _, _ in best_seller_rows]
+    best_seller_units_by_product_id = {
+        product_id: []
+        for product_id in best_seller_product_ids
+    }
+
+    if best_seller_product_ids:
+        best_seller_unit_rows = (
+            db.query(
+                StockMovementLine.product_id,
+                StockMovementLine.quantity_unit_snapshot,
+                func.sum(func.abs(StockMovementLine.quantity_delta)),
+            )
+            .select_from(Sale)
+            .join(StockMovement, Sale.stock_movement_id == StockMovement.id)
+            .join(
+                StockMovementLine,
+                StockMovementLine.movement_id == StockMovement.id,
+            )
+            .filter(
+                *sales_filters,
+                StockMovementLine.product_id.in_(best_seller_product_ids),
+            )
+            .group_by(
+                StockMovementLine.product_id,
+                StockMovementLine.quantity_unit_snapshot,
+            )
+            .order_by(
+                StockMovementLine.product_id,
+                StockMovementLine.quantity_unit_snapshot,
+            )
+            .all()
+        )
+
+        for product_id, quantity_unit, quantity in best_seller_unit_rows:
+            best_seller_units_by_product_id[product_id].append(
+                {
+                    "quantity_unit": quantity_unit,
+                    "quantity": int(quantity),
+                }
+            )
+
     daily_totals_by_date = {
         normalize_sales_summary_date(sales_date): {
             "date": normalize_sales_summary_date(sales_date),
@@ -227,6 +298,23 @@ def get_stock_movement_sales_summary(
             for quantity_unit, quantity in units_sold_by_unit
         ],
         daily_totals=daily_totals,
+        best_sellers=[
+            {
+                "product_id": product.id,
+                "product_name": product.name,
+                "revenue": int(product_sales_revenue),
+                "units_sold_by_unit": best_seller_units_by_product_id[product.id],
+                "sale_operations": int(product_sale_operations),
+                "current_quantity": product.quantity,
+                "current_quantity_unit": product.quantity_unit,
+                "stock_status": product.stock_status,
+            }
+            for (
+                product,
+                product_sales_revenue,
+                product_sale_operations,
+            ) in best_seller_rows
+        ],
         sale_operations=int(sale_operations),
         date_from=date_from,
         date_to=date_to,
