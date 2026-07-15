@@ -41,7 +41,6 @@ QuantityUnit = Annotated[
 ]
 MovementType = Literal["in", "out", "adjustment"]
 StockStatus = Literal["available", "low", "out"]
-ItemT = TypeVar("ItemT")
 
 # ===============
 # VALIDATOR CLASS
@@ -249,52 +248,8 @@ class SaleResponse(BaseModel):
     lines: list[StockMovementLineResponse]
 
 
-class StockMovementSalesSummaryUnitResponse(BaseModel):
-    quantity_unit: str
-    quantity: int
-
-
-class StockMovementSalesSummaryDailyResponse(BaseModel):
-    date: date
-    revenue: int
-    units_sold: int
-    units_sold_by_unit: list[StockMovementSalesSummaryUnitResponse]
-    sale_operations: int
-
-
-class StockMovementSalesSummaryBestSellerResponse(BaseModel):
-    product_id: int
-    product_name: str
-    revenue: int
-    units_sold_by_unit: list[StockMovementSalesSummaryUnitResponse]
-    sale_operations: int
-    current_quantity: int
-    current_quantity_unit: str
-    stock_status: StockStatus
-
-
-class StockMovementSalesSummaryResponse(BaseModel):
-    revenue: int
-    units_sold: int
-    units_sold_by_unit: list[StockMovementSalesSummaryUnitResponse]
-    daily_totals: list[StockMovementSalesSummaryDailyResponse]
-    best_sellers: list[StockMovementSalesSummaryBestSellerResponse]
-    sale_operations: int
-    date_from: date
-    date_to: date
-
-
-class ProductSummaryResponse(BaseModel):
-    total_products: int
-    total_units: int
-    inventory_value: int
+class SummariesResponse(BaseModel):
+    dashboard_sales_value: int
+    dashboard_sales_count: int
     low_stock: int
     out_of_stock: int
-
-
-class PaginatedResponse(BaseModel, Generic[ItemT]):
-    items: list[ItemT]
-    total: int
-    page: int
-    page_size: int
-    pages: int
