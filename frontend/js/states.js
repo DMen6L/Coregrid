@@ -23,6 +23,10 @@ export const elements = {
     empty: getElement("#products-empty"),
     table: getElement("#products-table"),
     tableBody: getElement("#products-table-body"),
+    pagination: getElement("#products-pagination"),
+    previousPageButton: getElement("#products-previous-page-button"),
+    nextPageButton: getElement("#products-next-page-button"),
+    pageSummary: getElement("#products-page-summary"),
   },
 };
 
@@ -40,6 +44,12 @@ export const state = {
     outOfStock: 0,
     isLoading: true,
     error: "",
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 0,
+    hasNext: false,
+    hasPrevious: false,
   },
 };
 
@@ -93,6 +103,7 @@ export function setAppMessage(message) {
 export function setProductsLoading(isLoading) {
   state.products.isLoading = isLoading;
   elements.products.searchButton.disabled = isLoading;
+  updatePaginationControls();
   renderProducts(state.products.list);
 }
 
@@ -105,6 +116,16 @@ export function setProductsError(message) {
 
 export function setProductsSearchTerm(searchTerm) {
   state.products.searchTerm = searchTerm;
+  renderProducts(state.products.list);
+}
+
+export function setProductsPagination(pagination) {
+  state.products.page = pagination.page;
+  state.products.pageSize = pagination.pageSize;
+  state.products.total = pagination.total;
+  state.products.totalPages = pagination.totalPages;
+  state.products.hasNext = pagination.hasNext;
+  state.products.hasPrevious = pagination.hasPrevious;
   renderProducts(state.products.list);
 }
 
@@ -147,13 +168,14 @@ function renderProducts(products) {
   const shouldShowEmpty =
     !hasProducts && !state.products.isLoading && !state.products.error;
 
-  elements.products.count.textContent = formatProductsCount(productList.length);
+  elements.products.count.textContent = formatProductsCount(state.products.total);
   elements.products.loading.classList.toggle("d-none", !state.products.isLoading);
   elements.products.empty.textContent = state.products.searchTerm
     ? "По запросу ничего не найдено."
     : "Товары пока не добавлены.";
   elements.products.empty.classList.toggle("d-none", !shouldShowEmpty);
   elements.products.table.classList.toggle("d-none", !shouldShowTable);
+  updatePaginationControls();
 
   elements.products.tableBody.replaceChildren();
 
@@ -168,6 +190,20 @@ function renderProducts(products) {
   }
 
   elements.products.tableBody.append(fragment);
+}
+
+function updatePaginationControls() {
+  const shouldShowPagination =
+    state.products.total > 0 && !state.products.isLoading && !state.products.error;
+  const totalPages = Math.max(state.products.totalPages, 1);
+
+  elements.products.pagination.classList.toggle("d-none", !shouldShowPagination);
+  elements.products.previousPageButton.disabled =
+    state.products.isLoading || !state.products.hasPrevious;
+  elements.products.nextPageButton.disabled =
+    state.products.isLoading || !state.products.hasNext;
+  elements.products.pageSummary.textContent =
+    `Страница ${formatCount(state.products.page)} из ${formatCount(totalPages)}`;
 }
 
 function createProductRow(product) {

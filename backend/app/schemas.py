@@ -2,6 +2,7 @@ from datetime import date, datetime
 from typing import Annotated, Generic, Literal, TypeVar
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     field_validator,
     model_validator,
@@ -41,6 +42,8 @@ QuantityUnit = Annotated[
 ]
 MovementType = Literal["in", "out", "adjustment"]
 StockStatus = Literal["available", "low", "out"]
+
+ItemT = TypeVar("ItemT")
 
 # ===============
 # VALIDATOR CLASS
@@ -133,6 +136,8 @@ class ProductCreate(BaseModel):
 
 
 class ProductResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
     purchase_price: int
@@ -253,3 +258,13 @@ class SummariesResponse(BaseModel):
     dashboard_sales_count: int
     low_stock: int
     out_of_stock: int
+
+
+class PaginatedResponse(BaseModel, Generic[ItemT]):
+    items: list[ItemT]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+    has_next: bool
+    has_previous: bool

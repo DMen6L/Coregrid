@@ -1,19 +1,24 @@
 import { request } from "./utils.js";
 import {
   elements,
+  state,
   setActiveView,
   setAppMessage,
   setProductsError,
   setProductsLoading,
+  setProductsPagination,
   setProductsSearchTerm,
   setState,
 } from "./states.js";
+
+const FIRST_PRODUCTS_PAGE = 1;
 
 initializeApp();
 
 function initializeApp() {
   bindNavigation();
   bindProductSearch();
+  bindProductPagination();
   setActiveView("dashboard");
   loadInitialData();
 }
@@ -35,7 +40,25 @@ function bindProductSearch() {
     }
 
     const searchTerm = elements.products.searchInput.value.trim();
-    loadProducts(searchTerm);
+    loadProducts(searchTerm, FIRST_PRODUCTS_PAGE);
+  });
+}
+
+function bindProductPagination() {
+  elements.products.previousPageButton.addEventListener("click", () => {
+    if (elements.products.previousPageButton.disabled) {
+      return;
+    }
+
+    loadProducts(state.products.searchTerm, state.products.page - 1);
+  });
+
+  elements.products.nextPageButton.addEventListener("click", () => {
+    if (elements.products.nextPageButton.disabled) {
+      return;
+    }
+
+    loadProducts(state.products.searchTerm, state.products.page + 1);
   });
 }
 
@@ -59,16 +82,27 @@ async function loadDashboardSummary() {
   }
 }
 
-async function loadProducts(searchTerm = "") {
+async function loadProducts(searchTerm = "", page = FIRST_PRODUCTS_PAGE) {
   setProductsLoading(true);
   setProductsSearchTerm(searchTerm);
   setProductsError("");
 
   try {
-    const productsResponse = await request(getProductsPath(searchTerm));
-    setState("products.list", getProductItems(productsResponse));
+    const productsResponse = await request(getProductsPath(searchTerm, page));
+    const productsPage = getProductsPage(productsResponse);
+
+    setProductsPagination(productsPage.pagination);
+    setState("products.list", productsPage.items);
   } catch (error) {
     console.error("Could not load products:", error);
+    setProductsPagination({
+      page,
+      pageSize: state.products.pageSize,
+      total: 0,
+      totalPages: 0,
+      hasNext: false,
+      hasPrevious: false,
+    });
     setState("products.list", []);
     setProductsError(getRequestErrorMessage(error, "товары"));
   } finally {
@@ -76,23 +110,45 @@ async function loadProducts(searchTerm = "") {
   }
 }
 
-function getProductsPath(searchTerm) {
+function getProductsPath(searchTerm, page) {
   const params = new URLSearchParams();
 
   if (searchTerm) {
     params.set("search", searchTerm);
   }
 
+  params.set("page", String(Math.max(page, FIRST_PRODUCTS_PAGE)));
+
   const queryString = params.toString();
   return queryString ? `/products?${queryString}` : "/products";
 }
 
-function getProductItems(productsResponse) {
+function getProductsPage(productsResponse) {
   if (Array.isArray(productsResponse)) {
-    return productsResponse;
+    return {
+      items: productsResponse,
+      pagination: {
+        page: FIRST_PRODUCTS_PAGE,
+        pageSize: productsResponse.length,
+        total: productsResponse.length,
+        totalPages: productsResponse.length > 0 ? 1 : 0,
+        hasNext: false,
+        hasPrevious: false,
+      },
+    };
   }
 
-  return Array.isArray(productsResponse?.items) ? productsResponse.items : [];
+  return {
+    items: Array.isArray(productsResponse?.items) ? productsResponse.items : [],
+    pagination: {
+      page: Number(productsResponse?.page || FIRST_PRODUCTS_PAGE),
+      pageSize: Number(productsResponse?.page_size || 20),
+      total: Number(productsResponse?.total || 0),
+      totalPages: Number(productsResponse?.total_pages || 0),
+      hasNext: Boolean(productsResponse?.has_next),
+      hasPrevious: Boolean(productsResponse?.has_previous),
+    },
+  };
 }
 
 function getRequestErrorMessage(error, label) {

@@ -57,6 +57,19 @@ body {
   min-width: 760px;
 }
 
+.products-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.products-page-summary {
+  color: var(--bs-secondary-color);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
 .product-name-cell {
   min-width: 13rem;
 }
@@ -84,6 +97,15 @@ body {
   .products-count {
     align-self: flex-start;
     margin-bottom: 0;
+  }
+
+  .products-pagination {
+    align-items: stretch;
+    justify-content: space-between;
+  }
+
+  .products-page-summary {
+    align-self: center;
   }
 
   .products-search .input-group {
