@@ -9,3 +9,10 @@ def test_get_summaries():
 
     assert response.status_code == 200
     print(response.json())
+
+
+def test_get_products():
+    response = client.get("/products")
+
+    assert response.status_code == 200
+    print(response.json())

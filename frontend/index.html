@@ -14,45 +14,131 @@
     <link href="css/style.css" rel="stylesheet">
   </head>
   <body>
-    <nav class="navbar navbar-expand-lg bg-body-tertiary">
+    <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom">
       <div class="container-fluid">
         <a class="navbar-brand text-primary fs-4 fw-bold" href="#">Coregrid</a>
+        <button
+          class="navbar-toggler"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#navbarNavAltMarkup"
+          aria-controls="navbarNavAltMarkup"
+          aria-expanded="false"
+          aria-label="Toggle navigation"
+        >
+          <span class="navbar-toggler-icon"></span>
+        </button>
         <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
-          <div class="navbar-nav">
-            <a class="nav-link active" aria-current="page" href="#">Дэшборд</a>
+          <div class="navbar-nav nav nav-pills coregrid-navbar-tabs" role="tablist">
+            <button
+              class="nav-link active"
+              id="dashboard-tab"
+              type="button"
+              role="tab"
+              data-view-tab="dashboard"
+              aria-controls="dashboard"
+              aria-selected="true"
+              aria-current="page"
+            >
+              Дэшборд
+            </button>
+            <button
+              class="nav-link"
+              id="products-tab"
+              type="button"
+              role="tab"
+              data-view-tab="products"
+              aria-controls="products"
+              aria-selected="false"
+            >
+              Товары
+            </button>
           </div>
         </div>
       </div>
     </nav>
 
-    <main class="container-fluid p-4">
-      <div class="row gap-2">
-        <div class="card text-center col" style="width: 18rem;">
-          <div class="card-body">
-            <h5 class="card-title">Продажы</h5>
-            <p class="card-text fs-1 fw-bold" id="dashboard-sales-value-card">0 тг</p>
-          </div>
-        </div>
-        <div class="card text-center col" style="width: 18rem;">
-          <div class="card-body">
-            <h5 class="card-title">Продаж сделано</h5>
-            <p class="card-text fs-1 fw-bold" id=dashboard-sales-count-card>0</p>
-          </div>
-        </div>
-        <div class="card text-center col bg-warning-subtle" style="width: 18rem;">
-          <div class="card-body">
-            <h5 class="card-title">Мало остатков</h5>
-            <p class="card-text fs-1 fw-bold" id="dashboard-low-stock">0</p>
-          </div>
-        </div>
-        <div class="card text-center col bg-danger-subtle" style="width: 18rem;">
-          <div class="card-body">
-            <h5 class="card-title">Нет на складе</h5>
-            <p class="card-text fs-1 fw-bold" id="dashboard-out-of-stock">0</p>
-          </div>
-        </div>
-
+    <main class="container-fluid px-0">
+      <div class="container-fluid px-4 pt-4">
+        <div class="alert alert-danger d-none mb-0" id="app-message" role="alert"></div>
       </div>
+
+      <section
+        class="container-fluid p-4"
+        id="dashboard"
+        role="tabpanel"
+        aria-labelledby="dashboard-tab"
+      >
+        <div class="row g-3">
+          <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card dashboard-card text-center h-100">
+              <div class="card-body">
+                <h5 class="card-title">Продажы</h5>
+                <p class="card-text fs-1 fw-bold" id="dashboard-sales-value-card">0 тг</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card dashboard-card text-center h-100">
+              <div class="card-body">
+                <h5 class="card-title">Продаж сделано</h5>
+                <p class="card-text fs-1 fw-bold" id="dashboard-sales-count-card">0</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card dashboard-card text-center h-100 bg-warning-subtle">
+              <div class="card-body">
+                <h5 class="card-title">Мало остатков</h5>
+                <p class="card-text fs-1 fw-bold" id="dashboard-low-stock">0</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card dashboard-card text-center h-100 bg-danger-subtle">
+              <div class="card-body">
+                <h5 class="card-title">Нет на складе</h5>
+                <p class="card-text fs-1 fw-bold" id="dashboard-out-of-stock">0</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        class="container-fluid p-4 d-none"
+        id="products"
+        role="tabpanel"
+        aria-labelledby="products-tab"
+        hidden
+      >
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+          <h1 class="h4 mb-0">Товары</h1>
+          <span class="badge text-bg-secondary" id="products-count">0 товаров</span>
+        </div>
+        <div class="text-secondary py-4" id="products-loading" aria-live="polite">
+          Загрузка товаров...
+        </div>
+        <div class="alert alert-danger d-none" id="products-error" role="alert"></div>
+        <div class="alert alert-light border d-none" id="products-empty" role="status">
+          Товары пока не добавлены.
+        </div>
+        <div class="table-responsive products-table d-none" id="products-table">
+          <table class="table table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th scope="col">Товар</th>
+                <th scope="col">Статус</th>
+                <th scope="col">Остаток</th>
+                <th scope="col">Цена продажи</th>
+                <th scope="col">Поставщик / компания</th>
+                <th scope="col">Теги</th>
+              </tr>
+            </thead>
+            <tbody id="products-table-body"></tbody>
+          </table>
+        </div>
+      </section>
     </main>
 
     <script
