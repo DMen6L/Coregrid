@@ -36,6 +36,16 @@ body {
   font-size: 0.95rem;
 }
 
+.products-search {
+  flex: 1 1 24rem;
+  max-width: 48rem;
+}
+
+.products-count {
+  flex: 0 0 auto;
+  margin-bottom: 0.45rem;
+}
+
 .products-table {
   overflow: hidden;
   background: #fff;
@@ -64,4 +74,26 @@ body {
 
 .status-badge {
   min-width: 5.5rem;
+}
+
+@media (max-width: 575.98px) {
+  .products-toolbar {
+    align-items: stretch !important;
+  }
+
+  .products-count {
+    align-self: flex-start;
+    margin-bottom: 0;
+  }
+
+  .products-search .input-group {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .products-search .input-group > .form-control,
+  .products-search .input-group > .btn {
+    width: 100%;
+    border-radius: var(--bs-border-radius) !important;
+  }
 }

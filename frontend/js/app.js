@@ -5,6 +5,7 @@ import {
   setAppMessage,
   setProductsError,
   setProductsLoading,
+  setProductsSearchTerm,
   setState,
 } from "./states.js";
 
@@ -12,6 +13,7 @@ initializeApp();
 
 function initializeApp() {
   bindNavigation();
+  bindProductSearch();
   setActiveView("dashboard");
   loadInitialData();
 }
@@ -22,6 +24,19 @@ function bindNavigation() {
       setActiveView(tab.dataset.viewTab);
     });
   }
+}
+
+function bindProductSearch() {
+  elements.products.searchForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    if (elements.products.searchButton.disabled) {
+      return;
+    }
+
+    const searchTerm = elements.products.searchInput.value.trim();
+    loadProducts(searchTerm);
+  });
 }
 
 async function loadInitialData() {
@@ -44,13 +59,14 @@ async function loadDashboardSummary() {
   }
 }
 
-async function loadProducts() {
+async function loadProducts(searchTerm = "") {
   setProductsLoading(true);
+  setProductsSearchTerm(searchTerm);
   setProductsError("");
 
   try {
-    const products = await request("/products");
-    setState("products.list", products);
+    const productsResponse = await request(getProductsPath(searchTerm));
+    setState("products.list", getProductItems(productsResponse));
   } catch (error) {
     console.error("Could not load products:", error);
     setState("products.list", []);
@@ -58,6 +74,25 @@ async function loadProducts() {
   } finally {
     setProductsLoading(false);
   }
+}
+
+function getProductsPath(searchTerm) {
+  const params = new URLSearchParams();
+
+  if (searchTerm) {
+    params.set("search", searchTerm);
+  }
+
+  const queryString = params.toString();
+  return queryString ? `/products?${queryString}` : "/products";
+}
+
+function getProductItems(productsResponse) {
+  if (Array.isArray(productsResponse)) {
+    return productsResponse;
+  }
+
+  return Array.isArray(productsResponse?.items) ? productsResponse.items : [];
 }
 
 function getRequestErrorMessage(error, label) {

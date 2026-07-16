@@ -14,6 +14,9 @@ export const elements = {
     outOfStockCard: getElement("#dashboard-out-of-stock"),
   },
   products: {
+    searchForm: getElement("#products-search-form"),
+    searchInput: getElement("#products-search-input"),
+    searchButton: getElement("#products-search-button"),
     count: getElement("#products-count"),
     loading: getElement("#products-loading"),
     error: getElement("#products-error"),
@@ -32,6 +35,7 @@ export const state = {
   },
   products: {
     list: [],
+    searchTerm: "",
     lowStock: 0,
     outOfStock: 0,
     isLoading: true,
@@ -88,6 +92,7 @@ export function setAppMessage(message) {
 
 export function setProductsLoading(isLoading) {
   state.products.isLoading = isLoading;
+  elements.products.searchButton.disabled = isLoading;
   renderProducts(state.products.list);
 }
 
@@ -95,6 +100,11 @@ export function setProductsError(message) {
   state.products.error = message;
   elements.products.error.textContent = message;
   elements.products.error.classList.toggle("d-none", !message);
+  renderProducts(state.products.list);
+}
+
+export function setProductsSearchTerm(searchTerm) {
+  state.products.searchTerm = searchTerm;
   renderProducts(state.products.list);
 }
 
@@ -139,6 +149,9 @@ function renderProducts(products) {
 
   elements.products.count.textContent = formatProductsCount(productList.length);
   elements.products.loading.classList.toggle("d-none", !state.products.isLoading);
+  elements.products.empty.textContent = state.products.searchTerm
+    ? "По запросу ничего не найдено."
+    : "Товары пока не добавлены.";
   elements.products.empty.classList.toggle("d-none", !shouldShowEmpty);
   elements.products.table.classList.toggle("d-none", !shouldShowTable);
 

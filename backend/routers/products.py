@@ -10,5 +10,10 @@ router = APIRouter(prefix="/products", tags=["products"])
 
 
 @router.get("", response_model=list[ProductResponse], status_code=200)
-def get_all_products(db: DbSession):
-    return db.scalars(select(Product)).all()
+def get_product_by_name(db: DbSession, search: str | None = None):
+    statement = select(Product)
+
+    if search and (search := search.strip()):
+        statement = statement.where(Product.name.ilike(f"%{search}%"))
+
+    return db.scalars(statement).all()

@@ -112,9 +112,28 @@
         aria-labelledby="products-tab"
         hidden
       >
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-          <h1 class="h4 mb-0">Товары</h1>
-          <span class="badge text-bg-secondary" id="products-count">0 товаров</span>
+        <div class="products-toolbar d-flex align-items-end justify-content-between flex-wrap gap-3 mb-3">
+          <form class="products-search" id="products-search-form" role="search">
+            <label class="form-label" for="products-search-input">Поиск товара</label>
+            <div class="input-group">
+              <input
+                class="form-control"
+                id="products-search-input"
+                name="search"
+                type="search"
+                placeholder="Введите название товара"
+                autocomplete="off"
+              >
+              <button
+                class="btn btn-primary"
+                id="products-search-button"
+                type="submit"
+              >
+                Поиск
+              </button>
+            </div>
+          </form>
+          <span class="badge text-bg-secondary products-count" id="products-count">0 товаров</span>
         </div>
         <div class="text-secondary py-4" id="products-loading" aria-live="polite">
           Загрузка товаров...
