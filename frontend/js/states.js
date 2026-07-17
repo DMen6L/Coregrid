@@ -3,9 +3,13 @@ const DEFAULT_VIEW = "dashboard";
 export const elements = {
   appMessage: getElement("#app-message"),
   navTabs: Array.from(document.querySelectorAll("[data-view-tab]")),
+  navMenuToggles: Array.from(
+    document.querySelectorAll("[data-view-menu-toggle], [data-view-menu-views]"),
+  ),
   views: {
     dashboard: getElement("#dashboard"),
     products: getElement("#products"),
+    companies: getElement("#companies"),
   },
   dashboard: {
     salesValueCard: getElement("#dashboard-sales-value-card"),
@@ -33,6 +37,21 @@ export const elements = {
     nextPageButton: getElement("#products-next-page-button"),
     pageSummary: getElement("#products-page-summary"),
   },
+  companies: {
+    searchForm: getElement("#companies-search-form"),
+    searchInput: getElement("#companies-search-input"),
+    searchButton: getElement("#companies-search-button"),
+    count: getElement("#companies-count"),
+    loading: getElement("#companies-loading"),
+    error: getElement("#companies-error"),
+    empty: getElement("#companies-empty"),
+    table: getElement("#companies-table"),
+    tableBody: getElement("#companies-table-body"),
+    pagination: getElement("#companies-pagination"),
+    previousPageButton: getElement("#companies-previous-page-button"),
+    nextPageButton: getElement("#companies-next-page-button"),
+    pageSummary: getElement("#companies-page-summary"),
+  },
 };
 
 export const state = {
@@ -56,6 +75,18 @@ export const state = {
     hasNext: false,
     hasPrevious: false,
     isCreating: false,
+  },
+  companies: {
+    list: [],
+    searchTerm: "",
+    isLoading: true,
+    error: "",
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 0,
+    hasNext: false,
+    hasPrevious: false,
   },
 };
 
@@ -90,6 +121,18 @@ export function setActiveView(viewName) {
       tab.setAttribute("aria-current", "page");
     } else {
       tab.removeAttribute("aria-current");
+    }
+  }
+
+  for (const toggle of elements.navMenuToggles) {
+    const viewNames = getMenuToggleViews(toggle);
+    const isActive = viewNames.includes(nextView);
+    toggle.classList.toggle("active", isActive);
+
+    if (isActive) {
+      toggle.setAttribute("aria-current", "page");
+    } else {
+      toggle.removeAttribute("aria-current");
     }
   }
 
@@ -154,6 +197,35 @@ export function resetProductCreateForm() {
   setProductCreateError("");
 }
 
+export function setCompaniesLoading(isLoading) {
+  state.companies.isLoading = isLoading;
+  elements.companies.searchButton.disabled = isLoading;
+  updateCompaniesPaginationControls();
+  renderCompanies(state.companies.list);
+}
+
+export function setCompaniesError(message) {
+  state.companies.error = message;
+  elements.companies.error.textContent = message;
+  elements.companies.error.classList.toggle("d-none", !message);
+  renderCompanies(state.companies.list);
+}
+
+export function setCompaniesSearchTerm(searchTerm) {
+  state.companies.searchTerm = searchTerm;
+  renderCompanies(state.companies.list);
+}
+
+export function setCompaniesPagination(pagination) {
+  state.companies.page = pagination.page;
+  state.companies.pageSize = pagination.pageSize;
+  state.companies.total = pagination.total;
+  state.companies.totalPages = pagination.totalPages;
+  state.companies.hasNext = pagination.hasNext;
+  state.companies.hasPrevious = pagination.hasPrevious;
+  renderCompanies(state.companies.list);
+}
+
 const stateBindings = {
   "sales.value": {
     update(value) {
@@ -184,7 +256,18 @@ const stateBindings = {
       elements.dashboard.outOfStockCard.textContent = formatCount(value);
     },
   },
+
+  "companies.list": {
+    update(companies) {
+      renderCompanies(companies);
+    },
+  },
 };
+
+function getMenuToggleViews(toggle) {
+  const views = toggle.dataset.viewMenuViews || toggle.dataset.viewMenuToggle || "";
+  return views.split(" ").filter(Boolean);
+}
 
 function renderProducts(products) {
   const productList = Array.isArray(products) ? products : [];
@@ -229,6 +312,72 @@ function updatePaginationControls() {
     state.products.isLoading || !state.products.hasNext;
   elements.products.pageSummary.textContent =
     `Страница ${formatCount(state.products.page)} из ${formatCount(totalPages)}`;
+}
+
+function renderCompanies(companies) {
+  const companyList = Array.isArray(companies) ? companies : [];
+  const hasCompanies = companyList.length > 0;
+  const shouldShowTable = hasCompanies && !state.companies.isLoading;
+  const shouldShowEmpty =
+    !hasCompanies && !state.companies.isLoading && !state.companies.error;
+
+  elements.companies.count.textContent = formatCompaniesCount(state.companies.total);
+  elements.companies.loading.classList.toggle("d-none", !state.companies.isLoading);
+  elements.companies.empty.textContent = state.companies.searchTerm
+    ? "По запросу ничего не найдено."
+    : "Компании пока не добавлены.";
+  elements.companies.empty.classList.toggle("d-none", !shouldShowEmpty);
+  elements.companies.table.classList.toggle("d-none", !shouldShowTable);
+  updateCompaniesPaginationControls();
+
+  elements.companies.tableBody.replaceChildren();
+
+  if (!shouldShowTable) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const company of companyList) {
+    fragment.append(createCompanyRow(company));
+  }
+
+  elements.companies.tableBody.append(fragment);
+}
+
+function updateCompaniesPaginationControls() {
+  const shouldShowPagination =
+    state.companies.total > 0 && !state.companies.isLoading && !state.companies.error;
+  const totalPages = Math.max(state.companies.totalPages, 1);
+
+  elements.companies.pagination.classList.toggle("d-none", !shouldShowPagination);
+  elements.companies.previousPageButton.disabled =
+    state.companies.isLoading || !state.companies.hasPrevious;
+  elements.companies.nextPageButton.disabled =
+    state.companies.isLoading || !state.companies.hasNext;
+  elements.companies.pageSummary.textContent =
+    `Страница ${formatCount(state.companies.page)} из ${formatCount(totalPages)}`;
+}
+
+function createCompanyRow(company) {
+  const row = document.createElement("tr");
+
+  const companyCell = document.createElement("td");
+  const name = document.createElement("div");
+  name.className = "fw-semibold";
+  name.textContent = company.name || "Без названия";
+
+  const meta = document.createElement("div");
+  meta.className = "company-meta";
+  meta.textContent = `ID ${company.id}`;
+
+  companyCell.append(name, meta);
+
+  const iinCell = document.createElement("td");
+  iinCell.textContent = company.iin || "Не указан";
+
+  row.append(companyCell, iinCell);
+  return row;
 }
 
 function createProductRow(product) {
@@ -391,6 +540,11 @@ function formatCount(value) {
 function formatProductsCount(count) {
   const formattedCount = formatCount(count);
   return count === 1 ? `${formattedCount} товар` : `${formattedCount} товаров`;
+}
+
+function formatCompaniesCount(count) {
+  const formattedCount = formatCount(count);
+  return count === 1 ? `${formattedCount} компания` : `${formattedCount} компаний`;
 }
 
 function formatQuantity(quantity, unit) {

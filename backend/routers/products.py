@@ -1,15 +1,15 @@
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Query
+from sqlalchemy import Integer, func, select, type_coerce
 
-from app.models import Product, Tag
+from app.models import Product
 from app.pricing import calculate_floor_price
 from app.schemas import PaginatedResponse, ProductCreate, ProductResponse
 from app.tags import get_or_create_tags
 from devs import DbSession
 from errors import commit_or_raise
+from utils import paginate
 
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -22,33 +22,24 @@ def get_product_by_name(
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     search: Annotated[str | None, Query(max_length=100)] = None,
 ):
-    statement_total = select(func.count()).select_from(Product)
-    statement_products = (
-        select(Product)
-        .order_by(Product.id)
-        .offset((page - 1) * page_size)
-        .limit(page_size)
+    statement = select(Product).order_by(Product.id)
+    count_statement = select(type_coerce(func.count(Product.id), Integer)).select_from(
+        Product
     )
 
     if search and (search := search.strip()):
-        statement_total = statement_total.where(Product.name.ilike(f"%{search}%"))
-        statement_products = statement_products.where(Product.name.ilike(f"%{search}%"))
+        condition = Product.name.ilike(f"%{search}%")
 
-    total = db.scalar(statement_total) or 0
+        statement = statement.where(condition)
+        count_statement = count_statement.where(condition)
 
-    products = list(db.scalars(statement_products).all())
-    items = [ProductResponse.model_validate(product) for product in products]
-
-    total_pages = (total + page_size - 1) // page_size
-
-    return PaginatedResponse[ProductResponse](
-        items=items,
+    return paginate(
+        db=db,
+        statement=statement,
+        count_statement=count_statement,
         page=page,
         page_size=page_size,
-        total=total,
-        total_pages=total_pages,
-        has_next=page < total_pages,
-        has_previous=page > 1,
+        response_schema=ProductResponse,
     )
 
 

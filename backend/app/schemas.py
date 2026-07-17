@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 from typing import Annotated, Generic, Literal, TypeVar
 from pydantic import (
     BaseModel,

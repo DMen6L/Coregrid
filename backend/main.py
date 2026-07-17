@@ -1,6 +1,4 @@
 from datetime import date, datetime, time, timedelta
-from decimal import Decimal
-import select
 
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware

@@ -5,6 +5,10 @@ import {
   setActiveView,
   setAppMessage,
   resetProductCreateForm,
+  setCompaniesError,
+  setCompaniesLoading,
+  setCompaniesPagination,
+  setCompaniesSearchTerm,
   setProductCreateError,
   setProductCreateSubmitting,
   setProductsError,
@@ -14,7 +18,7 @@ import {
   setState,
 } from "./states.js";
 
-const FIRST_PRODUCTS_PAGE = 1;
+const FIRST_LIST_PAGE = 1;
 
 initializeApp();
 
@@ -23,6 +27,8 @@ function initializeApp() {
   bindProductSearch();
   bindProductPagination();
   bindProductCreate();
+  bindCompanySearch();
+  bindCompanyPagination();
   setActiveView("dashboard");
   loadInitialData();
 }
@@ -44,7 +50,7 @@ function bindProductSearch() {
     }
 
     const searchTerm = elements.products.searchInput.value.trim();
-    loadProducts(searchTerm, FIRST_PRODUCTS_PAGE);
+    loadProducts(searchTerm, FIRST_LIST_PAGE);
   });
 }
 
@@ -87,8 +93,39 @@ function bindProductCreate() {
   });
 }
 
+function bindCompanySearch() {
+  elements.companies.searchForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    if (elements.companies.searchButton.disabled) {
+      return;
+    }
+
+    const searchTerm = elements.companies.searchInput.value.trim();
+    loadCompanies(searchTerm, FIRST_LIST_PAGE);
+  });
+}
+
+function bindCompanyPagination() {
+  elements.companies.previousPageButton.addEventListener("click", () => {
+    if (elements.companies.previousPageButton.disabled) {
+      return;
+    }
+
+    loadCompanies(state.companies.searchTerm, state.companies.page - 1);
+  });
+
+  elements.companies.nextPageButton.addEventListener("click", () => {
+    if (elements.companies.nextPageButton.disabled) {
+      return;
+    }
+
+    loadCompanies(state.companies.searchTerm, state.companies.page + 1);
+  });
+}
+
 async function loadInitialData() {
-  await Promise.all([loadDashboardSummary(), loadProducts()]);
+  await Promise.all([loadDashboardSummary(), loadProducts(), loadCompanies()]);
 }
 
 async function loadDashboardSummary() {
@@ -107,7 +144,7 @@ async function loadDashboardSummary() {
   }
 }
 
-async function loadProducts(searchTerm = "", page = FIRST_PRODUCTS_PAGE) {
+async function loadProducts(searchTerm = "", page = FIRST_LIST_PAGE) {
   setProductsLoading(true);
   setProductsSearchTerm(searchTerm);
   setProductsError("");
@@ -132,6 +169,34 @@ async function loadProducts(searchTerm = "", page = FIRST_PRODUCTS_PAGE) {
     setProductsError(getRequestErrorMessage(error, "товары"));
   } finally {
     setProductsLoading(false);
+  }
+}
+
+async function loadCompanies(searchTerm = "", page = FIRST_LIST_PAGE) {
+  setCompaniesLoading(true);
+  setCompaniesSearchTerm(searchTerm);
+  setCompaniesError("");
+
+  try {
+    const companiesResponse = await request(getListPath("/companies", searchTerm, page));
+    const companiesPage = getPaginatedPage(companiesResponse);
+
+    setCompaniesPagination(companiesPage.pagination);
+    setState("companies.list", companiesPage.items);
+  } catch (error) {
+    console.error("Could not load companies:", error);
+    setCompaniesPagination({
+      page,
+      pageSize: state.companies.pageSize,
+      total: 0,
+      totalPages: 0,
+      hasNext: false,
+      hasPrevious: false,
+    });
+    setState("companies.list", []);
+    setCompaniesError(getRequestErrorMessage(error, "компании"));
+  } finally {
+    setCompaniesLoading(false);
   }
 }
 
@@ -161,27 +226,35 @@ async function createProduct() {
 }
 
 function getProductsPath(searchTerm, page) {
+  return getListPath("/products", searchTerm, page);
+}
+
+function getListPath(basePath, searchTerm, page) {
   const params = new URLSearchParams();
 
   if (searchTerm) {
     params.set("search", searchTerm);
   }
 
-  params.set("page", String(Math.max(page, FIRST_PRODUCTS_PAGE)));
+  params.set("page", String(Math.max(page, FIRST_LIST_PAGE)));
 
   const queryString = params.toString();
-  return queryString ? `/products?${queryString}` : "/products";
+  return queryString ? `${basePath}?${queryString}` : basePath;
 }
 
 function getProductsPage(productsResponse) {
-  if (Array.isArray(productsResponse)) {
+  return getPaginatedPage(productsResponse);
+}
+
+function getPaginatedPage(response) {
+  if (Array.isArray(response)) {
     return {
-      items: productsResponse,
+      items: response,
       pagination: {
-        page: FIRST_PRODUCTS_PAGE,
-        pageSize: productsResponse.length,
-        total: productsResponse.length,
-        totalPages: productsResponse.length > 0 ? 1 : 0,
+        page: FIRST_LIST_PAGE,
+        pageSize: response.length,
+        total: response.length,
+        totalPages: response.length > 0 ? 1 : 0,
         hasNext: false,
         hasPrevious: false,
       },
@@ -189,14 +262,14 @@ function getProductsPage(productsResponse) {
   }
 
   return {
-    items: Array.isArray(productsResponse?.items) ? productsResponse.items : [],
+    items: Array.isArray(response?.items) ? response.items : [],
     pagination: {
-      page: Number(productsResponse?.page || FIRST_PRODUCTS_PAGE),
-      pageSize: Number(productsResponse?.page_size || 20),
-      total: Number(productsResponse?.total || 0),
-      totalPages: Number(productsResponse?.total_pages || 0),
-      hasNext: Boolean(productsResponse?.has_next),
-      hasPrevious: Boolean(productsResponse?.has_previous),
+      page: Number(response?.page || FIRST_LIST_PAGE),
+      pageSize: Number(response?.page_size || 20),
+      total: Number(response?.total || 0),
+      totalPages: Number(response?.total_pages || 0),
+      hasNext: Boolean(response?.has_next),
+      hasPrevious: Boolean(response?.has_previous),
     },
   };
 }

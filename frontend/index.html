@@ -42,17 +42,46 @@
             >
               Дэшборд
             </button>
-            <button
-              class="nav-link"
-              id="products-tab"
-              type="button"
-              role="tab"
-              data-view-tab="products"
-              aria-controls="products"
-              aria-selected="false"
-            >
-              Товары
-            </button>
+            <div class="nav-item dropdown">
+              <button
+                class="nav-link dropdown-toggle"
+                id="list-dropdown"
+                type="button"
+                data-bs-toggle="dropdown"
+                data-view-menu-views="products companies"
+                aria-expanded="false"
+              >
+                Список
+              </button>
+              <ul class="dropdown-menu" aria-labelledby="list-dropdown">
+                <li>
+                  <button
+                    class="dropdown-item"
+                    id="products-tab"
+                    type="button"
+                    role="tab"
+                    data-view-tab="products"
+                    aria-controls="products"
+                    aria-selected="false"
+                  >
+                    Товары
+                  </button>
+                </li>
+                <li>
+                  <button
+                    class="dropdown-item"
+                    id="companies-tab"
+                    type="button"
+                    role="tab"
+                    data-view-tab="companies"
+                    aria-controls="companies"
+                    aria-selected="false"
+                  >
+                    Компании
+                  </button>
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
@@ -186,6 +215,79 @@
           <button
             class="btn btn-outline-primary"
             id="products-next-page-button"
+            type="button"
+          >
+            Вперед
+          </button>
+        </nav>
+      </section>
+
+      <section
+        class="container-fluid p-4 d-none"
+        id="companies"
+        role="tabpanel"
+        aria-labelledby="companies-tab"
+        hidden
+      >
+        <div class="companies-toolbar d-flex align-items-end justify-content-between flex-wrap gap-3 mb-3">
+          <form class="companies-search" id="companies-search-form" role="search">
+            <label class="form-label" for="companies-search-input">Поиск компании</label>
+            <div class="input-group">
+              <input
+                class="form-control"
+                id="companies-search-input"
+                name="search"
+                type="search"
+                placeholder="Введите название компании"
+                autocomplete="off"
+              >
+              <button
+                class="btn btn-primary"
+                id="companies-search-button"
+                type="submit"
+              >
+                Поиск
+              </button>
+            </div>
+          </form>
+          <span class="badge text-bg-secondary companies-count" id="companies-count">0 компаний</span>
+        </div>
+        <div class="text-secondary py-4" id="companies-loading" aria-live="polite">
+          Загрузка компаний...
+        </div>
+        <div class="alert alert-danger d-none" id="companies-error" role="alert"></div>
+        <div class="alert alert-light border d-none" id="companies-empty" role="status">
+          Компании пока не добавлены.
+        </div>
+        <div class="table-responsive companies-table d-none" id="companies-table">
+          <table class="table table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th scope="col">Компания</th>
+                <th scope="col">ИИН</th>
+              </tr>
+            </thead>
+            <tbody id="companies-table-body"></tbody>
+          </table>
+        </div>
+        <nav
+          class="companies-pagination d-none mt-3"
+          id="companies-pagination"
+          aria-label="Пагинация компаний"
+        >
+          <button
+            class="btn btn-outline-primary"
+            id="companies-previous-page-button"
+            type="button"
+          >
+            Назад
+          </button>
+          <span class="companies-page-summary" id="companies-page-summary">
+            Страница 1 из 1
+          </span>
+          <button
+            class="btn btn-outline-primary"
+            id="companies-next-page-button"
             type="button"
           >
             Вперед
