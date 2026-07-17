@@ -2,10 +2,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
-from app.models import Product
-from app.schemas import PaginatedResponse, ProductResponse
+from app.models import Product, Tag
+from app.pricing import calculate_floor_price
+from app.schemas import PaginatedResponse, ProductCreate, ProductResponse
+from app.tags import get_or_create_tags
 from devs import DbSession
+from errors import commit_or_raise
 
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -46,3 +50,29 @@ def get_product_by_name(
         has_next=page < total_pages,
         has_previous=page > 1,
     )
+
+
+@router.post("", response_model=ProductResponse, status_code=201)
+def add_product(db: DbSession, product_data: ProductCreate):
+    product_values = product_data.model_dump(
+        exclude={"tags"},
+    )
+
+    if product_values["sale_price"] is None:
+        product_values["sale_price"] = calculate_floor_price(
+            product_data.purchase_price,
+            product_data.margin_percent,
+        )
+
+    tags = get_or_create_tags(db, product_data.tags)
+
+    product = Product(
+        **product_values,
+        tags=tags,
+    )
+
+    db.add(product)
+    commit_or_raise(db)
+    db.refresh(product)
+
+    return product

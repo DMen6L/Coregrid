@@ -17,6 +17,11 @@ export const elements = {
     searchForm: getElement("#products-search-form"),
     searchInput: getElement("#products-search-input"),
     searchButton: getElement("#products-search-button"),
+    openCreateModalButton: getElement("#open-product-create-modal-button"),
+    createModal: getElement("#product-create-modal"),
+    createForm: getElement("#product-create-form"),
+    createSubmitButton: getElement("#product-create-submit-button"),
+    createError: getElement("#product-create-error"),
     count: getElement("#products-count"),
     loading: getElement("#products-loading"),
     error: getElement("#products-error"),
@@ -50,6 +55,7 @@ export const state = {
     totalPages: 0,
     hasNext: false,
     hasPrevious: false,
+    isCreating: false,
   },
 };
 
@@ -127,6 +133,25 @@ export function setProductsPagination(pagination) {
   state.products.hasNext = pagination.hasNext;
   state.products.hasPrevious = pagination.hasPrevious;
   renderProducts(state.products.list);
+}
+
+export function setProductCreateSubmitting(isSubmitting) {
+  state.products.isCreating = isSubmitting;
+  elements.products.createSubmitButton.disabled = isSubmitting;
+  elements.products.openCreateModalButton.disabled = isSubmitting;
+  elements.products.createSubmitButton.textContent = isSubmitting
+    ? "Создание..."
+    : "Создать товар";
+}
+
+export function setProductCreateError(message) {
+  elements.products.createError.textContent = message;
+  elements.products.createError.classList.toggle("d-none", !message);
+}
+
+export function resetProductCreateForm() {
+  elements.products.createForm.reset();
+  setProductCreateError("");
 }
 
 const stateBindings = {
@@ -212,8 +237,8 @@ function createProductRow(product) {
   row.append(
     createProductNameCell(product),
     createStatusCell(product.stock_status),
-    createTextCell(formatQuantity(product.quantity, product.quantity_unit)),
-    createTextCell(formatCurrency(product.sale_price)),
+    createStockCell(product),
+    createPricingCell(product),
     createOwnerCell(product),
     createTagsCell(product.tags),
   );
@@ -233,7 +258,11 @@ function createProductNameCell(product) {
   meta.className = "product-meta";
   meta.textContent = `ID ${product.id}`;
 
-  cell.append(name, meta);
+  const createdAt = document.createElement("div");
+  createdAt.className = "product-meta";
+  createdAt.textContent = `Создано: ${formatDateTime(product.created_at)}`;
+
+  cell.append(name, meta, createdAt);
   return cell;
 }
 
@@ -249,10 +278,50 @@ function createStatusCell(status) {
   return cell;
 }
 
+function createStockCell(product) {
+  const cell = document.createElement("td");
+
+  const quantity = document.createElement("div");
+  quantity.textContent = formatQuantity(product.quantity, product.quantity_unit);
+
+  const threshold = document.createElement("div");
+  threshold.className = "product-meta";
+  threshold.textContent = `Порог: ${formatCount(product.low_stock_threshold)}`;
+
+  cell.append(quantity, threshold);
+  return cell;
+}
+
+function createPricingCell(product) {
+  const cell = document.createElement("td");
+
+  const salePrice = document.createElement("div");
+  salePrice.textContent = `Продажа: ${formatCurrency(product.sale_price)}`;
+
+  const floorPrice = document.createElement("div");
+  floorPrice.className = "product-meta";
+  floorPrice.textContent = `Минимум: ${formatCurrency(product.floor_price)}`;
+
+  const purchasePrice = document.createElement("div");
+  purchasePrice.className = "product-meta";
+  purchasePrice.textContent = `Закупка: ${formatCurrency(product.purchase_price)}`;
+
+  const margin = document.createElement("div");
+  margin.className = "product-meta";
+  margin.textContent = `Маржа: ${formatCount(product.margin_percent)}%`;
+
+  cell.append(salePrice, floorPrice, purchasePrice, margin);
+  return cell;
+}
+
 function createOwnerCell(product) {
   const cell = document.createElement("td");
-  const supplier = product.supplier_name || "Поставщик не указан";
-  const company = product.company_name || "Компания не указана";
+  const supplier = product.supplier_name || (
+    product.supplier_id ? `Поставщик #${product.supplier_id}` : "Поставщик не указан"
+  );
+  const company = product.company_name || (
+    product.company_id ? `Компания #${product.company_id}` : "Компания не указана"
+  );
 
   const supplierLine = document.createElement("div");
   supplierLine.textContent = supplier;
@@ -286,12 +355,6 @@ function createTagsCell(tags) {
   }
 
   cell.append(wrapper);
-  return cell;
-}
-
-function createTextCell(text) {
-  const cell = document.createElement("td");
-  cell.textContent = text;
   return cell;
 }
 
@@ -333,6 +396,19 @@ function formatProductsCount(count) {
 function formatQuantity(quantity, unit) {
   const unitLabel = unit || "шт";
   return `${formatCount(quantity)} ${unitLabel}`;
+}
+
+function formatDateTime(value) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Дата неизвестна";
+  }
+
+  return date.toLocaleString("ru-KZ", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 }
 
 function getElement(selector) {
