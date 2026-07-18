@@ -347,7 +347,18 @@
               </button>
             </div>
           </form>
-          <span class="badge text-bg-secondary suppliers-count" id="suppliers-count">0 поставщиков</span>
+          <div class="suppliers-actions">
+            <button
+              class="btn btn-success"
+              id="open-supplier-create-modal-button"
+              type="button"
+              data-bs-toggle="modal"
+              data-bs-target="#supplier-create-modal"
+            >
+              Добавить поставщика
+            </button>
+            <span class="badge text-bg-secondary suppliers-count" id="suppliers-count">0 поставщиков</span>
+          </div>
         </div>
         <div class="text-secondary py-4" id="suppliers-loading" aria-live="polite">
           Загрузка поставщиков...
@@ -512,26 +523,19 @@
 
                 <div class="col-12 col-md-6">
                   <label class="form-label" for="product-create-company-search">Компания</label>
-                  <div class="input-group">
-                    <input
-                      class="form-control"
-                      id="product-create-company-search"
-                      type="search"
-                      placeholder="Введите название компании"
-                      autocomplete="off"
-                      aria-describedby="product-create-company-help"
-                    >
-                    <button
-                      class="btn btn-outline-primary"
-                      id="product-create-company-search-button"
-                      type="button"
-                    >
-                      Найти
-                    </button>
-                  </div>
+                  <input
+                    class="form-control"
+                    id="product-create-company-search"
+                    type="search"
+                    placeholder="Введите название компании"
+                    autocomplete="off"
+                    aria-autocomplete="list"
+                    aria-controls="product-create-company-results"
+                    aria-describedby="product-create-company-help"
+                  >
                   <input id="product-create-company-id" name="company_id" type="hidden">
                   <div class="form-text" id="product-create-company-help">
-                    В товар сохранится ID выбранной компании.
+                    Введите минимум 2 символа и выберите компанию из списка.
                   </div>
                   <div
                     class="product-company-selected d-none mt-2"
@@ -563,26 +567,19 @@
                 </div>
                 <div class="col-12 col-md-6">
                   <label class="form-label" for="product-create-supplier-search">Поставщик</label>
-                  <div class="input-group">
-                    <input
-                      class="form-control"
-                      id="product-create-supplier-search"
-                      type="search"
-                      placeholder="Введите название поставщика"
-                      autocomplete="off"
-                      aria-describedby="product-create-supplier-help"
-                    >
-                    <button
-                      class="btn btn-outline-primary"
-                      id="product-create-supplier-search-button"
-                      type="button"
-                    >
-                      Найти
-                    </button>
-                  </div>
+                  <input
+                    class="form-control"
+                    id="product-create-supplier-search"
+                    type="search"
+                    placeholder="Введите название поставщика"
+                    autocomplete="off"
+                    aria-autocomplete="list"
+                    aria-controls="product-create-supplier-results"
+                    aria-describedby="product-create-supplier-help"
+                  >
                   <input id="product-create-supplier-id" name="supplier_id" type="hidden">
                   <div class="form-text" id="product-create-supplier-help">
-                    В товар сохранится ID выбранного поставщика.
+                    Введите минимум 2 символа и выберите поставщика из списка.
                   </div>
                   <div
                     class="product-supplier-selected d-none mt-2"
@@ -698,6 +695,72 @@
               </button>
               <button class="btn btn-primary" id="company-create-submit-button" type="submit">
                 Создать компанию
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade"
+      id="supplier-create-modal"
+      tabindex="-1"
+      aria-labelledby="supplier-create-modal-title"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <form class="supplier-create-form" id="supplier-create-form">
+            <div class="modal-header">
+              <h2 class="modal-title fs-5" id="supplier-create-modal-title">Добавить поставщика</h2>
+              <button
+                class="btn-close"
+                type="button"
+                data-bs-dismiss="modal"
+                aria-label="Закрыть"
+              ></button>
+            </div>
+            <div class="modal-body">
+              <div class="alert alert-danger d-none" id="supplier-create-error" role="alert"></div>
+
+              <div class="row g-3">
+                <div class="col-12 col-lg-7">
+                  <label class="form-label" for="supplier-create-name">Название</label>
+                  <input
+                    class="form-control"
+                    id="supplier-create-name"
+                    name="name"
+                    type="text"
+                    maxlength="255"
+                    autocomplete="organization"
+                    required
+                  >
+                </div>
+                <div class="col-12 col-lg-5">
+                  <label class="form-label" for="supplier-create-phone-number">Телефон</label>
+                  <input
+                    class="form-control"
+                    id="supplier-create-phone-number"
+                    name="phone_number"
+                    type="tel"
+                    inputmode="tel"
+                    pattern="(8[0-9]{10}|\+7[0-9]{10})"
+                    maxlength="12"
+                    autocomplete="tel"
+                    placeholder="+77001234567"
+                    required
+                  >
+                  <div class="form-text">Формат: +7XXXXXXXXXX или 8XXXXXXXXXX.</div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer supplier-create-footer">
+              <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">
+                Отмена
+              </button>
+              <button class="btn btn-primary" id="supplier-create-submit-button" type="submit">
+                Создать поставщика
               </button>
             </div>
           </form>

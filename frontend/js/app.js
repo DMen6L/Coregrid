@@ -30,6 +30,9 @@ import {
   setProductsPagination,
   setProductsSearchTerm,
   setState,
+  resetSupplierCreateForm,
+  setSupplierCreateError,
+  setSupplierCreateSubmitting,
   setSuppliersError,
   setSuppliersLoading,
   setSuppliersPagination,
@@ -38,8 +41,20 @@ import {
 } from "./states.js";
 
 const FIRST_LIST_PAGE = 1;
-const COMPANY_LOOKUP_PAGE_SIZE = 5;
-const SUPPLIER_LOOKUP_PAGE_SIZE = 5;
+const PRODUCT_LOOKUP_MIN_SEARCH_LENGTH = 2;
+const PRODUCT_LOOKUP_DEBOUNCE_MS = 300;
+const PRODUCT_LOOKUP_PAGE_SIZE = 10;
+
+const productLookupRequests = {
+  company: {
+    debounceId: null,
+    controller: null,
+  },
+  supplier: {
+    debounceId: null,
+    controller: null,
+  },
+};
 
 initializeApp();
 
@@ -56,6 +71,7 @@ function initializeApp() {
   bindCompanyCreate();
   bindSupplierSearch();
   bindSupplierPagination();
+  bindSupplierCreate();
   setActiveView("dashboard");
   loadInitialData();
 }
@@ -136,46 +152,28 @@ function bindProductCreate() {
 
   elements.products.createModal.addEventListener("hidden.bs.modal", () => {
     if (!state.products.isCreating) {
+      cancelProductCompanyLookupRequest();
+      cancelProductSupplierLookupRequest();
       resetProductCreateForm();
     }
   });
 }
 
 function bindProductCompanyLookup() {
-  elements.products.companySearchButton.addEventListener("click", () => {
-    if (elements.products.companySearchButton.disabled) {
-      return;
-    }
-
-    searchProductCreateCompanies();
-  });
-
   elements.products.companySearchInput.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") {
       return;
     }
 
     event.preventDefault();
-
-    if (!elements.products.companySearchButton.disabled) {
-      searchProductCreateCompanies();
-    }
   });
 
   elements.products.companySearchInput.addEventListener("input", () => {
-    const lookup = state.products.companyLookup;
-
-    if (
-      lookup.selectedCompany ||
-      lookup.results.length > 0 ||
-      lookup.error ||
-      lookup.hasSearched
-    ) {
-      clearProductCompanyLookup(false);
-    }
+    scheduleProductCompanyLookup();
   });
 
   elements.products.companyClearButton.addEventListener("click", () => {
+    cancelProductCompanyLookupRequest();
     clearProductCompanyLookup();
     elements.products.companySearchInput.focus();
   });
@@ -199,46 +197,27 @@ function bindProductCompanyLookup() {
       return;
     }
 
+    cancelProductCompanyLookupRequest();
     setProductSelectedCompany(selectedCompany);
     setProductCreateError("");
   });
 }
 
 function bindProductSupplierLookup() {
-  elements.products.supplierSearchButton.addEventListener("click", () => {
-    if (elements.products.supplierSearchButton.disabled) {
-      return;
-    }
-
-    searchProductCreateSuppliers();
-  });
-
   elements.products.supplierSearchInput.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") {
       return;
     }
 
     event.preventDefault();
-
-    if (!elements.products.supplierSearchButton.disabled) {
-      searchProductCreateSuppliers();
-    }
   });
 
   elements.products.supplierSearchInput.addEventListener("input", () => {
-    const lookup = state.products.supplierLookup;
-
-    if (
-      lookup.selectedSupplier ||
-      lookup.results.length > 0 ||
-      lookup.error ||
-      lookup.hasSearched
-    ) {
-      clearProductSupplierLookup(false);
-    }
+    scheduleProductSupplierLookup();
   });
 
   elements.products.supplierClearButton.addEventListener("click", () => {
+    cancelProductSupplierLookupRequest();
     clearProductSupplierLookup();
     elements.products.supplierSearchInput.focus();
   });
@@ -262,9 +241,69 @@ function bindProductSupplierLookup() {
       return;
     }
 
+    cancelProductSupplierLookupRequest();
     setProductSelectedSupplier(selectedSupplier);
     setProductCreateError("");
   });
+}
+
+function scheduleProductCompanyLookup() {
+  scheduleProductLookup({
+    lookupKey: "company",
+    searchTerm: elements.products.companySearchInput.value.trim(),
+    clearLookup: clearProductCompanyLookup,
+    searchLookup: searchProductCreateCompanies,
+  });
+}
+
+function scheduleProductSupplierLookup() {
+  scheduleProductLookup({
+    lookupKey: "supplier",
+    searchTerm: elements.products.supplierSearchInput.value.trim(),
+    clearLookup: clearProductSupplierLookup,
+    searchLookup: searchProductCreateSuppliers,
+  });
+}
+
+function scheduleProductLookup({ lookupKey, searchTerm, clearLookup, searchLookup }) {
+  cancelProductLookupRequest(lookupKey);
+  clearLookup(false);
+  setProductCreateError("");
+
+  if (searchTerm.length < PRODUCT_LOOKUP_MIN_SEARCH_LENGTH) {
+    return;
+  }
+
+  productLookupRequests[lookupKey].debounceId = window.setTimeout(() => {
+    productLookupRequests[lookupKey].debounceId = null;
+    searchLookup(searchTerm);
+  }, PRODUCT_LOOKUP_DEBOUNCE_MS);
+}
+
+function cancelProductCompanyLookupRequest() {
+  cancelProductLookupRequest("company");
+}
+
+function cancelProductSupplierLookupRequest() {
+  cancelProductLookupRequest("supplier");
+}
+
+function cancelProductLookupRequest(lookupKey) {
+  const requestState = productLookupRequests[lookupKey];
+
+  if (!requestState) {
+    return;
+  }
+
+  if (requestState.debounceId !== null) {
+    window.clearTimeout(requestState.debounceId);
+    requestState.debounceId = null;
+  }
+
+  if (requestState.controller) {
+    requestState.controller.abort();
+    requestState.controller = null;
+  }
 }
 
 function bindCompanySearch() {
@@ -347,6 +386,27 @@ function bindSupplierPagination() {
     }
 
     loadSuppliers(state.suppliers.searchTerm, state.suppliers.page + 1);
+  });
+}
+
+function bindSupplierCreate() {
+  elements.suppliers.createForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    if (
+      elements.suppliers.createSubmitButton.disabled ||
+      !elements.suppliers.createForm.reportValidity()
+    ) {
+      return;
+    }
+
+    createSupplier();
+  });
+
+  elements.suppliers.createModal.addEventListener("hidden.bs.modal", () => {
+    if (!state.suppliers.isCreating) {
+      resetSupplierCreateForm();
+    }
   });
 }
 
@@ -469,6 +529,8 @@ async function createProduct() {
       body: JSON.stringify(getProductCreatePayload()),
     });
 
+    cancelProductCompanyLookupRequest();
+    cancelProductSupplierLookupRequest();
     hideProductCreateModal();
     resetProductCreateForm();
 
@@ -484,56 +546,128 @@ async function createProduct() {
   }
 }
 
-async function searchProductCreateCompanies() {
-  const searchTerm = elements.products.companySearchInput.value.trim();
-
-  if (!searchTerm) {
+async function searchProductCreateCompanies(searchTerm) {
+  if (searchTerm.length < PRODUCT_LOOKUP_MIN_SEARCH_LENGTH) {
     clearProductCompanyLookup(false);
-    setProductCompanyLookupError("Введите название компании для поиска.");
-    elements.products.companySearchInput.focus();
     return;
   }
 
-  setProductCompanyLookupLoading(true);
+  const controller = new AbortController();
+  productLookupRequests.company.controller = controller;
+
   setProductCompanyLookupError("");
+  setProductCompanyLookupLoading(true);
 
   try {
-    const companiesResponse = await request(getCompanyLookupPath(searchTerm));
+    const companiesResponse = await request(getCompanyLookupPath(searchTerm), {
+      signal: controller.signal,
+    });
+
+    if (
+      !isCurrentProductLookupRequest(
+        "company",
+        controller,
+        searchTerm,
+        elements.products.companySearchInput,
+      )
+    ) {
+      return;
+    }
+
     const companiesPage = getPaginatedPage(companiesResponse);
 
     setProductCompanyLookupResults(companiesPage.items);
   } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
+
+    if (
+      !isCurrentProductLookupRequest(
+        "company",
+        controller,
+        searchTerm,
+        elements.products.companySearchInput,
+      )
+    ) {
+      return;
+    }
+
     console.error("Could not search companies for product create:", error);
     setProductCompanyLookupError(getRequestErrorMessage(error, "компании"));
   } finally {
-    setProductCompanyLookupLoading(false);
+    if (productLookupRequests.company.controller === controller) {
+      productLookupRequests.company.controller = null;
+      setProductCompanyLookupLoading(false);
+    }
   }
 }
 
-async function searchProductCreateSuppliers() {
-  const searchTerm = elements.products.supplierSearchInput.value.trim();
-
-  if (!searchTerm) {
+async function searchProductCreateSuppliers(searchTerm) {
+  if (searchTerm.length < PRODUCT_LOOKUP_MIN_SEARCH_LENGTH) {
     clearProductSupplierLookup(false);
-    setProductSupplierLookupError("Введите название поставщика для поиска.");
-    elements.products.supplierSearchInput.focus();
     return;
   }
 
-  setProductSupplierLookupLoading(true);
+  const controller = new AbortController();
+  productLookupRequests.supplier.controller = controller;
+
   setProductSupplierLookupError("");
+  setProductSupplierLookupLoading(true);
 
   try {
-    const suppliersResponse = await request(getSupplierLookupPath(searchTerm));
+    const suppliersResponse = await request(getSupplierLookupPath(searchTerm), {
+      signal: controller.signal,
+    });
+
+    if (
+      !isCurrentProductLookupRequest(
+        "supplier",
+        controller,
+        searchTerm,
+        elements.products.supplierSearchInput,
+      )
+    ) {
+      return;
+    }
+
     const suppliersPage = getPaginatedPage(suppliersResponse);
 
     setProductSupplierLookupResults(suppliersPage.items);
   } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
+
+    if (
+      !isCurrentProductLookupRequest(
+        "supplier",
+        controller,
+        searchTerm,
+        elements.products.supplierSearchInput,
+      )
+    ) {
+      return;
+    }
+
     console.error("Could not search suppliers for product create:", error);
     setProductSupplierLookupError(getRequestErrorMessage(error, "поставщиков"));
   } finally {
-    setProductSupplierLookupLoading(false);
+    if (productLookupRequests.supplier.controller === controller) {
+      productLookupRequests.supplier.controller = null;
+      setProductSupplierLookupLoading(false);
+    }
   }
+}
+
+function isCurrentProductLookupRequest(lookupKey, controller, searchTerm, input) {
+  return productLookupRequests[lookupKey]?.controller === controller &&
+    !controller.signal.aborted &&
+    input.value.trim() === searchTerm;
+}
+
+function isAbortError(error) {
+  return error?.name === "AbortError";
 }
 
 async function createCompany() {
@@ -555,6 +689,28 @@ async function createCompany() {
     setCompanyCreateError(getCreateCompanyErrorMessage(error));
   } finally {
     setCompanyCreateSubmitting(false);
+  }
+}
+
+async function createSupplier() {
+  setSupplierCreateSubmitting(true);
+  setSupplierCreateError("");
+
+  try {
+    await request("/suppliers", {
+      method: "POST",
+      body: JSON.stringify(getSupplierCreatePayload()),
+    });
+
+    hideSupplierCreateModal();
+    resetSupplierCreateForm();
+
+    await loadSuppliers(state.suppliers.searchTerm, state.suppliers.page);
+  } catch (error) {
+    console.error("Could not create supplier:", error);
+    setSupplierCreateError(getCreateSupplierErrorMessage(error));
+  } finally {
+    setSupplierCreateSubmitting(false);
   }
 }
 
@@ -633,11 +789,20 @@ function getCompanyCreatePayload() {
   };
 }
 
+function getSupplierCreatePayload() {
+  const formData = new FormData(elements.suppliers.createForm);
+
+  return {
+    name: getTextField(formData, "name"),
+    phone_number: getTextField(formData, "phone_number"),
+  };
+}
+
 function getCompanyLookupPath(searchTerm) {
   const params = new URLSearchParams();
   params.set("search", searchTerm);
   params.set("page", String(FIRST_LIST_PAGE));
-  params.set("page_size", String(COMPANY_LOOKUP_PAGE_SIZE));
+  params.set("page_size", String(PRODUCT_LOOKUP_PAGE_SIZE));
 
   return `/companies?${params.toString()}`;
 }
@@ -646,7 +811,7 @@ function getSupplierLookupPath(searchTerm) {
   const params = new URLSearchParams();
   params.set("search", searchTerm);
   params.set("page", String(FIRST_LIST_PAGE));
-  params.set("page_size", String(SUPPLIER_LOOKUP_PAGE_SIZE));
+  params.set("page_size", String(PRODUCT_LOOKUP_PAGE_SIZE));
 
   return `/suppliers?${params.toString()}`;
 }
@@ -695,6 +860,10 @@ function hideCompanyCreateModal() {
   hideModal(elements.companies.createModal);
 }
 
+function hideSupplierCreateModal() {
+  hideModal(elements.suppliers.createModal);
+}
+
 function hideModal(modalElement) {
   const Modal = window.bootstrap?.Modal;
 
@@ -711,6 +880,10 @@ function getCreateProductErrorMessage(error) {
 
 function getCreateCompanyErrorMessage(error) {
   return getCreateErrorMessage(error, "компанию");
+}
+
+function getCreateSupplierErrorMessage(error) {
+  return getCreateErrorMessage(error, "поставщика");
 }
 
 function getCreateErrorMessage(error, label) {

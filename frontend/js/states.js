@@ -31,7 +31,6 @@ export const elements = {
     marginPercentInput: getElement("#product-create-margin-percent"),
     salePriceInput: getElement("#product-create-sale-price"),
     companySearchInput: getElement("#product-create-company-search"),
-    companySearchButton: getElement("#product-create-company-search-button"),
     companyIdInput: getElement("#product-create-company-id"),
     companySelected: getElement("#product-create-company-selected"),
     companySelectedName: getElement("#product-create-company-selected-name"),
@@ -40,7 +39,6 @@ export const elements = {
     companyLookupMessage: getElement("#product-create-company-lookup-message"),
     companyResults: getElement("#product-create-company-results"),
     supplierSearchInput: getElement("#product-create-supplier-search"),
-    supplierSearchButton: getElement("#product-create-supplier-search-button"),
     supplierIdInput: getElement("#product-create-supplier-id"),
     supplierSelected: getElement("#product-create-supplier-selected"),
     supplierSelectedName: getElement("#product-create-supplier-selected-name"),
@@ -83,6 +81,11 @@ export const elements = {
     searchForm: getElement("#suppliers-search-form"),
     searchInput: getElement("#suppliers-search-input"),
     searchButton: getElement("#suppliers-search-button"),
+    openCreateModalButton: getElement("#open-supplier-create-modal-button"),
+    createModal: getElement("#supplier-create-modal"),
+    createForm: getElement("#supplier-create-form"),
+    createSubmitButton: getElement("#supplier-create-submit-button"),
+    createError: getElement("#supplier-create-error"),
     count: getElement("#suppliers-count"),
     loading: getElement("#suppliers-loading"),
     error: getElement("#suppliers-error"),
@@ -157,6 +160,7 @@ export const state = {
     totalPages: 0,
     hasNext: false,
     hasPrevious: false,
+    isCreating: false,
   },
 };
 
@@ -483,6 +487,25 @@ export function setSuppliersPagination(pagination) {
   renderSuppliers(state.suppliers.list);
 }
 
+export function setSupplierCreateSubmitting(isSubmitting) {
+  state.suppliers.isCreating = isSubmitting;
+  elements.suppliers.createSubmitButton.disabled = isSubmitting;
+  elements.suppliers.openCreateModalButton.disabled = isSubmitting;
+  elements.suppliers.createSubmitButton.textContent = isSubmitting
+    ? "Создание..."
+    : "Создать поставщика";
+}
+
+export function setSupplierCreateError(message) {
+  elements.suppliers.createError.textContent = message;
+  elements.suppliers.createError.classList.toggle("d-none", !message);
+}
+
+export function resetSupplierCreateForm() {
+  elements.suppliers.createForm.reset();
+  setSupplierCreateError("");
+}
+
 const stateBindings = {
   "sales.value": {
     update(value) {
@@ -641,10 +664,6 @@ function getProductCompanyLookupMessage(lookup) {
 }
 
 function updateProductCompanyLookupControls() {
-  const isLookupDisabled =
-    state.products.isCreating || state.products.companyLookup.isLoading;
-
-  elements.products.companySearchButton.disabled = isLookupDisabled;
   elements.products.companySearchInput.disabled = state.products.isCreating;
   elements.products.companyClearButton.disabled = state.products.isCreating;
 }
@@ -733,10 +752,6 @@ function getProductSupplierLookupMessage(lookup) {
 }
 
 function updateProductSupplierLookupControls() {
-  const isLookupDisabled =
-    state.products.isCreating || state.products.supplierLookup.isLoading;
-
-  elements.products.supplierSearchButton.disabled = isLookupDisabled;
   elements.products.supplierSearchInput.disabled = state.products.isCreating;
   elements.products.supplierClearButton.disabled = state.products.isCreating;
 }

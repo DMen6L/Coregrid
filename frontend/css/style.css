@@ -55,7 +55,8 @@ body {
 }
 
 .products-actions,
-.companies-actions {
+.companies-actions,
+.suppliers-actions {
   display: flex;
   align-items: center;
   flex: 0 0 auto;
@@ -143,7 +144,8 @@ body {
 }
 
 .product-create-form,
-.company-create-form {
+.company-create-form,
+.supplier-create-form {
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - var(--bs-modal-margin) * 2);
@@ -153,7 +155,8 @@ body {
 }
 
 #product-create-modal .modal-body,
-#company-create-modal .modal-body {
+#company-create-modal .modal-body,
+#supplier-create-modal .modal-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -161,8 +164,10 @@ body {
 
 #product-create-modal .modal-header,
 #company-create-modal .modal-header,
+#supplier-create-modal .modal-header,
 #product-create-modal .product-create-footer,
-#company-create-modal .company-create-footer {
+#company-create-modal .company-create-footer,
+#supplier-create-modal .supplier-create-footer {
   flex-shrink: 0;
 }
 
@@ -181,13 +186,15 @@ body {
   }
 
   .products-actions,
-  .companies-actions {
+  .companies-actions,
+  .suppliers-actions {
     align-items: stretch;
     width: 100%;
   }
 
   .products-actions .btn,
-  .companies-actions .btn {
+  .companies-actions .btn,
+  .suppliers-actions .btn {
     width: 100%;
   }
 

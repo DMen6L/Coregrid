@@ -4,8 +4,9 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import Integer, func, select, type_coerce
 
 from app.models import Supplier
-from app.schemas import PaginatedResponse, SupplierResponse
+from app.schemas import PaginatedResponse, SupplierCreate, SupplierResponse
 from devs import DbSession
+from errors import commit_or_raise
 from utils import paginate
 
 router = APIRouter(prefix="/suppliers", tags=["suppliers"])
@@ -37,3 +38,14 @@ def get_supplier_by_name(
         page_size=page_size,
         response_schema=SupplierResponse,
     )
+
+
+@router.post("", response_model=SupplierResponse, status_code=201)
+def add_supplier(db: DbSession, supplier_data: SupplierCreate):
+    supplier = Supplier(**supplier_data.model_dump())
+
+    db.add(supplier)
+    commit_or_raise(db)
+    db.refresh(supplier)
+
+    return supplier
