@@ -48,7 +48,7 @@
                 id="list-dropdown"
                 type="button"
                 data-bs-toggle="dropdown"
-                data-view-menu-views="products companies"
+                data-view-menu-views="products companies suppliers"
                 aria-expanded="false"
               >
                 Список
@@ -78,6 +78,19 @@
                     aria-selected="false"
                   >
                     Компании
+                  </button>
+                </li>
+                <li>
+                  <button
+                    class="dropdown-item"
+                    id="suppliers-tab"
+                    type="button"
+                    role="tab"
+                    data-view-tab="suppliers"
+                    aria-controls="suppliers"
+                    aria-selected="false"
+                  >
+                    Поставщики
                   </button>
                 </li>
               </ul>
@@ -250,7 +263,18 @@
               </button>
             </div>
           </form>
-          <span class="badge text-bg-secondary companies-count" id="companies-count">0 компаний</span>
+          <div class="companies-actions">
+            <button
+              class="btn btn-success"
+              id="open-company-create-modal-button"
+              type="button"
+              data-bs-toggle="modal"
+              data-bs-target="#company-create-modal"
+            >
+              Добавить компанию
+            </button>
+            <span class="badge text-bg-secondary companies-count" id="companies-count">0 компаний</span>
+          </div>
         </div>
         <div class="text-secondary py-4" id="companies-loading" aria-live="polite">
           Загрузка компаний...
@@ -294,6 +318,79 @@
           </button>
         </nav>
       </section>
+
+      <section
+        class="container-fluid p-4 d-none"
+        id="suppliers"
+        role="tabpanel"
+        aria-labelledby="suppliers-tab"
+        hidden
+      >
+        <div class="suppliers-toolbar d-flex align-items-end justify-content-between flex-wrap gap-3 mb-3">
+          <form class="suppliers-search" id="suppliers-search-form" role="search">
+            <label class="form-label" for="suppliers-search-input">Поиск поставщика</label>
+            <div class="input-group">
+              <input
+                class="form-control"
+                id="suppliers-search-input"
+                name="search"
+                type="search"
+                placeholder="Введите название поставщика"
+                autocomplete="off"
+              >
+              <button
+                class="btn btn-primary"
+                id="suppliers-search-button"
+                type="submit"
+              >
+                Поиск
+              </button>
+            </div>
+          </form>
+          <span class="badge text-bg-secondary suppliers-count" id="suppliers-count">0 поставщиков</span>
+        </div>
+        <div class="text-secondary py-4" id="suppliers-loading" aria-live="polite">
+          Загрузка поставщиков...
+        </div>
+        <div class="alert alert-danger d-none" id="suppliers-error" role="alert"></div>
+        <div class="alert alert-light border d-none" id="suppliers-empty" role="status">
+          Поставщики пока не добавлены.
+        </div>
+        <div class="table-responsive suppliers-table d-none" id="suppliers-table">
+          <table class="table table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th scope="col">Поставщик</th>
+                <th scope="col">Телефон</th>
+              </tr>
+            </thead>
+            <tbody id="suppliers-table-body"></tbody>
+          </table>
+        </div>
+        <nav
+          class="suppliers-pagination d-none mt-3"
+          id="suppliers-pagination"
+          aria-label="Пагинация поставщиков"
+        >
+          <button
+            class="btn btn-outline-primary"
+            id="suppliers-previous-page-button"
+            type="button"
+          >
+            Назад
+          </button>
+          <span class="suppliers-page-summary" id="suppliers-page-summary">
+            Страница 1 из 1
+          </span>
+          <button
+            class="btn btn-outline-primary"
+            id="suppliers-next-page-button"
+            type="button"
+          >
+            Вперед
+          </button>
+        </nav>
+      </section>
     </main>
 
     <div
@@ -305,7 +402,7 @@
     >
       <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
-          <form id="product-create-form">
+          <form class="product-create-form" id="product-create-form">
             <div class="modal-header">
               <h2 class="modal-title fs-5" id="product-create-modal-title">Добавить товар</h2>
               <button
@@ -339,6 +436,7 @@
                     type="number"
                     min="1"
                     step="1"
+                    value="1"
                     required
                   >
                 </div>
@@ -365,10 +463,12 @@
                     type="number"
                     min="1"
                     step="1"
+                    value="1"
                     aria-describedby="product-create-sale-price-help"
+                    required
                   >
                   <div class="form-text" id="product-create-sale-price-help">
-                    Если пусто, API рассчитает цену от закупки и маржи.
+                    Минимум рассчитывается от цены закупки и маржи.
                   </div>
                 </div>
                 <div class="col-12 col-md-6 col-lg-3">
@@ -411,26 +511,106 @@
                 </div>
 
                 <div class="col-12 col-md-6">
-                  <label class="form-label" for="product-create-company-id">ID компании</label>
-                  <input
-                    class="form-control"
-                    id="product-create-company-id"
-                    name="company_id"
-                    type="number"
-                    min="1"
-                    step="1"
+                  <label class="form-label" for="product-create-company-search">Компания</label>
+                  <div class="input-group">
+                    <input
+                      class="form-control"
+                      id="product-create-company-search"
+                      type="search"
+                      placeholder="Введите название компании"
+                      autocomplete="off"
+                      aria-describedby="product-create-company-help"
+                    >
+                    <button
+                      class="btn btn-outline-primary"
+                      id="product-create-company-search-button"
+                      type="button"
+                    >
+                      Найти
+                    </button>
+                  </div>
+                  <input id="product-create-company-id" name="company_id" type="hidden">
+                  <div class="form-text" id="product-create-company-help">
+                    В товар сохранится ID выбранной компании.
+                  </div>
+                  <div
+                    class="product-company-selected d-none mt-2"
+                    id="product-create-company-selected"
                   >
+                    <div>
+                      <div class="fw-semibold" id="product-create-company-selected-name"></div>
+                      <div class="product-meta" id="product-create-company-selected-meta"></div>
+                    </div>
+                    <button
+                      class="btn btn-sm btn-outline-secondary"
+                      id="product-create-company-clear-button"
+                      type="button"
+                    >
+                      Сбросить
+                    </button>
+                  </div>
+                  <div
+                    class="product-company-lookup-message text-secondary small d-none mt-2"
+                    id="product-create-company-lookup-message"
+                    role="status"
+                  ></div>
+                  <div
+                    class="list-group product-company-results d-none mt-2"
+                    id="product-create-company-results"
+                    role="listbox"
+                    aria-label="Найденные компании"
+                  ></div>
                 </div>
                 <div class="col-12 col-md-6">
-                  <label class="form-label" for="product-create-supplier-id">ID поставщика</label>
-                  <input
-                    class="form-control"
-                    id="product-create-supplier-id"
-                    name="supplier_id"
-                    type="number"
-                    min="1"
-                    step="1"
+                  <label class="form-label" for="product-create-supplier-search">Поставщик</label>
+                  <div class="input-group">
+                    <input
+                      class="form-control"
+                      id="product-create-supplier-search"
+                      type="search"
+                      placeholder="Введите название поставщика"
+                      autocomplete="off"
+                      aria-describedby="product-create-supplier-help"
+                    >
+                    <button
+                      class="btn btn-outline-primary"
+                      id="product-create-supplier-search-button"
+                      type="button"
+                    >
+                      Найти
+                    </button>
+                  </div>
+                  <input id="product-create-supplier-id" name="supplier_id" type="hidden">
+                  <div class="form-text" id="product-create-supplier-help">
+                    В товар сохранится ID выбранного поставщика.
+                  </div>
+                  <div
+                    class="product-supplier-selected d-none mt-2"
+                    id="product-create-supplier-selected"
                   >
+                    <div>
+                      <div class="fw-semibold" id="product-create-supplier-selected-name"></div>
+                      <div class="product-meta" id="product-create-supplier-selected-meta"></div>
+                    </div>
+                    <button
+                      class="btn btn-sm btn-outline-secondary"
+                      id="product-create-supplier-clear-button"
+                      type="button"
+                    >
+                      Сбросить
+                    </button>
+                  </div>
+                  <div
+                    class="product-supplier-lookup-message text-secondary small d-none mt-2"
+                    id="product-create-supplier-lookup-message"
+                    role="status"
+                  ></div>
+                  <div
+                    class="list-group product-supplier-results d-none mt-2"
+                    id="product-create-supplier-results"
+                    role="listbox"
+                    aria-label="Найденные поставщики"
+                  ></div>
                 </div>
                 <div class="col-12">
                   <label class="form-label" for="product-create-tags">Теги</label>
@@ -446,12 +626,78 @@
                 </div>
               </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer product-create-footer">
               <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">
                 Отмена
               </button>
               <button class="btn btn-primary" id="product-create-submit-button" type="submit">
                 Создать товар
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade"
+      id="company-create-modal"
+      tabindex="-1"
+      aria-labelledby="company-create-modal-title"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <form class="company-create-form" id="company-create-form">
+            <div class="modal-header">
+              <h2 class="modal-title fs-5" id="company-create-modal-title">Добавить компанию</h2>
+              <button
+                class="btn-close"
+                type="button"
+                data-bs-dismiss="modal"
+                aria-label="Закрыть"
+              ></button>
+            </div>
+            <div class="modal-body">
+              <div class="alert alert-danger d-none" id="company-create-error" role="alert"></div>
+
+              <div class="row g-3">
+                <div class="col-12 col-lg-7">
+                  <label class="form-label" for="company-create-name">Название</label>
+                  <input
+                    class="form-control"
+                    id="company-create-name"
+                    name="name"
+                    type="text"
+                    maxlength="255"
+                    autocomplete="organization"
+                    required
+                  >
+                </div>
+                <div class="col-12 col-lg-5">
+                  <label class="form-label" for="company-create-iin">ИИН</label>
+                  <input
+                    class="form-control"
+                    id="company-create-iin"
+                    name="iin"
+                    type="text"
+                    inputmode="numeric"
+                    pattern="\d{12}"
+                    minlength="12"
+                    maxlength="12"
+                    autocomplete="off"
+                    required
+                  >
+                  <div class="form-text">12 цифр без пробелов.</div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer company-create-footer">
+              <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">
+                Отмена
+              </button>
+              <button class="btn btn-primary" id="company-create-submit-button" type="submit">
+                Создать компанию
               </button>
             </div>
           </form>

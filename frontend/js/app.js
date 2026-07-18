@@ -4,21 +4,42 @@ import {
   state,
   setActiveView,
   setAppMessage,
+  clearProductCompanyLookup,
+  clearProductSupplierLookup,
+  resetCompanyCreateForm,
   resetProductCreateForm,
+  setCompanyCreateError,
+  setCompanyCreateSubmitting,
   setCompaniesError,
   setCompaniesLoading,
   setCompaniesPagination,
   setCompaniesSearchTerm,
+  setProductCompanyLookupError,
+  setProductCompanyLookupLoading,
+  setProductCompanyLookupResults,
   setProductCreateError,
   setProductCreateSubmitting,
+  setProductSalePriceEdited,
+  setProductSelectedCompany,
+  setProductSelectedSupplier,
+  setProductSupplierLookupError,
+  setProductSupplierLookupLoading,
+  setProductSupplierLookupResults,
   setProductsError,
   setProductsLoading,
   setProductsPagination,
   setProductsSearchTerm,
   setState,
+  setSuppliersError,
+  setSuppliersLoading,
+  setSuppliersPagination,
+  setSuppliersSearchTerm,
+  updateProductSalePrice,
 } from "./states.js";
 
 const FIRST_LIST_PAGE = 1;
+const COMPANY_LOOKUP_PAGE_SIZE = 5;
+const SUPPLIER_LOOKUP_PAGE_SIZE = 5;
 
 initializeApp();
 
@@ -26,9 +47,15 @@ function initializeApp() {
   bindNavigation();
   bindProductSearch();
   bindProductPagination();
+  bindProductPricingCalculation();
+  bindProductCompanyLookup();
+  bindProductSupplierLookup();
   bindProductCreate();
   bindCompanySearch();
   bindCompanyPagination();
+  bindCompanyCreate();
+  bindSupplierSearch();
+  bindSupplierPagination();
   setActiveView("dashboard");
   loadInitialData();
 }
@@ -72,6 +99,15 @@ function bindProductPagination() {
   });
 }
 
+function bindProductPricingCalculation() {
+  elements.products.purchasePriceInput.addEventListener("input", updateProductSalePrice);
+  elements.products.marginPercentInput.addEventListener("input", updateProductSalePrice);
+  elements.products.salePriceInput.addEventListener("input", () => {
+    setProductSalePriceEdited(true);
+  });
+  updateProductSalePrice();
+}
+
 function bindProductCreate() {
   elements.products.createForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -83,6 +119,18 @@ function bindProductCreate() {
       return;
     }
 
+    if (hasUnselectedProductCompanyInput()) {
+      setProductCreateError("Выберите компанию из результатов поиска или очистите поле компании.");
+      elements.products.companySearchInput.focus();
+      return;
+    }
+
+    if (hasUnselectedProductSupplierInput()) {
+      setProductCreateError("Выберите поставщика из результатов поиска или очистите поле поставщика.");
+      elements.products.supplierSearchInput.focus();
+      return;
+    }
+
     createProduct();
   });
 
@@ -90,6 +138,132 @@ function bindProductCreate() {
     if (!state.products.isCreating) {
       resetProductCreateForm();
     }
+  });
+}
+
+function bindProductCompanyLookup() {
+  elements.products.companySearchButton.addEventListener("click", () => {
+    if (elements.products.companySearchButton.disabled) {
+      return;
+    }
+
+    searchProductCreateCompanies();
+  });
+
+  elements.products.companySearchInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (!elements.products.companySearchButton.disabled) {
+      searchProductCreateCompanies();
+    }
+  });
+
+  elements.products.companySearchInput.addEventListener("input", () => {
+    const lookup = state.products.companyLookup;
+
+    if (
+      lookup.selectedCompany ||
+      lookup.results.length > 0 ||
+      lookup.error ||
+      lookup.hasSearched
+    ) {
+      clearProductCompanyLookup(false);
+    }
+  });
+
+  elements.products.companyClearButton.addEventListener("click", () => {
+    clearProductCompanyLookup();
+    elements.products.companySearchInput.focus();
+  });
+
+  elements.products.companyResults.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+
+    const resultButton = event.target.closest("[data-company-id]");
+
+    if (!resultButton || !elements.products.companyResults.contains(resultButton)) {
+      return;
+    }
+
+    const selectedCompany = state.products.companyLookup.results.find(
+      (company) => String(company.id) === resultButton.dataset.companyId,
+    );
+
+    if (!selectedCompany) {
+      return;
+    }
+
+    setProductSelectedCompany(selectedCompany);
+    setProductCreateError("");
+  });
+}
+
+function bindProductSupplierLookup() {
+  elements.products.supplierSearchButton.addEventListener("click", () => {
+    if (elements.products.supplierSearchButton.disabled) {
+      return;
+    }
+
+    searchProductCreateSuppliers();
+  });
+
+  elements.products.supplierSearchInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (!elements.products.supplierSearchButton.disabled) {
+      searchProductCreateSuppliers();
+    }
+  });
+
+  elements.products.supplierSearchInput.addEventListener("input", () => {
+    const lookup = state.products.supplierLookup;
+
+    if (
+      lookup.selectedSupplier ||
+      lookup.results.length > 0 ||
+      lookup.error ||
+      lookup.hasSearched
+    ) {
+      clearProductSupplierLookup(false);
+    }
+  });
+
+  elements.products.supplierClearButton.addEventListener("click", () => {
+    clearProductSupplierLookup();
+    elements.products.supplierSearchInput.focus();
+  });
+
+  elements.products.supplierResults.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+
+    const resultButton = event.target.closest("[data-supplier-id]");
+
+    if (!resultButton || !elements.products.supplierResults.contains(resultButton)) {
+      return;
+    }
+
+    const selectedSupplier = state.products.supplierLookup.results.find(
+      (supplier) => String(supplier.id) === resultButton.dataset.supplierId,
+    );
+
+    if (!selectedSupplier) {
+      return;
+    }
+
+    setProductSelectedSupplier(selectedSupplier);
+    setProductCreateError("");
   });
 }
 
@@ -124,8 +298,65 @@ function bindCompanyPagination() {
   });
 }
 
+function bindCompanyCreate() {
+  elements.companies.createForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    if (
+      elements.companies.createSubmitButton.disabled ||
+      !elements.companies.createForm.reportValidity()
+    ) {
+      return;
+    }
+
+    createCompany();
+  });
+
+  elements.companies.createModal.addEventListener("hidden.bs.modal", () => {
+    if (!state.companies.isCreating) {
+      resetCompanyCreateForm();
+    }
+  });
+}
+
+function bindSupplierSearch() {
+  elements.suppliers.searchForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    if (elements.suppliers.searchButton.disabled) {
+      return;
+    }
+
+    const searchTerm = elements.suppliers.searchInput.value.trim();
+    loadSuppliers(searchTerm, FIRST_LIST_PAGE);
+  });
+}
+
+function bindSupplierPagination() {
+  elements.suppliers.previousPageButton.addEventListener("click", () => {
+    if (elements.suppliers.previousPageButton.disabled) {
+      return;
+    }
+
+    loadSuppliers(state.suppliers.searchTerm, state.suppliers.page - 1);
+  });
+
+  elements.suppliers.nextPageButton.addEventListener("click", () => {
+    if (elements.suppliers.nextPageButton.disabled) {
+      return;
+    }
+
+    loadSuppliers(state.suppliers.searchTerm, state.suppliers.page + 1);
+  });
+}
+
 async function loadInitialData() {
-  await Promise.all([loadDashboardSummary(), loadProducts(), loadCompanies()]);
+  await Promise.all([
+    loadDashboardSummary(),
+    loadProducts(),
+    loadCompanies(),
+    loadSuppliers(),
+  ]);
 }
 
 async function loadDashboardSummary() {
@@ -200,6 +431,34 @@ async function loadCompanies(searchTerm = "", page = FIRST_LIST_PAGE) {
   }
 }
 
+async function loadSuppliers(searchTerm = "", page = FIRST_LIST_PAGE) {
+  setSuppliersLoading(true);
+  setSuppliersSearchTerm(searchTerm);
+  setSuppliersError("");
+
+  try {
+    const suppliersResponse = await request(getListPath("/suppliers", searchTerm, page));
+    const suppliersPage = getPaginatedPage(suppliersResponse);
+
+    setSuppliersPagination(suppliersPage.pagination);
+    setState("suppliers.list", suppliersPage.items);
+  } catch (error) {
+    console.error("Could not load suppliers:", error);
+    setSuppliersPagination({
+      page,
+      pageSize: state.suppliers.pageSize,
+      total: 0,
+      totalPages: 0,
+      hasNext: false,
+      hasPrevious: false,
+    });
+    setState("suppliers.list", []);
+    setSuppliersError(getRequestErrorMessage(error, "поставщиков"));
+  } finally {
+    setSuppliersLoading(false);
+  }
+}
+
 async function createProduct() {
   setProductCreateSubmitting(true);
   setProductCreateError("");
@@ -222,6 +481,80 @@ async function createProduct() {
     setProductCreateError(getCreateProductErrorMessage(error));
   } finally {
     setProductCreateSubmitting(false);
+  }
+}
+
+async function searchProductCreateCompanies() {
+  const searchTerm = elements.products.companySearchInput.value.trim();
+
+  if (!searchTerm) {
+    clearProductCompanyLookup(false);
+    setProductCompanyLookupError("Введите название компании для поиска.");
+    elements.products.companySearchInput.focus();
+    return;
+  }
+
+  setProductCompanyLookupLoading(true);
+  setProductCompanyLookupError("");
+
+  try {
+    const companiesResponse = await request(getCompanyLookupPath(searchTerm));
+    const companiesPage = getPaginatedPage(companiesResponse);
+
+    setProductCompanyLookupResults(companiesPage.items);
+  } catch (error) {
+    console.error("Could not search companies for product create:", error);
+    setProductCompanyLookupError(getRequestErrorMessage(error, "компании"));
+  } finally {
+    setProductCompanyLookupLoading(false);
+  }
+}
+
+async function searchProductCreateSuppliers() {
+  const searchTerm = elements.products.supplierSearchInput.value.trim();
+
+  if (!searchTerm) {
+    clearProductSupplierLookup(false);
+    setProductSupplierLookupError("Введите название поставщика для поиска.");
+    elements.products.supplierSearchInput.focus();
+    return;
+  }
+
+  setProductSupplierLookupLoading(true);
+  setProductSupplierLookupError("");
+
+  try {
+    const suppliersResponse = await request(getSupplierLookupPath(searchTerm));
+    const suppliersPage = getPaginatedPage(suppliersResponse);
+
+    setProductSupplierLookupResults(suppliersPage.items);
+  } catch (error) {
+    console.error("Could not search suppliers for product create:", error);
+    setProductSupplierLookupError(getRequestErrorMessage(error, "поставщиков"));
+  } finally {
+    setProductSupplierLookupLoading(false);
+  }
+}
+
+async function createCompany() {
+  setCompanyCreateSubmitting(true);
+  setCompanyCreateError("");
+
+  try {
+    await request("/companies", {
+      method: "POST",
+      body: JSON.stringify(getCompanyCreatePayload()),
+    });
+
+    hideCompanyCreateModal();
+    resetCompanyCreateForm();
+
+    await loadCompanies(state.companies.searchTerm, state.companies.page);
+  } catch (error) {
+    console.error("Could not create company:", error);
+    setCompanyCreateError(getCreateCompanyErrorMessage(error));
+  } finally {
+    setCompanyCreateSubmitting(false);
   }
 }
 
@@ -291,6 +624,33 @@ function getProductCreatePayload() {
   };
 }
 
+function getCompanyCreatePayload() {
+  const formData = new FormData(elements.companies.createForm);
+
+  return {
+    name: getTextField(formData, "name"),
+    iin: getTextField(formData, "iin"),
+  };
+}
+
+function getCompanyLookupPath(searchTerm) {
+  const params = new URLSearchParams();
+  params.set("search", searchTerm);
+  params.set("page", String(FIRST_LIST_PAGE));
+  params.set("page_size", String(COMPANY_LOOKUP_PAGE_SIZE));
+
+  return `/companies?${params.toString()}`;
+}
+
+function getSupplierLookupPath(searchTerm) {
+  const params = new URLSearchParams();
+  params.set("search", searchTerm);
+  params.set("page", String(FIRST_LIST_PAGE));
+  params.set("page_size", String(SUPPLIER_LOOKUP_PAGE_SIZE));
+
+  return `/suppliers?${params.toString()}`;
+}
+
 function getTextField(formData, key) {
   return String(formData.get(key) || "").trim();
 }
@@ -317,17 +677,43 @@ function getTagsField(formData) {
     .filter(Boolean);
 }
 
+function hasUnselectedProductCompanyInput() {
+  return Boolean(elements.products.companySearchInput.value.trim()) &&
+    !elements.products.companyIdInput.value;
+}
+
+function hasUnselectedProductSupplierInput() {
+  return Boolean(elements.products.supplierSearchInput.value.trim()) &&
+    !elements.products.supplierIdInput.value;
+}
+
 function hideProductCreateModal() {
+  hideModal(elements.products.createModal);
+}
+
+function hideCompanyCreateModal() {
+  hideModal(elements.companies.createModal);
+}
+
+function hideModal(modalElement) {
   const Modal = window.bootstrap?.Modal;
 
   if (!Modal) {
     return;
   }
 
-  Modal.getOrCreateInstance(elements.products.createModal).hide();
+  Modal.getOrCreateInstance(modalElement).hide();
 }
 
 function getCreateProductErrorMessage(error) {
+  return getCreateErrorMessage(error, "товар");
+}
+
+function getCreateCompanyErrorMessage(error) {
+  return getCreateErrorMessage(error, "компанию");
+}
+
+function getCreateErrorMessage(error, label) {
   const detail = error?.data?.detail;
 
   if (Array.isArray(detail)) {
@@ -345,10 +731,10 @@ function getCreateProductErrorMessage(error) {
   }
 
   if (error?.status) {
-    return `Не удалось создать товар. API вернул статус ${error.status}.`;
+    return `Не удалось создать ${label}. API вернул статус ${error.status}.`;
   }
 
-  return "Не удалось создать товар. Проверьте, что API запущен.";
+  return `Не удалось создать ${label}. Проверьте, что API запущен.`;
 }
 
 function getRequestErrorMessage(error, label) {

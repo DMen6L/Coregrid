@@ -4,8 +4,9 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import Integer, func, select, type_coerce
 
 from app.models import Company
-from app.schemas import CompanyResponse, PaginatedResponse
+from app.schemas import CompanyCreate, CompanyResponse, PaginatedResponse
 from devs import DbSession
+from errors import commit_or_raise
 from utils import paginate
 
 router = APIRouter(prefix="/companies", tags=["companies"])
@@ -38,3 +39,14 @@ def get_companies(
         page_size=page_size,
         response_schema=CompanyResponse,
     )
+
+
+@router.post("", response_model=CompanyResponse, status_code=201)
+def add_company(db: DbSession, company_data: CompanyCreate):
+    company = Company(**company_data.model_dump())
+
+    db.add(company)
+    commit_or_raise(db)
+    db.refresh(company)
+
+    return company

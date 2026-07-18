@@ -10,6 +10,7 @@ export const elements = {
     dashboard: getElement("#dashboard"),
     products: getElement("#products"),
     companies: getElement("#companies"),
+    suppliers: getElement("#suppliers"),
   },
   dashboard: {
     salesValueCard: getElement("#dashboard-sales-value-card"),
@@ -26,6 +27,27 @@ export const elements = {
     createForm: getElement("#product-create-form"),
     createSubmitButton: getElement("#product-create-submit-button"),
     createError: getElement("#product-create-error"),
+    purchasePriceInput: getElement("#product-create-purchase-price"),
+    marginPercentInput: getElement("#product-create-margin-percent"),
+    salePriceInput: getElement("#product-create-sale-price"),
+    companySearchInput: getElement("#product-create-company-search"),
+    companySearchButton: getElement("#product-create-company-search-button"),
+    companyIdInput: getElement("#product-create-company-id"),
+    companySelected: getElement("#product-create-company-selected"),
+    companySelectedName: getElement("#product-create-company-selected-name"),
+    companySelectedMeta: getElement("#product-create-company-selected-meta"),
+    companyClearButton: getElement("#product-create-company-clear-button"),
+    companyLookupMessage: getElement("#product-create-company-lookup-message"),
+    companyResults: getElement("#product-create-company-results"),
+    supplierSearchInput: getElement("#product-create-supplier-search"),
+    supplierSearchButton: getElement("#product-create-supplier-search-button"),
+    supplierIdInput: getElement("#product-create-supplier-id"),
+    supplierSelected: getElement("#product-create-supplier-selected"),
+    supplierSelectedName: getElement("#product-create-supplier-selected-name"),
+    supplierSelectedMeta: getElement("#product-create-supplier-selected-meta"),
+    supplierClearButton: getElement("#product-create-supplier-clear-button"),
+    supplierLookupMessage: getElement("#product-create-supplier-lookup-message"),
+    supplierResults: getElement("#product-create-supplier-results"),
     count: getElement("#products-count"),
     loading: getElement("#products-loading"),
     error: getElement("#products-error"),
@@ -41,6 +63,11 @@ export const elements = {
     searchForm: getElement("#companies-search-form"),
     searchInput: getElement("#companies-search-input"),
     searchButton: getElement("#companies-search-button"),
+    openCreateModalButton: getElement("#open-company-create-modal-button"),
+    createModal: getElement("#company-create-modal"),
+    createForm: getElement("#company-create-form"),
+    createSubmitButton: getElement("#company-create-submit-button"),
+    createError: getElement("#company-create-error"),
     count: getElement("#companies-count"),
     loading: getElement("#companies-loading"),
     error: getElement("#companies-error"),
@@ -51,6 +78,21 @@ export const elements = {
     previousPageButton: getElement("#companies-previous-page-button"),
     nextPageButton: getElement("#companies-next-page-button"),
     pageSummary: getElement("#companies-page-summary"),
+  },
+  suppliers: {
+    searchForm: getElement("#suppliers-search-form"),
+    searchInput: getElement("#suppliers-search-input"),
+    searchButton: getElement("#suppliers-search-button"),
+    count: getElement("#suppliers-count"),
+    loading: getElement("#suppliers-loading"),
+    error: getElement("#suppliers-error"),
+    empty: getElement("#suppliers-empty"),
+    table: getElement("#suppliers-table"),
+    tableBody: getElement("#suppliers-table-body"),
+    pagination: getElement("#suppliers-pagination"),
+    previousPageButton: getElement("#suppliers-previous-page-button"),
+    nextPageButton: getElement("#suppliers-next-page-button"),
+    pageSummary: getElement("#suppliers-page-summary"),
   },
 };
 
@@ -75,8 +117,36 @@ export const state = {
     hasNext: false,
     hasPrevious: false,
     isCreating: false,
+    isSalePriceEdited: false,
+    companyLookup: {
+      isLoading: false,
+      error: "",
+      hasSearched: false,
+      results: [],
+      selectedCompany: null,
+    },
+    supplierLookup: {
+      isLoading: false,
+      error: "",
+      hasSearched: false,
+      results: [],
+      selectedSupplier: null,
+    },
   },
   companies: {
+    list: [],
+    searchTerm: "",
+    isLoading: true,
+    error: "",
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 0,
+    hasNext: false,
+    hasPrevious: false,
+    isCreating: false,
+  },
+  suppliers: {
     list: [],
     searchTerm: "",
     isLoading: true,
@@ -185,6 +255,10 @@ export function setProductCreateSubmitting(isSubmitting) {
   elements.products.createSubmitButton.textContent = isSubmitting
     ? "Создание..."
     : "Создать товар";
+  updateProductCompanyLookupControls();
+  updateProductSupplierLookupControls();
+  renderProductCompanyLookup();
+  renderProductSupplierLookup();
 }
 
 export function setProductCreateError(message) {
@@ -194,7 +268,142 @@ export function setProductCreateError(message) {
 
 export function resetProductCreateForm() {
   elements.products.createForm.reset();
+  state.products.isSalePriceEdited = false;
+  clearProductCompanyLookup(false);
+  clearProductSupplierLookup(false);
+  updateProductSalePrice();
   setProductCreateError("");
+}
+
+export function setProductSalePriceEdited(isEdited) {
+  state.products.isSalePriceEdited = isEdited;
+}
+
+export function updateProductSalePrice() {
+  const purchasePrice = getPositiveIntegerInputValue(
+    elements.products.purchasePriceInput,
+    1,
+  );
+  const marginPercent = getNonNegativeIntegerInputValue(
+    elements.products.marginPercentInput,
+    0,
+  );
+  const salePrice = calculateSalePrice(purchasePrice, marginPercent);
+  const currentSalePrice = Number(elements.products.salePriceInput.value);
+
+  elements.products.salePriceInput.min = String(salePrice);
+
+  if (
+    !state.products.isSalePriceEdited ||
+    !Number.isFinite(currentSalePrice) ||
+    currentSalePrice < salePrice
+  ) {
+    elements.products.salePriceInput.value = String(salePrice);
+  }
+}
+
+export function setProductCompanyLookupLoading(isLoading) {
+  state.products.companyLookup.isLoading = isLoading;
+  updateProductCompanyLookupControls();
+  renderProductCompanyLookup();
+}
+
+export function setProductCompanyLookupError(message) {
+  state.products.companyLookup.error = message;
+  state.products.companyLookup.hasSearched = Boolean(message);
+  state.products.companyLookup.results = [];
+  renderProductCompanyLookup();
+}
+
+export function setProductCompanyLookupResults(companies) {
+  state.products.companyLookup.error = "";
+  state.products.companyLookup.hasSearched = true;
+  state.products.companyLookup.results = Array.isArray(companies) ? companies : [];
+  renderProductCompanyLookup();
+}
+
+export function setProductSelectedCompany(company) {
+  state.products.companyLookup.isLoading = false;
+  state.products.companyLookup.error = "";
+  state.products.companyLookup.hasSearched = false;
+  state.products.companyLookup.results = [];
+  state.products.companyLookup.selectedCompany = company || null;
+  elements.products.companyIdInput.value = company?.id ? String(company.id) : "";
+
+  if (company?.name) {
+    elements.products.companySearchInput.value = company.name;
+  }
+
+  updateProductCompanyLookupControls();
+  renderProductCompanyLookup();
+}
+
+export function clearProductCompanyLookup(shouldClearInput = true) {
+  state.products.companyLookup.isLoading = false;
+  state.products.companyLookup.error = "";
+  state.products.companyLookup.hasSearched = false;
+  state.products.companyLookup.results = [];
+  state.products.companyLookup.selectedCompany = null;
+  elements.products.companyIdInput.value = "";
+
+  if (shouldClearInput) {
+    elements.products.companySearchInput.value = "";
+  }
+
+  updateProductCompanyLookupControls();
+  renderProductCompanyLookup();
+}
+
+export function setProductSupplierLookupLoading(isLoading) {
+  state.products.supplierLookup.isLoading = isLoading;
+  updateProductSupplierLookupControls();
+  renderProductSupplierLookup();
+}
+
+export function setProductSupplierLookupError(message) {
+  state.products.supplierLookup.error = message;
+  state.products.supplierLookup.hasSearched = Boolean(message);
+  state.products.supplierLookup.results = [];
+  renderProductSupplierLookup();
+}
+
+export function setProductSupplierLookupResults(suppliers) {
+  state.products.supplierLookup.error = "";
+  state.products.supplierLookup.hasSearched = true;
+  state.products.supplierLookup.results = Array.isArray(suppliers) ? suppliers : [];
+  renderProductSupplierLookup();
+}
+
+export function setProductSelectedSupplier(supplier) {
+  state.products.supplierLookup.isLoading = false;
+  state.products.supplierLookup.error = "";
+  state.products.supplierLookup.hasSearched = false;
+  state.products.supplierLookup.results = [];
+  state.products.supplierLookup.selectedSupplier = supplier || null;
+  elements.products.supplierIdInput.value = supplier?.id ? String(supplier.id) : "";
+
+  if (supplier?.name) {
+    elements.products.supplierSearchInput.value = supplier.name;
+  }
+
+  updateProductSupplierLookupControls();
+  renderProductSupplierLookup();
+}
+
+export function clearProductSupplierLookup(shouldClearInput = true) {
+  state.products.supplierLookup.isLoading = false;
+  state.products.supplierLookup.error = "";
+  state.products.supplierLookup.hasSearched = false;
+  state.products.supplierLookup.results = [];
+  state.products.supplierLookup.selectedSupplier = null;
+  elements.products.supplierIdInput.value = "";
+
+  if (shouldClearInput) {
+    elements.products.supplierSearchInput.value = "";
+  }
+
+  updateProductSupplierLookupControls();
+  renderProductSupplierLookup();
 }
 
 export function setCompaniesLoading(isLoading) {
@@ -224,6 +433,54 @@ export function setCompaniesPagination(pagination) {
   state.companies.hasNext = pagination.hasNext;
   state.companies.hasPrevious = pagination.hasPrevious;
   renderCompanies(state.companies.list);
+}
+
+export function setCompanyCreateSubmitting(isSubmitting) {
+  state.companies.isCreating = isSubmitting;
+  elements.companies.createSubmitButton.disabled = isSubmitting;
+  elements.companies.openCreateModalButton.disabled = isSubmitting;
+  elements.companies.createSubmitButton.textContent = isSubmitting
+    ? "Создание..."
+    : "Создать компанию";
+}
+
+export function setCompanyCreateError(message) {
+  elements.companies.createError.textContent = message;
+  elements.companies.createError.classList.toggle("d-none", !message);
+}
+
+export function resetCompanyCreateForm() {
+  elements.companies.createForm.reset();
+  setCompanyCreateError("");
+}
+
+export function setSuppliersLoading(isLoading) {
+  state.suppliers.isLoading = isLoading;
+  elements.suppliers.searchButton.disabled = isLoading;
+  updateSuppliersPaginationControls();
+  renderSuppliers(state.suppliers.list);
+}
+
+export function setSuppliersError(message) {
+  state.suppliers.error = message;
+  elements.suppliers.error.textContent = message;
+  elements.suppliers.error.classList.toggle("d-none", !message);
+  renderSuppliers(state.suppliers.list);
+}
+
+export function setSuppliersSearchTerm(searchTerm) {
+  state.suppliers.searchTerm = searchTerm;
+  renderSuppliers(state.suppliers.list);
+}
+
+export function setSuppliersPagination(pagination) {
+  state.suppliers.page = pagination.page;
+  state.suppliers.pageSize = pagination.pageSize;
+  state.suppliers.total = pagination.total;
+  state.suppliers.totalPages = pagination.totalPages;
+  state.suppliers.hasNext = pagination.hasNext;
+  state.suppliers.hasPrevious = pagination.hasPrevious;
+  renderSuppliers(state.suppliers.list);
 }
 
 const stateBindings = {
@@ -260,6 +517,12 @@ const stateBindings = {
   "companies.list": {
     update(companies) {
       renderCompanies(companies);
+    },
+  },
+
+  "suppliers.list": {
+    update(suppliers) {
+      renderSuppliers(suppliers);
     },
   },
 };
@@ -314,6 +577,190 @@ function updatePaginationControls() {
     `Страница ${formatCount(state.products.page)} из ${formatCount(totalPages)}`;
 }
 
+function renderProductCompanyLookup() {
+  const lookup = state.products.companyLookup;
+  const selectedCompany = lookup.selectedCompany;
+  const hasSelectedCompany = Boolean(selectedCompany);
+
+  elements.products.companySelected.classList.toggle("d-none", !hasSelectedCompany);
+
+  if (hasSelectedCompany) {
+    elements.products.companySelectedName.textContent =
+      selectedCompany.name || "Без названия";
+    elements.products.companySelectedMeta.textContent =
+      `ID ${formatCount(selectedCompany.id)} | ИИН ${selectedCompany.iin || "Не указан"}`;
+  } else {
+    elements.products.companySelectedName.textContent = "";
+    elements.products.companySelectedMeta.textContent = "";
+  }
+
+  const isError = Boolean(lookup.error);
+  const lookupMessage = getProductCompanyLookupMessage(lookup);
+
+  elements.products.companyLookupMessage.textContent = lookupMessage;
+  elements.products.companyLookupMessage.classList.toggle("d-none", !lookupMessage);
+  elements.products.companyLookupMessage.classList.toggle("text-danger", isError);
+  elements.products.companyLookupMessage.classList.toggle("text-secondary", !isError);
+
+  const shouldShowResults =
+    !hasSelectedCompany &&
+    !lookup.isLoading &&
+    !lookup.error &&
+    lookup.results.length > 0;
+
+  elements.products.companyResults.classList.toggle("d-none", !shouldShowResults);
+  elements.products.companyResults.replaceChildren();
+
+  if (!shouldShowResults) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const company of lookup.results) {
+    fragment.append(createProductCompanyResultButton(company));
+  }
+
+  elements.products.companyResults.append(fragment);
+}
+
+function getProductCompanyLookupMessage(lookup) {
+  if (lookup.isLoading) {
+    return "Поиск компаний...";
+  }
+
+  if (lookup.error) {
+    return lookup.error;
+  }
+
+  if (lookup.hasSearched && lookup.results.length === 0) {
+    return "Компании не найдены.";
+  }
+
+  return "";
+}
+
+function updateProductCompanyLookupControls() {
+  const isLookupDisabled =
+    state.products.isCreating || state.products.companyLookup.isLoading;
+
+  elements.products.companySearchButton.disabled = isLookupDisabled;
+  elements.products.companySearchInput.disabled = state.products.isCreating;
+  elements.products.companyClearButton.disabled = state.products.isCreating;
+}
+
+function createProductCompanyResultButton(company) {
+  const button = document.createElement("button");
+  button.className = "list-group-item list-group-item-action product-company-result";
+  button.type = "button";
+  button.dataset.companyId = String(company.id || "");
+  button.disabled = state.products.isCreating;
+  button.setAttribute("role", "option");
+
+  const name = document.createElement("span");
+  name.className = "fw-semibold d-block";
+  name.textContent = company.name || "Без названия";
+
+  const meta = document.createElement("span");
+  meta.className = "product-meta d-block";
+  meta.textContent = `ID ${formatCount(company.id)} | ИИН ${company.iin || "Не указан"}`;
+
+  button.append(name, meta);
+  return button;
+}
+
+function renderProductSupplierLookup() {
+  const lookup = state.products.supplierLookup;
+  const selectedSupplier = lookup.selectedSupplier;
+  const hasSelectedSupplier = Boolean(selectedSupplier);
+
+  elements.products.supplierSelected.classList.toggle("d-none", !hasSelectedSupplier);
+
+  if (hasSelectedSupplier) {
+    elements.products.supplierSelectedName.textContent =
+      selectedSupplier.name || "Без названия";
+    elements.products.supplierSelectedMeta.textContent =
+      `ID ${formatCount(selectedSupplier.id)} | ${selectedSupplier.phone_number || "Телефон не указан"}`;
+  } else {
+    elements.products.supplierSelectedName.textContent = "";
+    elements.products.supplierSelectedMeta.textContent = "";
+  }
+
+  const isError = Boolean(lookup.error);
+  const lookupMessage = getProductSupplierLookupMessage(lookup);
+
+  elements.products.supplierLookupMessage.textContent = lookupMessage;
+  elements.products.supplierLookupMessage.classList.toggle("d-none", !lookupMessage);
+  elements.products.supplierLookupMessage.classList.toggle("text-danger", isError);
+  elements.products.supplierLookupMessage.classList.toggle("text-secondary", !isError);
+
+  const shouldShowResults =
+    !hasSelectedSupplier &&
+    !lookup.isLoading &&
+    !lookup.error &&
+    lookup.results.length > 0;
+
+  elements.products.supplierResults.classList.toggle("d-none", !shouldShowResults);
+  elements.products.supplierResults.replaceChildren();
+
+  if (!shouldShowResults) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const supplier of lookup.results) {
+    fragment.append(createProductSupplierResultButton(supplier));
+  }
+
+  elements.products.supplierResults.append(fragment);
+}
+
+function getProductSupplierLookupMessage(lookup) {
+  if (lookup.isLoading) {
+    return "Поиск поставщиков...";
+  }
+
+  if (lookup.error) {
+    return lookup.error;
+  }
+
+  if (lookup.hasSearched && lookup.results.length === 0) {
+    return "Поставщики не найдены.";
+  }
+
+  return "";
+}
+
+function updateProductSupplierLookupControls() {
+  const isLookupDisabled =
+    state.products.isCreating || state.products.supplierLookup.isLoading;
+
+  elements.products.supplierSearchButton.disabled = isLookupDisabled;
+  elements.products.supplierSearchInput.disabled = state.products.isCreating;
+  elements.products.supplierClearButton.disabled = state.products.isCreating;
+}
+
+function createProductSupplierResultButton(supplier) {
+  const button = document.createElement("button");
+  button.className = "list-group-item list-group-item-action product-supplier-result";
+  button.type = "button";
+  button.dataset.supplierId = String(supplier.id || "");
+  button.disabled = state.products.isCreating;
+  button.setAttribute("role", "option");
+
+  const name = document.createElement("span");
+  name.className = "fw-semibold d-block";
+  name.textContent = supplier.name || "Без названия";
+
+  const meta = document.createElement("span");
+  meta.className = "product-meta d-block";
+  meta.textContent = `ID ${formatCount(supplier.id)} | ${supplier.phone_number || "Телефон не указан"}`;
+
+  button.append(name, meta);
+  return button;
+}
+
 function renderCompanies(companies) {
   const companyList = Array.isArray(companies) ? companies : [];
   const hasCompanies = companyList.length > 0;
@@ -359,6 +806,51 @@ function updateCompaniesPaginationControls() {
     `Страница ${formatCount(state.companies.page)} из ${formatCount(totalPages)}`;
 }
 
+function renderSuppliers(suppliers) {
+  const supplierList = Array.isArray(suppliers) ? suppliers : [];
+  const hasSuppliers = supplierList.length > 0;
+  const shouldShowTable = hasSuppliers && !state.suppliers.isLoading;
+  const shouldShowEmpty =
+    !hasSuppliers && !state.suppliers.isLoading && !state.suppliers.error;
+
+  elements.suppliers.count.textContent = formatSuppliersCount(state.suppliers.total);
+  elements.suppliers.loading.classList.toggle("d-none", !state.suppliers.isLoading);
+  elements.suppliers.empty.textContent = state.suppliers.searchTerm
+    ? "По запросу ничего не найдено."
+    : "Поставщики пока не добавлены.";
+  elements.suppliers.empty.classList.toggle("d-none", !shouldShowEmpty);
+  elements.suppliers.table.classList.toggle("d-none", !shouldShowTable);
+  updateSuppliersPaginationControls();
+
+  elements.suppliers.tableBody.replaceChildren();
+
+  if (!shouldShowTable) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const supplier of supplierList) {
+    fragment.append(createSupplierRow(supplier));
+  }
+
+  elements.suppliers.tableBody.append(fragment);
+}
+
+function updateSuppliersPaginationControls() {
+  const shouldShowPagination =
+    state.suppliers.total > 0 && !state.suppliers.isLoading && !state.suppliers.error;
+  const totalPages = Math.max(state.suppliers.totalPages, 1);
+
+  elements.suppliers.pagination.classList.toggle("d-none", !shouldShowPagination);
+  elements.suppliers.previousPageButton.disabled =
+    state.suppliers.isLoading || !state.suppliers.hasPrevious;
+  elements.suppliers.nextPageButton.disabled =
+    state.suppliers.isLoading || !state.suppliers.hasNext;
+  elements.suppliers.pageSummary.textContent =
+    `Страница ${formatCount(state.suppliers.page)} из ${formatCount(totalPages)}`;
+}
+
 function createCompanyRow(company) {
   const row = document.createElement("tr");
 
@@ -377,6 +869,27 @@ function createCompanyRow(company) {
   iinCell.textContent = company.iin || "Не указан";
 
   row.append(companyCell, iinCell);
+  return row;
+}
+
+function createSupplierRow(supplier) {
+  const row = document.createElement("tr");
+
+  const supplierCell = document.createElement("td");
+  const name = document.createElement("div");
+  name.className = "fw-semibold";
+  name.textContent = supplier.name || "Без названия";
+
+  const meta = document.createElement("div");
+  meta.className = "supplier-meta";
+  meta.textContent = `ID ${supplier.id}`;
+
+  supplierCell.append(name, meta);
+
+  const phoneCell = document.createElement("td");
+  phoneCell.textContent = supplier.phone_number || "Не указан";
+
+  row.append(supplierCell, phoneCell);
   return row;
 }
 
@@ -545,6 +1058,35 @@ function formatProductsCount(count) {
 function formatCompaniesCount(count) {
   const formattedCount = formatCount(count);
   return count === 1 ? `${formattedCount} компания` : `${formattedCount} компаний`;
+}
+
+function formatSuppliersCount(count) {
+  const formattedCount = formatCount(count);
+  return count === 1 ? `${formattedCount} поставщик` : `${formattedCount} поставщиков`;
+}
+
+function getPositiveIntegerInputValue(input, fallbackValue) {
+  const value = Number(input.value);
+
+  if (!Number.isFinite(value) || value < 1) {
+    return fallbackValue;
+  }
+
+  return Math.trunc(value);
+}
+
+function getNonNegativeIntegerInputValue(input, fallbackValue) {
+  const value = Number(input.value);
+
+  if (!Number.isFinite(value) || value < 0) {
+    return fallbackValue;
+  }
+
+  return Math.trunc(value);
+}
+
+function calculateSalePrice(purchasePrice, marginPercent) {
+  return Math.ceil((purchasePrice * (100 + marginPercent)) / 100);
 }
 
 function formatQuantity(quantity, unit) {
