@@ -166,16 +166,15 @@ class Product(Base):
         server_default=func.now(),
     )
 
-    company: Mapped["Company"] = relationship(back_populates="products")
-    supplier: Mapped["Supplier"] = relationship(back_populates="products")
-    stock_movement_lines: Mapped[list["StockMovementLine"]] = relationship(
-        back_populates="product",
-        passive_deletes=True,
-    )
+    company: Mapped["Company | None"] = relationship(back_populates="products")
+    supplier: Mapped["Supplier | None"] = relationship(back_populates="products")
     tags: Mapped[list["Tag"]] = relationship(
         secondary=product_tags,
         back_populates="products",
         order_by="Tag.name",
+    )
+    restock_lines: Mapped[list["RestockLine"]] = relationship(
+        back_populates="product",
     )
 
     __table_args__ = (
@@ -218,14 +217,10 @@ class Product(Base):
         return self.supplier.name if self.supplier else None
 
 
-class StockMovement(Base):
-    __tablename__ = "stock_movements"
+class Restock(Base):
+    __tablename__ = "restocks"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    movement_type: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-    )
     note: Mapped[str | None] = mapped_column(
         String(500),
         nullable=True,
@@ -233,125 +228,59 @@ class StockMovement(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         server_default=func.now(),
+        nullable=False,
     )
 
-    lines: Mapped[list["StockMovementLine"]] = relationship(
-        back_populates="movement",
+    lines: Mapped[list["RestockLine"]] = relationship(
+        back_populates="restock",
         cascade="all, delete-orphan",
-        order_by="StockMovementLine.id",
-    )
-    sale: Mapped["Sale"] = relationship(
-        back_populates="stock_movement",
         passive_deletes=True,
-        uselist=False,
-    )
-
-    __table_args__ = (
-        CheckConstraint(
-            "movement_type in ('in', 'out', 'adjustment')",
-            name="ck_stock_movements_type",
-        ),
+        order_by="RestockLine.id",
     )
 
 
-class StockMovementLine(Base):
-    __tablename__ = "stock_movement_lines"
+class RestockLine(Base):
+    __tablename__ = "restock_lines"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    movement_id: Mapped[int] = mapped_column(
+    restock_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("stock_movements.id", ondelete="CASCADE"),
+        ForeignKey("restocks.id", ondelete="CASCADE"),
         nullable=False,
     )
     product_id: Mapped[int] = mapped_column(
-        Integer,
         ForeignKey("products.id"),
         nullable=False,
     )
-    quantity_delta: Mapped[int] = mapped_column(
+
+    restock_quantity: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
     )
-    quantity_before: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-    )
-    quantity_after: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-    )
-    unit_price_snapshot: Mapped[int | None] = mapped_column(
+    unit_cost_snapshot: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True,
     )
     quantity_unit_snapshot: Mapped[str] = mapped_column(
         String(QUANTITY_UNIT_MAX_LENGTH),
-        default=DEFAULT_QUANTITY_UNIT,
-        server_default=DEFAULT_QUANTITY_UNIT,
         nullable=False,
     )
 
-    movement: Mapped["StockMovement"] = relationship(back_populates="lines")
-    product: Mapped["Product"] = relationship(back_populates="stock_movement_lines")
+    restock: Mapped["Restock"] = relationship(
+        back_populates="lines",
+    )
+    product: Mapped["Product"] = relationship(
+        back_populates="restock_lines",
+    )
 
     __table_args__ = (
         CheckConstraint(
-            "quantity_delta != 0",
-            name="ck_stock_movement_lines_quantity_delta",
+            "restock_quantity > 0",
+            name="ck_restock_lines_requested_restock",
         ),
-        CheckConstraint(
-            "quantity_before >= 0",
-            name="ck_stock_movement_lines_quantity_before",
-        ),
-        CheckConstraint(
-            "quantity_after >= 0",
-            name="ck_stock_movement_lines_quantity_after",
-        ),
-        CheckConstraint(
-            "unit_price_snapshot is null or unit_price_snapshot > 0",
-            name="ck_stock_movement_lines_unit_price_snapshot",
-        ),
-        CheckConstraint(
-            "char_length(quantity_unit_snapshot) > 0",
-            name="ck_stock_movement_lines_quantity_unit_snapshot_not_empty",
-        ),
-    )
-
-
-class Sale(Base):
-    __tablename__ = "sales"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    stock_movement_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("stock_movements.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    note: Mapped[str | None] = mapped_column(
-        String(500),
-        nullable=True,
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        server_default=func.now(),
-    )
-
-    stock_movement: Mapped["StockMovement"] = relationship(back_populates="sale")
-
-    __table_args__ = (
         UniqueConstraint(
-            "stock_movement_id",
-            name="uq_sales_stock_movement_id",
+            "restock_id",
+            "product_id",
+            name="uq_restock_lines_restock_product",
         ),
     )
-
-    @property
-    def lines(self) -> list["StockMovementLine"]:
-        return self.stock_movement.lines
-
-    @property
-    def revenue(self) -> int:
-        return sum(
-            abs(line.quantity_delta) * (line.unit_price_snapshot or 0)
-            for line in self.lines
-        )

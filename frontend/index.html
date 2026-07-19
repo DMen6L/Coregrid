@@ -95,6 +95,33 @@
                 </li>
               </ul>
             </div>
+            <div class="nav-item dropdown">
+              <button
+                class="nav-link dropdown-toggle"
+                id="stock-actions-dropdown"
+                type="button"
+                data-bs-toggle="dropdown"
+                data-view-menu-views="restocks"
+                aria-expanded="false"
+              >
+                Операции склада
+              </button>
+              <ul class="dropdown-menu" aria-labelledby="stock-actions-dropdown">
+                <li>
+                  <button
+                    class="dropdown-item"
+                    id="restocks-tab"
+                    type="button"
+                    role="tab"
+                    data-view-tab="restocks"
+                    aria-controls="restocks"
+                    aria-selected="false"
+                  >
+                    Пополнения
+                  </button>
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
@@ -402,7 +429,166 @@
           </button>
         </nav>
       </section>
+
+      <section
+        class="container-fluid p-4 d-none"
+        id="restocks"
+        role="tabpanel"
+        aria-labelledby="restocks-tab"
+        hidden
+      >
+        <div class="restocks-toolbar d-flex align-items-end justify-content-between flex-wrap gap-3 mb-3">
+          <form class="restocks-filters" id="restocks-filter-form">
+            <label class="form-label" for="restocks-date-from-input">Период пополнений</label>
+            <div class="restocks-filter-controls">
+              <input
+                class="form-control"
+                id="restocks-date-from-input"
+                name="from"
+                type="date"
+                aria-label="Дата начала"
+              >
+              <input
+                class="form-control"
+                id="restocks-date-to-input"
+                name="to"
+                type="date"
+                aria-label="Дата окончания"
+              >
+              <button
+                class="btn btn-primary"
+                id="restocks-filter-button"
+                type="submit"
+              >
+                Показать
+              </button>
+              <button
+                class="btn btn-outline-secondary"
+                id="restocks-reset-button"
+                type="button"
+              >
+                Сбросить
+              </button>
+            </div>
+          </form>
+          <div class="restocks-actions">
+            <button
+              class="btn btn-success"
+              id="open-restock-create-modal-button"
+              type="button"
+              data-bs-toggle="modal"
+              data-bs-target="#restock-create-modal"
+            >
+              Добавить пополнение
+            </button>
+            <span class="badge text-bg-secondary restocks-count" id="restocks-count">0 пополнений</span>
+          </div>
+        </div>
+        <div class="text-secondary py-4" id="restocks-loading" aria-live="polite">
+          Загрузка пополнений...
+        </div>
+        <div class="alert alert-danger d-none" id="restocks-error" role="alert"></div>
+        <div class="alert alert-light border d-none" id="restocks-empty" role="status">
+          Пополнения пока не добавлены.
+        </div>
+        <div class="table-responsive restocks-table d-none" id="restocks-table">
+          <table class="table table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th scope="col">Пополнение</th>
+                <th scope="col">Дата</th>
+                <th scope="col">Позиции</th>
+                <th scope="col">Сумма закупки</th>
+                <th scope="col">Комментарий</th>
+              </tr>
+            </thead>
+            <tbody id="restocks-table-body"></tbody>
+          </table>
+        </div>
+        <nav
+          class="restocks-pagination d-none mt-3"
+          id="restocks-pagination"
+          aria-label="Пагинация пополнений"
+        >
+          <button
+            class="btn btn-outline-primary"
+            id="restocks-previous-page-button"
+            type="button"
+          >
+            Назад
+          </button>
+          <span class="restocks-page-summary" id="restocks-page-summary">
+            Страница 1 из 1
+          </span>
+          <button
+            class="btn btn-outline-primary"
+            id="restocks-next-page-button"
+            type="button"
+          >
+            Вперед
+          </button>
+        </nav>
+      </section>
     </main>
+
+    <div
+      class="modal fade"
+      id="restock-create-modal"
+      tabindex="-1"
+      aria-labelledby="restock-create-modal-title"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <form class="restock-create-form" id="restock-create-form">
+            <div class="modal-header">
+              <h2 class="modal-title fs-5" id="restock-create-modal-title">Добавить пополнение</h2>
+              <button
+                class="btn-close"
+                type="button"
+                data-bs-dismiss="modal"
+                aria-label="Закрыть"
+              ></button>
+            </div>
+            <div class="modal-body">
+              <div class="alert alert-danger d-none" id="restock-create-error" role="alert"></div>
+
+              <div class="mb-3">
+                <label class="form-label" for="restock-create-note">Комментарий</label>
+                <textarea
+                  class="form-control"
+                  id="restock-create-note"
+                  name="note"
+                  rows="2"
+                  maxlength="500"
+                ></textarea>
+              </div>
+
+              <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                <h3 class="fs-6 mb-0">Позиции пополнения</h3>
+                <button
+                  class="btn btn-outline-primary"
+                  id="restock-create-add-line-button"
+                  type="button"
+                >
+                  Добавить позицию
+                </button>
+              </div>
+
+              <div class="restock-create-lines" id="restock-create-lines"></div>
+            </div>
+            <div class="modal-footer restock-create-footer">
+              <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">
+                Отмена
+              </button>
+              <button class="btn btn-primary" id="restock-create-submit-button" type="submit">
+                Создать пополнение
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
 
     <div
       class="modal fade"

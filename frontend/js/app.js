@@ -29,6 +29,13 @@ import {
   setProductsLoading,
   setProductsPagination,
   setProductsSearchTerm,
+  resetRestockCreateForm,
+  setRestockCreateError,
+  setRestockCreateSubmitting,
+  setRestocksDateRange,
+  setRestocksError,
+  setRestocksLoading,
+  setRestocksPagination,
   setState,
   resetSupplierCreateForm,
   setSupplierCreateError,
@@ -44,6 +51,7 @@ const FIRST_LIST_PAGE = 1;
 const PRODUCT_LOOKUP_MIN_SEARCH_LENGTH = 2;
 const PRODUCT_LOOKUP_DEBOUNCE_MS = 300;
 const PRODUCT_LOOKUP_PAGE_SIZE = 10;
+const RESTOCK_DEFAULT_QUANTITY_UNIT = "шт";
 
 const productLookupRequests = {
   company: {
@@ -55,6 +63,9 @@ const productLookupRequests = {
     controller: null,
   },
 };
+
+let restockCreateLineSequence = 0;
+const restockProductLookupRequests = new Map();
 
 initializeApp();
 
@@ -72,6 +83,9 @@ function initializeApp() {
   bindSupplierSearch();
   bindSupplierPagination();
   bindSupplierCreate();
+  bindRestockFilters();
+  bindRestockPagination();
+  bindRestockCreate();
   setActiveView("dashboard");
   loadInitialData();
 }
@@ -410,12 +424,620 @@ function bindSupplierCreate() {
   });
 }
 
+function bindRestockFilters() {
+  elements.restocks.filterForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    if (elements.restocks.filterButton.disabled) {
+      return;
+    }
+
+    const dateFrom = elements.restocks.dateFromInput.value;
+    const dateTo = elements.restocks.dateToInput.value;
+
+    if (isInvalidDateRange(dateFrom, dateTo)) {
+      setRestocksError("Дата начала не может быть позже даты окончания.");
+      elements.restocks.dateFromInput.focus();
+      return;
+    }
+
+    loadRestocks(dateFrom, dateTo, FIRST_LIST_PAGE);
+  });
+
+  elements.restocks.resetButton.addEventListener("click", () => {
+    if (elements.restocks.resetButton.disabled) {
+      return;
+    }
+
+    elements.restocks.dateFromInput.value = "";
+    elements.restocks.dateToInput.value = "";
+    loadRestocks("", "", FIRST_LIST_PAGE);
+  });
+}
+
+function bindRestockPagination() {
+  elements.restocks.previousPageButton.addEventListener("click", () => {
+    if (elements.restocks.previousPageButton.disabled) {
+      return;
+    }
+
+    loadRestocks(
+      state.restocks.dateFrom,
+      state.restocks.dateTo,
+      state.restocks.page - 1,
+    );
+  });
+
+  elements.restocks.nextPageButton.addEventListener("click", () => {
+    if (elements.restocks.nextPageButton.disabled) {
+      return;
+    }
+
+    loadRestocks(
+      state.restocks.dateFrom,
+      state.restocks.dateTo,
+      state.restocks.page + 1,
+    );
+  });
+}
+
+function bindRestockCreate() {
+  elements.restocks.createModal.addEventListener("show.bs.modal", () => {
+    if (getRestockCreateLineRows().length === 0) {
+      addRestockCreateLine();
+    }
+  });
+
+  elements.restocks.createForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    if (
+      elements.restocks.createSubmitButton.disabled ||
+      !elements.restocks.createForm.reportValidity() ||
+      !validateRestockCreateForm()
+    ) {
+      return;
+    }
+
+    createRestock();
+  });
+
+  elements.restocks.createAddLineButton.addEventListener("click", () => {
+    if (elements.restocks.createAddLineButton.disabled) {
+      return;
+    }
+
+    addRestockCreateLine();
+  });
+
+  elements.restocks.createLines.addEventListener("keydown", (event) => {
+    if (
+      event.key === "Enter" &&
+      event.target instanceof Element &&
+      event.target.matches("[data-restock-product-search]")
+    ) {
+      event.preventDefault();
+    }
+  });
+
+  elements.restocks.createLines.addEventListener("input", (event) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+
+    if (event.target.matches("[data-restock-product-search]")) {
+      scheduleRestockProductLookup(getRestockCreateLineElement(event.target));
+    }
+  });
+
+  elements.restocks.createLines.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+
+    const lineElement = getRestockCreateLineElement(event.target);
+
+    if (!lineElement) {
+      return;
+    }
+
+    if (event.target.closest("[data-restock-remove-line]")) {
+      removeRestockCreateLine(lineElement);
+      return;
+    }
+
+    if (event.target.closest("[data-restock-clear-product]")) {
+      cancelRestockProductLookupRequest(lineElement.dataset.restockLineId);
+      clearRestockLineSelectedProduct(lineElement);
+      getRestockLineProductSearchInput(lineElement).focus();
+      return;
+    }
+
+    const productButton = event.target.closest("[data-restock-product-id]");
+
+    if (!productButton || !lineElement.contains(productButton)) {
+      return;
+    }
+
+    const product = getRestockLineProducts(lineElement).find(
+      (item) => String(item.id) === productButton.dataset.restockProductId,
+    );
+
+    if (!product) {
+      return;
+    }
+
+    setRestockLineSelectedProduct(lineElement, product);
+  });
+
+  elements.restocks.createModal.addEventListener("hidden.bs.modal", () => {
+    if (!state.restocks.isCreating) {
+      resetRestockCreateModalState();
+    }
+  });
+}
+
+function addRestockCreateLine(shouldFocus = true) {
+  restockCreateLineSequence += 1;
+  const lineElement = createRestockCreateLineElement(restockCreateLineSequence);
+  elements.restocks.createLines.append(lineElement);
+  updateRestockCreateLineIndexes();
+
+  if (shouldFocus) {
+    getRestockLineProductSearchInput(lineElement).focus();
+  }
+}
+
+function createRestockCreateLineElement(lineId) {
+  const lineElement = document.createElement("div");
+  lineElement.className = "restock-create-line";
+  lineElement.dataset.restockLineId = String(lineId);
+  lineElement.dataset.productId = "";
+  lineElement.dataset.lookupProducts = "[]";
+
+  lineElement.innerHTML = `
+    <div class="restock-create-line-header">
+      <h4 class="fs-6 mb-0" data-restock-line-title>Позиция</h4>
+      <button
+        class="btn btn-sm btn-outline-danger"
+        type="button"
+        data-restock-remove-line
+      >
+        Удалить
+      </button>
+    </div>
+    <div class="row g-3">
+      <div class="col-12 col-lg-5">
+        <label class="form-label">Товар</label>
+        <input
+          class="form-control"
+          type="search"
+          placeholder="Введите название товара"
+          autocomplete="off"
+          required
+          aria-autocomplete="list"
+          data-restock-product-search
+        >
+        <input type="hidden" data-restock-product-id-input>
+        <div
+          class="restock-create-product-selected d-none mt-2"
+          data-restock-product-selected
+        >
+          <div>
+            <div class="fw-semibold" data-restock-product-selected-name></div>
+            <div class="restock-meta" data-restock-product-selected-meta></div>
+          </div>
+          <button
+            class="btn btn-sm btn-outline-secondary"
+            type="button"
+            data-restock-clear-product
+          >
+            Сбросить
+          </button>
+        </div>
+        <div
+          class="restock-create-product-message text-secondary small d-none mt-2"
+          role="status"
+          data-restock-product-message
+        ></div>
+        <div
+          class="list-group restock-create-product-results d-none mt-2"
+          role="listbox"
+          aria-label="Найденные товары"
+          data-restock-product-results
+        ></div>
+      </div>
+      <div class="col-12 col-md-4 col-lg-2">
+        <label class="form-label">Количество</label>
+        <input
+          class="form-control"
+          type="number"
+          min="1"
+          step="1"
+          value="1"
+          required
+          data-restock-quantity
+        >
+      </div>
+      <div class="col-12 col-md-4 col-lg-2">
+        <label class="form-label">Цена закупки</label>
+        <input
+          class="form-control"
+          type="number"
+          min="0"
+          step="1"
+          data-restock-unit-cost
+        >
+      </div>
+      <div class="col-12 col-md-4 col-lg-3">
+        <label class="form-label">Единица</label>
+        <input
+          class="form-control"
+          type="text"
+          maxlength="20"
+          value="${RESTOCK_DEFAULT_QUANTITY_UNIT}"
+          required
+          data-restock-unit
+        >
+      </div>
+    </div>
+  `;
+
+  return lineElement;
+}
+
+function removeRestockCreateLine(lineElement) {
+  if (getRestockCreateLineRows().length <= 1) {
+    return;
+  }
+
+  cancelRestockProductLookupRequest(lineElement.dataset.restockLineId);
+  lineElement.remove();
+  updateRestockCreateLineIndexes();
+  setRestockCreateError("");
+}
+
+function updateRestockCreateLineIndexes() {
+  const lineRows = getRestockCreateLineRows();
+
+  lineRows.forEach((lineElement, index) => {
+    const title = lineElement.querySelector("[data-restock-line-title]");
+    const removeButton = lineElement.querySelector("[data-restock-remove-line]");
+
+    title.textContent = `Позиция ${index + 1}`;
+    removeButton.disabled = state.restocks.isCreating || lineRows.length <= 1;
+  });
+}
+
+function getRestockCreateLineRows() {
+  return Array.from(
+    elements.restocks.createLines.querySelectorAll("[data-restock-line-id]"),
+  );
+}
+
+function getRestockCreateLineElement(source) {
+  return source?.closest("[data-restock-line-id]") || null;
+}
+
+function getRestockCreateLineById(lineId) {
+  if (!lineId) {
+    return null;
+  }
+
+  return elements.restocks.createLines.querySelector(
+    `[data-restock-line-id="${lineId}"]`,
+  );
+}
+
+function validateRestockCreateForm() {
+  const productIds = new Set();
+  const lineRows = getRestockCreateLineRows();
+
+  if (lineRows.length === 0) {
+    setRestockCreateError("Добавьте хотя бы одну позицию пополнения.");
+    return false;
+  }
+
+  for (const lineElement of lineRows) {
+    const productId = lineElement.dataset.productId;
+
+    if (!productId) {
+      setRestockCreateError("Выберите товар из результатов поиска для каждой позиции.");
+      getRestockLineProductSearchInput(lineElement).focus();
+      return false;
+    }
+
+    if (productIds.has(productId)) {
+      setRestockCreateError("Один товар нельзя добавить в пополнение дважды.");
+      getRestockLineProductSearchInput(lineElement).focus();
+      return false;
+    }
+
+    productIds.add(productId);
+  }
+
+  setRestockCreateError("");
+  return true;
+}
+
+function resetRestockCreateModalState() {
+  cancelAllRestockProductLookupRequests();
+  resetRestockCreateForm();
+  elements.restocks.createLines.replaceChildren();
+  restockCreateLineSequence = 0;
+  addRestockCreateLine(false);
+}
+
+function setRestockCreateLineControlsDisabled(isDisabled) {
+  for (const lineElement of getRestockCreateLineRows()) {
+    for (const control of lineElement.querySelectorAll("input, button")) {
+      control.disabled = isDisabled;
+    }
+  }
+
+  updateRestockCreateLineIndexes();
+}
+
+function scheduleRestockProductLookup(lineElement) {
+  if (!lineElement) {
+    return;
+  }
+
+  const lineId = lineElement.dataset.restockLineId;
+  const searchTerm = getRestockLineProductSearchInput(lineElement).value.trim();
+
+  cancelRestockProductLookupRequest(lineId);
+  clearRestockLineSelectedProduct(lineElement, false);
+  setRestockLineProducts(lineElement, []);
+  renderRestockProductResults(lineElement, []);
+  renderRestockProductLookupMessage(lineElement, "");
+  setRestockCreateError("");
+
+  if (searchTerm.length < PRODUCT_LOOKUP_MIN_SEARCH_LENGTH) {
+    return;
+  }
+
+  const requestState = getRestockProductLookupRequest(lineId);
+  requestState.debounceId = window.setTimeout(() => {
+    requestState.debounceId = null;
+    searchRestockLineProducts(lineId, searchTerm);
+  }, PRODUCT_LOOKUP_DEBOUNCE_MS);
+}
+
+async function searchRestockLineProducts(lineId, searchTerm) {
+  const lineElement = getRestockCreateLineById(lineId);
+
+  if (!lineElement) {
+    return;
+  }
+
+  const requestState = getRestockProductLookupRequest(lineId);
+  const controller = new AbortController();
+  requestState.controller = controller;
+
+  renderRestockProductLookupMessage(lineElement, "Поиск товаров...");
+
+  try {
+    const productsResponse = await request(getProductLookupPath(searchTerm), {
+      signal: controller.signal,
+    });
+
+    if (!isCurrentRestockProductLookupRequest(lineId, controller, searchTerm)) {
+      return;
+    }
+
+    const productsPage = getPaginatedPage(productsResponse);
+    const products = productsPage.items;
+
+    setRestockLineProducts(lineElement, products);
+    renderRestockProductResults(lineElement, products);
+    renderRestockProductLookupMessage(
+      lineElement,
+      products.length > 0 ? "" : "Товары не найдены.",
+    );
+  } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
+
+    if (!isCurrentRestockProductLookupRequest(lineId, controller, searchTerm)) {
+      return;
+    }
+
+    console.error("Could not search products for restock create:", error);
+    renderRestockProductLookupMessage(
+      lineElement,
+      getRequestErrorMessage(error, "товары"),
+      true,
+    );
+  } finally {
+    if (requestState.controller === controller) {
+      requestState.controller = null;
+    }
+  }
+}
+
+function isCurrentRestockProductLookupRequest(lineId, controller, searchTerm) {
+  const lineElement = getRestockCreateLineById(lineId);
+  const requestState = restockProductLookupRequests.get(lineId);
+
+  return Boolean(lineElement) &&
+    requestState?.controller === controller &&
+    !controller.signal.aborted &&
+    getRestockLineProductSearchInput(lineElement).value.trim() === searchTerm;
+}
+
+function getRestockProductLookupRequest(lineId) {
+  if (!restockProductLookupRequests.has(lineId)) {
+    restockProductLookupRequests.set(lineId, {
+      debounceId: null,
+      controller: null,
+    });
+  }
+
+  return restockProductLookupRequests.get(lineId);
+}
+
+function cancelRestockProductLookupRequest(lineId) {
+  const requestState = restockProductLookupRequests.get(lineId);
+
+  if (!requestState) {
+    return;
+  }
+
+  if (requestState.debounceId !== null) {
+    window.clearTimeout(requestState.debounceId);
+    requestState.debounceId = null;
+  }
+
+  if (requestState.controller) {
+    requestState.controller.abort();
+    requestState.controller = null;
+  }
+}
+
+function cancelAllRestockProductLookupRequests() {
+  for (const lineId of restockProductLookupRequests.keys()) {
+    cancelRestockProductLookupRequest(lineId);
+  }
+
+  restockProductLookupRequests.clear();
+}
+
+function setRestockLineSelectedProduct(lineElement, product) {
+  cancelRestockProductLookupRequest(lineElement.dataset.restockLineId);
+
+  lineElement.dataset.productId = String(product.id || "");
+
+  const productIdInput = lineElement.querySelector("[data-restock-product-id-input]");
+  const searchInput = getRestockLineProductSearchInput(lineElement);
+  const selected = lineElement.querySelector("[data-restock-product-selected]");
+  const selectedName = lineElement.querySelector("[data-restock-product-selected-name]");
+  const selectedMeta = lineElement.querySelector("[data-restock-product-selected-meta]");
+  const unitCostInput = lineElement.querySelector("[data-restock-unit-cost]");
+  const unitInput = lineElement.querySelector("[data-restock-unit]");
+
+  productIdInput.value = product?.id ? String(product.id) : "";
+  searchInput.value = product.name || "";
+  selectedName.textContent = product.name || "Без названия";
+  selectedMeta.textContent =
+    `ID ${formatInlineCount(product.id)} | Остаток: ${formatInlineQuantity(
+      product.quantity,
+      product.quantity_unit,
+    )}`;
+  selected.classList.remove("d-none");
+
+  if (!unitCostInput.value && product.purchase_price !== null && product.purchase_price !== undefined) {
+    unitCostInput.value = String(product.purchase_price);
+  }
+
+  if (product.quantity_unit) {
+    unitInput.value = product.quantity_unit;
+  }
+
+  setRestockLineProducts(lineElement, []);
+  renderRestockProductResults(lineElement, []);
+  renderRestockProductLookupMessage(lineElement, "");
+  setRestockCreateError("");
+}
+
+function clearRestockLineSelectedProduct(lineElement, shouldClearInput = true) {
+  lineElement.dataset.productId = "";
+
+  const productIdInput = lineElement.querySelector("[data-restock-product-id-input]");
+  const searchInput = getRestockLineProductSearchInput(lineElement);
+  const selected = lineElement.querySelector("[data-restock-product-selected]");
+  const selectedName = lineElement.querySelector("[data-restock-product-selected-name]");
+  const selectedMeta = lineElement.querySelector("[data-restock-product-selected-meta]");
+
+  productIdInput.value = "";
+  selected.classList.add("d-none");
+  selectedName.textContent = "";
+  selectedMeta.textContent = "";
+
+  if (shouldClearInput) {
+    searchInput.value = "";
+  }
+}
+
+function setRestockLineProducts(lineElement, products) {
+  lineElement.dataset.lookupProducts = JSON.stringify(Array.isArray(products) ? products : []);
+}
+
+function getRestockLineProducts(lineElement) {
+  try {
+    const products = JSON.parse(lineElement.dataset.lookupProducts || "[]");
+    return Array.isArray(products) ? products : [];
+  } catch (error) {
+    console.error("Could not parse restock product lookup data:", error);
+    return [];
+  }
+}
+
+function renderRestockProductResults(lineElement, products) {
+  const results = lineElement.querySelector("[data-restock-product-results]");
+  const productList = Array.isArray(products) ? products : [];
+
+  results.replaceChildren();
+  results.classList.toggle("d-none", productList.length === 0);
+
+  if (productList.length === 0) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const product of productList) {
+    fragment.append(createRestockProductResultButton(product));
+  }
+
+  results.append(fragment);
+}
+
+function createRestockProductResultButton(product) {
+  const button = document.createElement("button");
+  button.className = "list-group-item list-group-item-action restock-create-product-result";
+  button.type = "button";
+  button.dataset.restockProductId = String(product.id || "");
+  button.disabled = state.restocks.isCreating;
+  button.setAttribute("role", "option");
+
+  const name = document.createElement("span");
+  name.className = "fw-semibold d-block";
+  name.textContent = product.name || "Без названия";
+
+  const meta = document.createElement("span");
+  meta.className = "restock-meta d-block";
+  meta.textContent =
+    `ID ${formatInlineCount(product.id)} | Остаток: ${formatInlineQuantity(
+      product.quantity,
+      product.quantity_unit,
+    )} | Закупка: ${formatInlineCurrency(product.purchase_price)}`;
+
+  button.append(name, meta);
+  return button;
+}
+
+function renderRestockProductLookupMessage(lineElement, message, isError = false) {
+  const messageElement = lineElement.querySelector("[data-restock-product-message]");
+
+  messageElement.textContent = message;
+  messageElement.classList.toggle("d-none", !message);
+  messageElement.classList.toggle("text-danger", isError);
+  messageElement.classList.toggle("text-secondary", !isError);
+}
+
+function getRestockLineProductSearchInput(lineElement) {
+  return lineElement.querySelector("[data-restock-product-search]");
+}
+
 async function loadInitialData() {
   await Promise.all([
     loadDashboardSummary(),
     loadProducts(),
     loadCompanies(),
     loadSuppliers(),
+    loadRestocks(),
   ]);
 }
 
@@ -516,6 +1138,34 @@ async function loadSuppliers(searchTerm = "", page = FIRST_LIST_PAGE) {
     setSuppliersError(getRequestErrorMessage(error, "поставщиков"));
   } finally {
     setSuppliersLoading(false);
+  }
+}
+
+async function loadRestocks(dateFrom = "", dateTo = "", page = FIRST_LIST_PAGE) {
+  setRestocksLoading(true);
+  setRestocksDateRange(dateFrom, dateTo);
+  setRestocksError("");
+
+  try {
+    const restocksResponse = await request(getRestocksPath(dateFrom, dateTo, page));
+    const restocksPage = getPaginatedPage(restocksResponse);
+
+    setRestocksPagination(restocksPage.pagination);
+    setState("restocks.list", restocksPage.items);
+  } catch (error) {
+    console.error("Could not load restocks:", error);
+    setRestocksPagination({
+      page,
+      pageSize: state.restocks.pageSize,
+      total: 0,
+      totalPages: 0,
+      hasNext: false,
+      hasPrevious: false,
+    });
+    setState("restocks.list", []);
+    setRestocksError(getRequestErrorMessage(error, "пополнения"));
+  } finally {
+    setRestocksLoading(false);
   }
 }
 
@@ -714,6 +1364,35 @@ async function createSupplier() {
   }
 }
 
+async function createRestock() {
+  setRestockCreateSubmitting(true);
+  setRestockCreateLineControlsDisabled(true);
+  setRestockCreateError("");
+
+  try {
+    await request("/restocks", {
+      method: "POST",
+      body: JSON.stringify(getRestockCreatePayload()),
+    });
+
+    cancelAllRestockProductLookupRequests();
+    hideRestockCreateModal();
+    resetRestockCreateModalState();
+
+    await Promise.all([
+      loadDashboardSummary(),
+      loadProducts(state.products.searchTerm, state.products.page),
+      loadRestocks(state.restocks.dateFrom, state.restocks.dateTo, FIRST_LIST_PAGE),
+    ]);
+  } catch (error) {
+    console.error("Could not create restock:", error);
+    setRestockCreateError(getCreateRestockErrorMessage(error));
+  } finally {
+    setRestockCreateSubmitting(false);
+    setRestockCreateLineControlsDisabled(false);
+  }
+}
+
 function getProductsPath(searchTerm, page) {
   return getListPath("/products", searchTerm, page);
 }
@@ -729,6 +1408,22 @@ function getListPath(basePath, searchTerm, page) {
 
   const queryString = params.toString();
   return queryString ? `${basePath}?${queryString}` : basePath;
+}
+
+function getRestocksPath(dateFrom, dateTo, page) {
+  const params = new URLSearchParams();
+
+  if (dateFrom) {
+    params.set("from", dateFrom);
+  }
+
+  if (dateTo) {
+    params.set("to", dateTo);
+  }
+
+  params.set("page", String(Math.max(page, FIRST_LIST_PAGE)));
+
+  return `/restocks?${params.toString()}`;
 }
 
 function getProductsPage(productsResponse) {
@@ -798,6 +1493,51 @@ function getSupplierCreatePayload() {
   };
 }
 
+function getRestockCreatePayload() {
+  const note = elements.restocks.createNoteInput.value.trim();
+
+  return {
+    note: note || null,
+    lines: getRestockCreateLineRows().map(getRestockCreateLinePayload),
+  };
+}
+
+function getRestockCreateLinePayload(lineElement) {
+  return {
+    product_id: Number(lineElement.dataset.productId),
+    restock_quantity: getRestockLineNumberValue(lineElement, "[data-restock-quantity]"),
+    unit_cost_snapshot: getRestockLineOptionalNumberValue(
+      lineElement,
+      "[data-restock-unit-cost]",
+    ),
+    quantity_unit_snapshot:
+      getRestockLineTextValue(lineElement, "[data-restock-unit]") ||
+      RESTOCK_DEFAULT_QUANTITY_UNIT,
+  };
+}
+
+function getRestockLineNumberValue(lineElement, selector) {
+  return Number(getRestockLineTextValue(lineElement, selector));
+}
+
+function getRestockLineOptionalNumberValue(lineElement, selector) {
+  const value = getRestockLineTextValue(lineElement, selector);
+  return value ? Number(value) : null;
+}
+
+function getRestockLineTextValue(lineElement, selector) {
+  return String(lineElement.querySelector(selector)?.value || "").trim();
+}
+
+function getProductLookupPath(searchTerm) {
+  const params = new URLSearchParams();
+  params.set("search", searchTerm);
+  params.set("page", String(FIRST_LIST_PAGE));
+  params.set("page_size", String(PRODUCT_LOOKUP_PAGE_SIZE));
+
+  return `/products?${params.toString()}`;
+}
+
 function getCompanyLookupPath(searchTerm) {
   const params = new URLSearchParams();
   params.set("search", searchTerm);
@@ -842,6 +1582,10 @@ function getTagsField(formData) {
     .filter(Boolean);
 }
 
+function isInvalidDateRange(dateFrom, dateTo) {
+  return Boolean(dateFrom && dateTo && dateFrom > dateTo);
+}
+
 function hasUnselectedProductCompanyInput() {
   return Boolean(elements.products.companySearchInput.value.trim()) &&
     !elements.products.companyIdInput.value;
@@ -864,6 +1608,10 @@ function hideSupplierCreateModal() {
   hideModal(elements.suppliers.createModal);
 }
 
+function hideRestockCreateModal() {
+  hideModal(elements.restocks.createModal);
+}
+
 function hideModal(modalElement) {
   const Modal = window.bootstrap?.Modal;
 
@@ -884,6 +1632,10 @@ function getCreateCompanyErrorMessage(error) {
 
 function getCreateSupplierErrorMessage(error) {
   return getCreateErrorMessage(error, "поставщика");
+}
+
+function getCreateRestockErrorMessage(error) {
+  return getCreateErrorMessage(error, "пополнение");
 }
 
 function getCreateErrorMessage(error, label) {
@@ -916,4 +1668,16 @@ function getRequestErrorMessage(error, label) {
   }
 
   return `Не удалось загрузить ${label}. Проверьте, что API запущен.`;
+}
+
+function formatInlineCurrency(value) {
+  return `${Number(value || 0).toLocaleString("ru-KZ")} тг`;
+}
+
+function formatInlineCount(value) {
+  return Number(value || 0).toLocaleString("ru-KZ");
+}
+
+function formatInlineQuantity(quantity, unit) {
+  return `${formatInlineCount(quantity)} ${unit || RESTOCK_DEFAULT_QUANTITY_UNIT}`;
 }

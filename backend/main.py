@@ -6,10 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 
 from app.schemas import SummariesResponse
-from app.models import Product, StockMovement, StockMovementLine
+from app.models import Product
 
 from devs import DbSession
-from routers import companies, products, sales, stock_movements, suppliers, tags
+from routers import companies, products, restocks, suppliers, tags
 
 
 LOCAL_DEVELOPMENT_ORIGINS = [
@@ -31,8 +31,7 @@ app.add_middleware(
 app.include_router(companies.router)
 app.include_router(suppliers.router)
 app.include_router(products.router)
-app.include_router(sales.router)
-app.include_router(stock_movements.router)
+app.include_router(restocks.router)
 app.include_router(tags.router)
 
 
@@ -47,36 +46,6 @@ def get_summaries(db: DbSession) -> SummariesResponse:
     start_of_today = datetime.combine(today, time.min)
     start_of_tomorrow = start_of_today + timedelta(days=1)
 
-    sales_value_subquery = (
-        select(
-            func.coalesce(
-                func.sum(
-                    StockMovementLine.quantity_delta
-                    * StockMovementLine.unit_price_snapshot
-                ),
-                0,
-            )
-        )
-        .select_from(StockMovementLine)
-        .join(StockMovementLine.movement)
-        .where(
-            StockMovement.created_at >= start_of_today,
-            StockMovement.created_at < start_of_tomorrow,
-            StockMovement.movement_type == "out",
-        )
-        .scalar_subquery()
-    )
-
-    sales_count_subquery = (
-        select(func.count(func.distinct(StockMovement.id)))
-        .where(
-            StockMovement.created_at >= start_of_today,
-            StockMovement.created_at < start_of_tomorrow,
-            StockMovement.movement_type == "out",
-        )
-        .scalar_subquery()
-    )
-
     low_stock_subquery = (
         select(func.count(func.distinct(Product.id)))
         .where(Product.quantity > 0, Product.quantity <= Product.low_stock_threshold)
@@ -90,8 +59,6 @@ def get_summaries(db: DbSession) -> SummariesResponse:
     )
 
     statement = select(
-        sales_value_subquery.label("dashboard_sales_value"),
-        sales_count_subquery.label("dashboard_sales_count"),
         low_stock_subquery.label("low_stock"),
         out_of_stock_subquery.label("out_of_stock"),
     )
@@ -99,8 +66,8 @@ def get_summaries(db: DbSession) -> SummariesResponse:
     result = db.execute(statement).one()
 
     return SummariesResponse(
-        dashboard_sales_value=result.dashboard_sales_value,
-        dashboard_sales_count=result.dashboard_sales_count,
+        dashboard_sales_value=0,
+        dashboard_sales_count=0,
         low_stock=result.low_stock,
         out_of_stock=result.out_of_stock,
     )

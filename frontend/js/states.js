@@ -11,6 +11,7 @@ export const elements = {
     products: getElement("#products"),
     companies: getElement("#companies"),
     suppliers: getElement("#suppliers"),
+    restocks: getElement("#restocks"),
   },
   dashboard: {
     salesValueCard: getElement("#dashboard-sales-value-card"),
@@ -97,6 +98,31 @@ export const elements = {
     nextPageButton: getElement("#suppliers-next-page-button"),
     pageSummary: getElement("#suppliers-page-summary"),
   },
+  restocks: {
+    filterForm: getElement("#restocks-filter-form"),
+    dateFromInput: getElement("#restocks-date-from-input"),
+    dateToInput: getElement("#restocks-date-to-input"),
+    filterButton: getElement("#restocks-filter-button"),
+    resetButton: getElement("#restocks-reset-button"),
+    openCreateModalButton: getElement("#open-restock-create-modal-button"),
+    createModal: getElement("#restock-create-modal"),
+    createForm: getElement("#restock-create-form"),
+    createSubmitButton: getElement("#restock-create-submit-button"),
+    createError: getElement("#restock-create-error"),
+    createNoteInput: getElement("#restock-create-note"),
+    createAddLineButton: getElement("#restock-create-add-line-button"),
+    createLines: getElement("#restock-create-lines"),
+    count: getElement("#restocks-count"),
+    loading: getElement("#restocks-loading"),
+    error: getElement("#restocks-error"),
+    empty: getElement("#restocks-empty"),
+    table: getElement("#restocks-table"),
+    tableBody: getElement("#restocks-table-body"),
+    pagination: getElement("#restocks-pagination"),
+    previousPageButton: getElement("#restocks-previous-page-button"),
+    nextPageButton: getElement("#restocks-next-page-button"),
+    pageSummary: getElement("#restocks-page-summary"),
+  },
 };
 
 export const state = {
@@ -152,6 +178,20 @@ export const state = {
   suppliers: {
     list: [],
     searchTerm: "",
+    isLoading: true,
+    error: "",
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 0,
+    hasNext: false,
+    hasPrevious: false,
+    isCreating: false,
+  },
+  restocks: {
+    list: [],
+    dateFrom: "",
+    dateTo: "",
     isLoading: true,
     error: "",
     page: 1,
@@ -506,6 +546,57 @@ export function resetSupplierCreateForm() {
   setSupplierCreateError("");
 }
 
+export function setRestocksLoading(isLoading) {
+  state.restocks.isLoading = isLoading;
+  elements.restocks.filterButton.disabled = isLoading;
+  elements.restocks.resetButton.disabled = isLoading;
+  updateRestocksPaginationControls();
+  renderRestocks(state.restocks.list);
+}
+
+export function setRestocksError(message) {
+  state.restocks.error = message;
+  elements.restocks.error.textContent = message;
+  elements.restocks.error.classList.toggle("d-none", !message);
+  renderRestocks(state.restocks.list);
+}
+
+export function setRestocksDateRange(dateFrom, dateTo) {
+  state.restocks.dateFrom = dateFrom;
+  state.restocks.dateTo = dateTo;
+  renderRestocks(state.restocks.list);
+}
+
+export function setRestocksPagination(pagination) {
+  state.restocks.page = pagination.page;
+  state.restocks.pageSize = pagination.pageSize;
+  state.restocks.total = pagination.total;
+  state.restocks.totalPages = pagination.totalPages;
+  state.restocks.hasNext = pagination.hasNext;
+  state.restocks.hasPrevious = pagination.hasPrevious;
+  renderRestocks(state.restocks.list);
+}
+
+export function setRestockCreateSubmitting(isSubmitting) {
+  state.restocks.isCreating = isSubmitting;
+  elements.restocks.createSubmitButton.disabled = isSubmitting;
+  elements.restocks.openCreateModalButton.disabled = isSubmitting;
+  elements.restocks.createAddLineButton.disabled = isSubmitting;
+  elements.restocks.createSubmitButton.textContent = isSubmitting
+    ? "Создание..."
+    : "Создать пополнение";
+}
+
+export function setRestockCreateError(message) {
+  elements.restocks.createError.textContent = message;
+  elements.restocks.createError.classList.toggle("d-none", !message);
+}
+
+export function resetRestockCreateForm() {
+  elements.restocks.createForm.reset();
+  setRestockCreateError("");
+}
+
 const stateBindings = {
   "sales.value": {
     update(value) {
@@ -546,6 +637,12 @@ const stateBindings = {
   "suppliers.list": {
     update(suppliers) {
       renderSuppliers(suppliers);
+    },
+  },
+
+  "restocks.list": {
+    update(restocks) {
+      renderRestocks(restocks);
     },
   },
 };
@@ -866,6 +963,55 @@ function updateSuppliersPaginationControls() {
     `Страница ${formatCount(state.suppliers.page)} из ${formatCount(totalPages)}`;
 }
 
+function renderRestocks(restocks) {
+  const restockList = Array.isArray(restocks) ? restocks : [];
+  const hasRestocks = restockList.length > 0;
+  const shouldShowTable = hasRestocks && !state.restocks.isLoading;
+  const shouldShowEmpty =
+    !hasRestocks && !state.restocks.isLoading && !state.restocks.error;
+
+  elements.restocks.count.textContent = formatRestocksCount(state.restocks.total);
+  elements.restocks.loading.classList.toggle("d-none", !state.restocks.isLoading);
+  elements.restocks.empty.textContent = hasRestockDateFilter()
+    ? "За выбранный период пополнения не найдены."
+    : "Пополнения пока не добавлены.";
+  elements.restocks.empty.classList.toggle("d-none", !shouldShowEmpty);
+  elements.restocks.table.classList.toggle("d-none", !shouldShowTable);
+  updateRestocksPaginationControls();
+
+  elements.restocks.tableBody.replaceChildren();
+
+  if (!shouldShowTable) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const restock of restockList) {
+    fragment.append(createRestockRow(restock));
+  }
+
+  elements.restocks.tableBody.append(fragment);
+}
+
+function updateRestocksPaginationControls() {
+  const shouldShowPagination =
+    state.restocks.total > 0 && !state.restocks.isLoading && !state.restocks.error;
+  const totalPages = Math.max(state.restocks.totalPages, 1);
+
+  elements.restocks.pagination.classList.toggle("d-none", !shouldShowPagination);
+  elements.restocks.previousPageButton.disabled =
+    state.restocks.isLoading || !state.restocks.hasPrevious;
+  elements.restocks.nextPageButton.disabled =
+    state.restocks.isLoading || !state.restocks.hasNext;
+  elements.restocks.pageSummary.textContent =
+    `Страница ${formatCount(state.restocks.page)} из ${formatCount(totalPages)}`;
+}
+
+function hasRestockDateFilter() {
+  return Boolean(state.restocks.dateFrom || state.restocks.dateTo);
+}
+
 function createCompanyRow(company) {
   const row = document.createElement("tr");
 
@@ -906,6 +1052,112 @@ function createSupplierRow(supplier) {
 
   row.append(supplierCell, phoneCell);
   return row;
+}
+
+function createRestockRow(restock) {
+  const row = document.createElement("tr");
+
+  row.append(
+    createRestockSummaryCell(restock),
+    createRestockDateCell(restock.created_at),
+    createRestockLinesCell(restock.lines),
+    createRestockTotalCell(restock.lines),
+    createRestockNoteCell(restock.note),
+  );
+
+  return row;
+}
+
+function createRestockSummaryCell(restock) {
+  const cell = document.createElement("td");
+  cell.className = "restock-summary-cell";
+
+  const title = document.createElement("div");
+  title.className = "fw-semibold";
+  title.textContent = `Пополнение #${formatCount(restock.id)}`;
+
+  const meta = document.createElement("div");
+  meta.className = "restock-meta";
+  meta.textContent = formatRestockLinesCount(getRestockLines(restock.lines).length);
+
+  cell.append(title, meta);
+  return cell;
+}
+
+function createRestockDateCell(createdAt) {
+  const cell = document.createElement("td");
+  cell.textContent = formatDateTime(createdAt);
+  return cell;
+}
+
+function createRestockLinesCell(lines) {
+  const cell = document.createElement("td");
+  const lineList = getRestockLines(lines);
+
+  if (lineList.length === 0) {
+    cell.className = "text-secondary";
+    cell.textContent = "Нет позиций";
+    return cell;
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "restock-lines";
+
+  for (const line of lineList) {
+    wrapper.append(createRestockLineItem(line));
+  }
+
+  cell.append(wrapper);
+  return cell;
+}
+
+function createRestockLineItem(line) {
+  const item = document.createElement("div");
+  item.className = "restock-line";
+
+  const title = document.createElement("div");
+  title.textContent =
+    `Товар #${formatCount(line.product_id)}: +${formatQuantity(
+      line.restock_quantity,
+      line.quantity_unit_snapshot,
+    )}`;
+
+  const meta = document.createElement("div");
+  meta.className = "restock-meta";
+  meta.textContent = line.unit_cost_snapshot === null || line.unit_cost_snapshot === undefined
+    ? "Цена закупки не указана"
+    : `Цена закупки: ${formatCurrency(line.unit_cost_snapshot)}`;
+
+  item.append(title, meta);
+  return item;
+}
+
+function createRestockTotalCell(lines) {
+  const cell = document.createElement("td");
+  const summary = getRestockCostSummary(lines);
+
+  const total = document.createElement("div");
+  total.className = "fw-semibold";
+  total.textContent = summary.hasKnownPrice
+    ? formatCurrency(summary.total)
+    : "Не указана";
+
+  cell.append(total);
+
+  if (summary.hasMissingPrice) {
+    const meta = document.createElement("div");
+    meta.className = "restock-meta";
+    meta.textContent = "Есть позиции без цены";
+    cell.append(meta);
+  }
+
+  return cell;
+}
+
+function createRestockNoteCell(note) {
+  const cell = document.createElement("td");
+  cell.textContent = note || "Без комментария";
+  return cell;
 }
 
 function createProductRow(product) {
@@ -1078,6 +1330,48 @@ function formatCompaniesCount(count) {
 function formatSuppliersCount(count) {
   const formattedCount = formatCount(count);
   return count === 1 ? `${formattedCount} поставщик` : `${formattedCount} поставщиков`;
+}
+
+function formatRestocksCount(count) {
+  const formattedCount = formatCount(count);
+  return count === 1 ? `${formattedCount} пополнение` : `${formattedCount} пополнений`;
+}
+
+function formatRestockLinesCount(count) {
+  const formattedCount = formatCount(count);
+  return count === 1 ? `${formattedCount} позиция` : `${formattedCount} позиций`;
+}
+
+function getRestockLines(lines) {
+  return Array.isArray(lines) ? lines : [];
+}
+
+function getRestockCostSummary(lines) {
+  const summary = {
+    total: 0,
+    hasKnownPrice: false,
+    hasMissingPrice: false,
+  };
+
+  for (const line of getRestockLines(lines)) {
+    if (line.unit_cost_snapshot === null || line.unit_cost_snapshot === undefined) {
+      summary.hasMissingPrice = true;
+      continue;
+    }
+
+    const unitCost = Number(line.unit_cost_snapshot);
+    const quantity = Number(line.restock_quantity);
+
+    if (!Number.isFinite(unitCost)) {
+      summary.hasMissingPrice = true;
+      continue;
+    }
+
+    summary.hasKnownPrice = true;
+    summary.total += unitCost * (Number.isFinite(quantity) ? quantity : 0);
+  }
+
+  return summary;
 }
 
 function getPositiveIntegerInputValue(input, fallbackValue) {

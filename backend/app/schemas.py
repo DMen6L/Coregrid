@@ -174,86 +174,53 @@ class ProductUpdate(UpdateValidator):
     tags: list[TagName] | None = None
 
 
-class StockMovementLineCreate(BaseModel):
+class RestockLineCreate(BaseModel):
     product_id: int = Field(gt=0)
-    quantity_delta: int
+    restock_quantity: int = Field(gt=0)
+    unit_cost_snapshot: int | None = Field(
+        default=None,
+        ge=0,
+    )
+    quantity_unit_snapshot: str = Field(
+        default=DEFAULT_QUANTITY_UNIT,
+        min_length=1,
+        max_length=QUANTITY_UNIT_MAX_LENGTH,
+    )
 
-    @field_validator("quantity_delta")
-    @classmethod
-    def quantity_delta_cannot_be_zero(cls, value: int) -> int:
-        if value == 0:
-            raise ValueError("quantity_delta cannot be zero")
-        return value
 
-
-class StockMovementCreate(BaseModel):
-    movement_type: MovementType
+class RestockCreate(BaseModel):
     note: str | None = Field(default=None, max_length=500)
-    lines: list[StockMovementLineCreate] = Field(min_length=1)
+
+    lines: list[RestockLineCreate] = Field(
+        min_length=1,
+    )
 
     @model_validator(mode="after")
-    def validate_lines(self):
+    def validate_unique_products(self) -> "RestockCreate":
         product_ids = [line.product_id for line in self.lines]
+
         if len(product_ids) != len(set(product_ids)):
-            raise ValueError("movement lines cannot repeat product_id")
-
-        if self.movement_type == "in":
-            invalid_line = any(line.quantity_delta < 0 for line in self.lines)
-            if invalid_line:
-                raise ValueError("incoming movements must increase stock")
-
-        if self.movement_type == "out":
-            invalid_line = any(line.quantity_delta > 0 for line in self.lines)
-            if invalid_line:
-                raise ValueError("outgoing movements must decrease stock")
-
+            raise ValueError("Each product may appear only once in a restock.")
         return self
 
 
-class StockMovementLineResponse(BaseModel):
+class RestockLineResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     product_id: int
-    quantity_delta: int
-    quantity_before: int
-    quantity_after: int
-    unit_price_snapshot: int | None
+    restock_quantity: int
+    unit_cost_snapshot: int | None
     quantity_unit_snapshot: str
 
 
-class StockMovementResponse(BaseModel):
+class RestockResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
-    movement_type: MovementType
     note: str | None
     created_at: datetime
-    lines: list[StockMovementLineResponse]
-
-
-class SaleLineCreate(BaseModel):
-    product_id: int = Field(gt=0)
-    quantity: int = Field(gt=0)
-    unit_price: int = Field(gt=0)
-
-
-class SaleCreate(BaseModel):
-    note: str | None = Field(default=None, max_length=500)
-    lines: list[SaleLineCreate] = Field(min_length=1)
-
-    @model_validator(mode="after")
-    def validate_lines(self):
-        product_ids = [line.product_id for line in self.lines]
-        if len(product_ids) != len(set(product_ids)):
-            raise ValueError("sale lines cannot repeat product_id")
-
-        return self
-
-
-class SaleResponse(BaseModel):
-    id: int
-    stock_movement_id: int
-    note: str | None
-    created_at: datetime
-    revenue: int
-    lines: list[StockMovementLineResponse]
+    lines: list[RestockLineResponse]
 
 
 class SummariesResponse(BaseModel):

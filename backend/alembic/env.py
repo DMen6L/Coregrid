@@ -11,9 +11,6 @@ from app.config import DATABASE_URL
 from app.models import (
     Company,
     Product,
-    Sale,
-    StockMovement,
-    StockMovementLine,
     Supplier,
     Tag,
 )
