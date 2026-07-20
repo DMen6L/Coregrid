@@ -223,6 +223,47 @@ class RestockResponse(BaseModel):
     lines: list[RestockLineResponse]
 
 
+class SaleLineCreate(BaseModel):
+    product_id: int = Field(gt=0)
+    sale_quantity: int = Field(gt=0)
+
+
+class SaleCreate(BaseModel):
+    note: str | None = Field(default=None, max_length=500)
+
+    lines: list[SaleLineCreate] = Field(
+        min_length=1,
+    )
+
+    @model_validator(mode="after")
+    def validate_unique_products(self) -> "SaleCreate":
+        product_ids = [line.product_id for line in self.lines]
+
+        if len(product_ids) != len(set(product_ids)):
+            raise ValueError("Each product may appear only once in a sale.")
+        return self
+
+
+class SaleLineResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    product_id: int
+    sale_quantity: int
+    unit_cost_snapshot: int
+    unit_sale_price_snapshot: int
+    quantity_unit_snapshot: str
+
+
+class SaleResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    note: str | None
+    created_at: datetime
+    lines: list[SaleLineResponse]
+
+
 class SummariesResponse(BaseModel):
     dashboard_sales_value: int
     dashboard_sales_count: int

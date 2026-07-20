@@ -43,7 +43,8 @@ body {
 .products-search,
 .companies-search,
 .suppliers-search,
-.restocks-filters {
+.restocks-filters,
+.sales-filters {
   flex: 1 1 24rem;
   max-width: 48rem;
 }
@@ -51,7 +52,8 @@ body {
 .products-count,
 .companies-count,
 .suppliers-count,
-.restocks-count {
+.restocks-count,
+.sales-count {
   flex: 0 0 auto;
   margin-bottom: 0.45rem;
 }
@@ -59,7 +61,8 @@ body {
 .products-actions,
 .companies-actions,
 .suppliers-actions,
-.restocks-actions {
+.restocks-actions,
+.sales-actions {
   display: flex;
   align-items: center;
   flex: 0 0 auto;
@@ -70,7 +73,8 @@ body {
 .products-table,
 .companies-table,
 .suppliers-table,
-.restocks-table {
+.restocks-table,
+.sales-table {
   overflow: hidden;
   background: #fff;
   border: 1px solid var(--bs-border-color);
@@ -78,7 +82,8 @@ body {
 }
 
 .products-table table,
-.restocks-table table {
+.restocks-table table,
+.sales-table table {
   min-width: 980px;
 }
 
@@ -90,7 +95,8 @@ body {
 .products-pagination,
 .companies-pagination,
 .suppliers-pagination,
-.restocks-pagination {
+.restocks-pagination,
+.sales-pagination {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -100,59 +106,69 @@ body {
 .products-page-summary,
 .companies-page-summary,
 .suppliers-page-summary,
-.restocks-page-summary {
+.restocks-page-summary,
+.sales-page-summary {
   color: var(--bs-secondary-color);
   font-size: 0.95rem;
   font-weight: 600;
 }
 
 .product-name-cell,
-.restock-summary-cell {
+.restock-summary-cell,
+.sale-summary-cell {
   min-width: 13rem;
 }
 
 .product-meta,
 .company-meta,
 .supplier-meta,
-.restock-meta {
+.restock-meta,
+.sale-meta {
   color: var(--bs-secondary-color);
   font-size: 0.875rem;
 }
 
-.restocks-filter-controls {
+.restocks-filter-controls,
+.sales-filter-controls {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
 
-.restocks-filter-controls .form-control {
+.restocks-filter-controls .form-control,
+.sales-filter-controls .form-control {
   width: auto;
   min-width: 10rem;
 }
 
-.restock-lines {
+.restock-lines,
+.sale-lines {
   display: grid;
   gap: 0.35rem;
 }
 
-.restock-line {
+.restock-line,
+.sale-line {
   min-width: 16rem;
 }
 
-.restock-create-lines {
+.restock-create-lines,
+.sale-create-lines {
   display: grid;
   gap: 1rem;
 }
 
-.restock-create-line {
+.restock-create-line,
+.sale-create-line {
   padding: 1rem;
   background: #fff;
   border: 1px solid var(--bs-border-color);
   border-radius: 0.5rem;
 }
 
-.restock-create-line-header {
+.restock-create-line-header,
+.sale-create-line-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -160,7 +176,8 @@ body {
   margin-bottom: 0.75rem;
 }
 
-.restock-create-product-selected {
+.restock-create-product-selected,
+.sale-create-product-selected {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -171,12 +188,14 @@ body {
   border-radius: 0.5rem;
 }
 
-.restock-create-product-results {
+.restock-create-product-results,
+.sale-create-product-results {
   max-height: 13rem;
   overflow-y: auto;
 }
 
-.restock-create-product-result {
+.restock-create-product-result,
+.sale-create-product-result {
   text-align: left;
 }
 
@@ -216,7 +235,8 @@ body {
 .product-create-form,
 .company-create-form,
 .supplier-create-form,
-.restock-create-form {
+.restock-create-form,
+.sale-create-form {
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - var(--bs-modal-margin) * 2);
@@ -228,7 +248,8 @@ body {
 #product-create-modal .modal-body,
 #company-create-modal .modal-body,
 #supplier-create-modal .modal-body,
-#restock-create-modal .modal-body {
+#restock-create-modal .modal-body,
+#sale-create-modal .modal-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -238,10 +259,12 @@ body {
 #company-create-modal .modal-header,
 #supplier-create-modal .modal-header,
 #restock-create-modal .modal-header,
+#sale-create-modal .modal-header,
 #product-create-modal .product-create-footer,
 #company-create-modal .company-create-footer,
 #supplier-create-modal .supplier-create-footer,
-#restock-create-modal .restock-create-footer {
+#restock-create-modal .restock-create-footer,
+#sale-create-modal .sale-create-footer {
   flex-shrink: 0;
 }
 
@@ -249,14 +272,16 @@ body {
   .products-toolbar,
   .companies-toolbar,
   .suppliers-toolbar,
-  .restocks-toolbar {
+  .restocks-toolbar,
+  .sales-toolbar {
     align-items: stretch !important;
   }
 
   .products-count,
   .companies-count,
   .suppliers-count,
-  .restocks-count {
+  .restocks-count,
+  .sales-count {
     align-self: flex-start;
     margin-bottom: 0;
   }
@@ -264,7 +289,8 @@ body {
   .products-actions,
   .companies-actions,
   .suppliers-actions,
-  .restocks-actions {
+  .restocks-actions,
+  .sales-actions {
     align-items: stretch;
     width: 100%;
   }
@@ -272,18 +298,21 @@ body {
   .products-actions .btn,
   .companies-actions .btn,
   .suppliers-actions .btn,
-  .restocks-actions .btn {
+  .restocks-actions .btn,
+  .sales-actions .btn {
     width: 100%;
   }
 
   .product-company-selected,
   .product-supplier-selected,
-  .restock-create-product-selected {
+  .restock-create-product-selected,
+  .sale-create-product-selected {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .restock-create-line-header {
+  .restock-create-line-header,
+  .sale-create-line-header {
     align-items: stretch;
     flex-direction: column;
   }
@@ -291,7 +320,8 @@ body {
   .products-pagination,
   .companies-pagination,
   .suppliers-pagination,
-  .restocks-pagination {
+  .restocks-pagination,
+  .sales-pagination {
     align-items: stretch;
     justify-content: space-between;
   }
@@ -299,17 +329,21 @@ body {
   .products-page-summary,
   .companies-page-summary,
   .suppliers-page-summary,
-  .restocks-page-summary {
+  .restocks-page-summary,
+  .sales-page-summary {
     align-self: center;
   }
 
-  .restocks-filter-controls {
+  .restocks-filter-controls,
+  .sales-filter-controls {
     display: grid;
     gap: 0.5rem;
   }
 
   .restocks-filter-controls .form-control,
-  .restocks-filter-controls .btn {
+  .restocks-filter-controls .btn,
+  .sales-filter-controls .form-control,
+  .sales-filter-controls .btn {
     width: 100%;
   }
 

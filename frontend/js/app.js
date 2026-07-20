@@ -30,12 +30,19 @@ import {
   setProductsPagination,
   setProductsSearchTerm,
   resetRestockCreateForm,
+  resetSaleCreateForm,
   setRestockCreateError,
   setRestockCreateSubmitting,
   setRestocksDateRange,
   setRestocksError,
   setRestocksLoading,
   setRestocksPagination,
+  setSaleCreateError,
+  setSaleCreateSubmitting,
+  setSalesDateRange,
+  setSalesError,
+  setSalesLoading,
+  setSalesPagination,
   setState,
   resetSupplierCreateForm,
   setSupplierCreateError,
@@ -51,7 +58,7 @@ const FIRST_LIST_PAGE = 1;
 const PRODUCT_LOOKUP_MIN_SEARCH_LENGTH = 2;
 const PRODUCT_LOOKUP_DEBOUNCE_MS = 300;
 const PRODUCT_LOOKUP_PAGE_SIZE = 10;
-const RESTOCK_DEFAULT_QUANTITY_UNIT = "шт";
+const DEFAULT_QUANTITY_UNIT = "шт";
 
 const productLookupRequests = {
   company: {
@@ -66,6 +73,8 @@ const productLookupRequests = {
 
 let restockCreateLineSequence = 0;
 const restockProductLookupRequests = new Map();
+let saleCreateLineSequence = 0;
+const saleProductLookupRequests = new Map();
 
 initializeApp();
 
@@ -86,6 +95,9 @@ function initializeApp() {
   bindRestockFilters();
   bindRestockPagination();
   bindRestockCreate();
+  bindSalesFilters();
+  bindSalesPagination();
+  bindSaleCreate();
   setActiveView("dashboard");
   loadInitialData();
 }
@@ -577,6 +589,159 @@ function bindRestockCreate() {
   });
 }
 
+function bindSalesFilters() {
+  elements.sales.filterForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    if (elements.sales.filterButton.disabled) {
+      return;
+    }
+
+    const dateFrom = elements.sales.dateFromInput.value;
+    const dateTo = elements.sales.dateToInput.value;
+
+    if (isInvalidDateRange(dateFrom, dateTo)) {
+      setSalesError("Дата начала не может быть позже даты окончания.");
+      elements.sales.dateFromInput.focus();
+      return;
+    }
+
+    loadSales(dateFrom, dateTo, FIRST_LIST_PAGE);
+  });
+
+  elements.sales.resetButton.addEventListener("click", () => {
+    if (elements.sales.resetButton.disabled) {
+      return;
+    }
+
+    elements.sales.dateFromInput.value = "";
+    elements.sales.dateToInput.value = "";
+    loadSales("", "", FIRST_LIST_PAGE);
+  });
+}
+
+function bindSalesPagination() {
+  elements.sales.previousPageButton.addEventListener("click", () => {
+    if (elements.sales.previousPageButton.disabled) {
+      return;
+    }
+
+    loadSales(
+      state.sales.dateFrom,
+      state.sales.dateTo,
+      state.sales.page - 1,
+    );
+  });
+
+  elements.sales.nextPageButton.addEventListener("click", () => {
+    if (elements.sales.nextPageButton.disabled) {
+      return;
+    }
+
+    loadSales(
+      state.sales.dateFrom,
+      state.sales.dateTo,
+      state.sales.page + 1,
+    );
+  });
+}
+
+function bindSaleCreate() {
+  elements.sales.createModal.addEventListener("show.bs.modal", () => {
+    if (getSaleCreateLineRows().length === 0) {
+      addSaleCreateLine();
+    }
+  });
+
+  elements.sales.createForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    if (
+      elements.sales.createSubmitButton.disabled ||
+      !elements.sales.createForm.reportValidity() ||
+      !validateSaleCreateForm()
+    ) {
+      return;
+    }
+
+    createSale();
+  });
+
+  elements.sales.createAddLineButton.addEventListener("click", () => {
+    if (elements.sales.createAddLineButton.disabled) {
+      return;
+    }
+
+    addSaleCreateLine();
+  });
+
+  elements.sales.createLines.addEventListener("keydown", (event) => {
+    if (
+      event.key === "Enter" &&
+      event.target instanceof Element &&
+      event.target.matches("[data-sale-product-search]")
+    ) {
+      event.preventDefault();
+    }
+  });
+
+  elements.sales.createLines.addEventListener("input", (event) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+
+    if (event.target.matches("[data-sale-product-search]")) {
+      scheduleSaleProductLookup(getSaleCreateLineElement(event.target));
+    }
+  });
+
+  elements.sales.createLines.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+
+    const lineElement = getSaleCreateLineElement(event.target);
+
+    if (!lineElement) {
+      return;
+    }
+
+    if (event.target.closest("[data-sale-remove-line]")) {
+      removeSaleCreateLine(lineElement);
+      return;
+    }
+
+    if (event.target.closest("[data-sale-clear-product]")) {
+      cancelSaleProductLookupRequest(lineElement.dataset.saleLineId);
+      clearSaleLineSelectedProduct(lineElement);
+      getSaleLineProductSearchInput(lineElement).focus();
+      return;
+    }
+
+    const productButton = event.target.closest("[data-sale-product-id]");
+
+    if (!productButton || !lineElement.contains(productButton)) {
+      return;
+    }
+
+    const product = getSaleLineProducts(lineElement).find(
+      (item) => String(item.id) === productButton.dataset.saleProductId,
+    );
+
+    if (!product) {
+      return;
+    }
+
+    setSaleLineSelectedProduct(lineElement, product);
+  });
+
+  elements.sales.createModal.addEventListener("hidden.bs.modal", () => {
+    if (!state.sales.isCreating) {
+      resetSaleCreateModalState();
+    }
+  });
+}
+
 function addRestockCreateLine(shouldFocus = true) {
   restockCreateLineSequence += 1;
   const lineElement = createRestockCreateLineElement(restockCreateLineSequence);
@@ -675,7 +840,7 @@ function createRestockCreateLineElement(lineId) {
           class="form-control"
           type="text"
           maxlength="20"
-          value="${RESTOCK_DEFAULT_QUANTITY_UNIT}"
+          value="${DEFAULT_QUANTITY_UNIT}"
           required
           data-restock-unit
         >
@@ -1031,6 +1196,453 @@ function getRestockLineProductSearchInput(lineElement) {
   return lineElement.querySelector("[data-restock-product-search]");
 }
 
+function addSaleCreateLine(shouldFocus = true) {
+  saleCreateLineSequence += 1;
+  const lineElement = createSaleCreateLineElement(saleCreateLineSequence);
+  elements.sales.createLines.append(lineElement);
+  updateSaleCreateLineIndexes();
+
+  if (shouldFocus) {
+    getSaleLineProductSearchInput(lineElement).focus();
+  }
+}
+
+function createSaleCreateLineElement(lineId) {
+  const lineElement = document.createElement("div");
+  lineElement.className = "sale-create-line";
+  lineElement.dataset.saleLineId = String(lineId);
+  lineElement.dataset.productId = "";
+  lineElement.dataset.availableQuantity = "";
+  lineElement.dataset.lookupProducts = "[]";
+
+  lineElement.innerHTML = `
+    <div class="sale-create-line-header">
+      <h4 class="fs-6 mb-0" data-sale-line-title>Позиция</h4>
+      <button
+        class="btn btn-sm btn-outline-danger"
+        type="button"
+        data-sale-remove-line
+      >
+        Удалить
+      </button>
+    </div>
+    <div class="row g-3">
+      <div class="col-12 col-lg-8">
+        <label class="form-label">Товар</label>
+        <input
+          class="form-control"
+          type="search"
+          placeholder="Введите название товара"
+          autocomplete="off"
+          required
+          aria-autocomplete="list"
+          data-sale-product-search
+        >
+        <input type="hidden" data-sale-product-id-input>
+        <div
+          class="sale-create-product-selected d-none mt-2"
+          data-sale-product-selected
+        >
+          <div>
+            <div class="fw-semibold" data-sale-product-selected-name></div>
+            <div class="sale-meta" data-sale-product-selected-meta></div>
+          </div>
+          <button
+            class="btn btn-sm btn-outline-secondary"
+            type="button"
+            data-sale-clear-product
+          >
+            Сбросить
+          </button>
+        </div>
+        <div
+          class="sale-create-product-message text-secondary small d-none mt-2"
+          role="status"
+          data-sale-product-message
+        ></div>
+        <div
+          class="list-group sale-create-product-results d-none mt-2"
+          role="listbox"
+          aria-label="Найденные товары"
+          data-sale-product-results
+        ></div>
+      </div>
+      <div class="col-12 col-md-4 col-lg-4">
+        <label class="form-label">Количество</label>
+        <input
+          class="form-control"
+          type="number"
+          min="1"
+          step="1"
+          value="1"
+          required
+          data-sale-quantity
+        >
+      </div>
+    </div>
+  `;
+
+  return lineElement;
+}
+
+function removeSaleCreateLine(lineElement) {
+  if (getSaleCreateLineRows().length <= 1) {
+    return;
+  }
+
+  cancelSaleProductLookupRequest(lineElement.dataset.saleLineId);
+  lineElement.remove();
+  updateSaleCreateLineIndexes();
+  setSaleCreateError("");
+}
+
+function updateSaleCreateLineIndexes() {
+  const lineRows = getSaleCreateLineRows();
+
+  lineRows.forEach((lineElement, index) => {
+    const title = lineElement.querySelector("[data-sale-line-title]");
+    const removeButton = lineElement.querySelector("[data-sale-remove-line]");
+
+    title.textContent = `Позиция ${index + 1}`;
+    removeButton.disabled = state.sales.isCreating || lineRows.length <= 1;
+  });
+}
+
+function getSaleCreateLineRows() {
+  return Array.from(
+    elements.sales.createLines.querySelectorAll("[data-sale-line-id]"),
+  );
+}
+
+function getSaleCreateLineElement(source) {
+  return source?.closest("[data-sale-line-id]") || null;
+}
+
+function getSaleCreateLineById(lineId) {
+  if (!lineId) {
+    return null;
+  }
+
+  return elements.sales.createLines.querySelector(
+    `[data-sale-line-id="${lineId}"]`,
+  );
+}
+
+function validateSaleCreateForm() {
+  const productIds = new Set();
+  const lineRows = getSaleCreateLineRows();
+
+  if (lineRows.length === 0) {
+    setSaleCreateError("Добавьте хотя бы одну позицию продажи.");
+    return false;
+  }
+
+  for (const lineElement of lineRows) {
+    const productId = lineElement.dataset.productId;
+    const quantity = getSaleLineNumberValue(lineElement, "[data-sale-quantity]");
+    const availableQuantity = Number(lineElement.dataset.availableQuantity);
+
+    if (!productId) {
+      setSaleCreateError("Выберите товар из результатов поиска для каждой позиции.");
+      getSaleLineProductSearchInput(lineElement).focus();
+      return false;
+    }
+
+    if (productIds.has(productId)) {
+      setSaleCreateError("Один товар нельзя добавить в продажу дважды.");
+      getSaleLineProductSearchInput(lineElement).focus();
+      return false;
+    }
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setSaleCreateError("Количество продажи должно быть больше нуля.");
+      lineElement.querySelector("[data-sale-quantity]").focus();
+      return false;
+    }
+
+    if (Number.isFinite(availableQuantity) && quantity > availableQuantity) {
+      setSaleCreateError(
+        `Нельзя продать больше остатка: доступно ${formatInlineQuantity(
+          availableQuantity,
+          lineElement.dataset.quantityUnit,
+        )}.`,
+      );
+      lineElement.querySelector("[data-sale-quantity]").focus();
+      return false;
+    }
+
+    productIds.add(productId);
+  }
+
+  setSaleCreateError("");
+  return true;
+}
+
+function resetSaleCreateModalState() {
+  cancelAllSaleProductLookupRequests();
+  resetSaleCreateForm();
+  elements.sales.createLines.replaceChildren();
+  saleCreateLineSequence = 0;
+  addSaleCreateLine(false);
+}
+
+function setSaleCreateLineControlsDisabled(isDisabled) {
+  for (const lineElement of getSaleCreateLineRows()) {
+    for (const control of lineElement.querySelectorAll("input, button")) {
+      control.disabled = isDisabled;
+    }
+  }
+
+  updateSaleCreateLineIndexes();
+}
+
+function scheduleSaleProductLookup(lineElement) {
+  if (!lineElement) {
+    return;
+  }
+
+  const lineId = lineElement.dataset.saleLineId;
+  const searchTerm = getSaleLineProductSearchInput(lineElement).value.trim();
+
+  cancelSaleProductLookupRequest(lineId);
+  clearSaleLineSelectedProduct(lineElement, false);
+  setSaleLineProducts(lineElement, []);
+  renderSaleProductResults(lineElement, []);
+  renderSaleProductLookupMessage(lineElement, "");
+  setSaleCreateError("");
+
+  if (searchTerm.length < PRODUCT_LOOKUP_MIN_SEARCH_LENGTH) {
+    return;
+  }
+
+  const requestState = getSaleProductLookupRequest(lineId);
+  requestState.debounceId = window.setTimeout(() => {
+    requestState.debounceId = null;
+    searchSaleLineProducts(lineId, searchTerm);
+  }, PRODUCT_LOOKUP_DEBOUNCE_MS);
+}
+
+async function searchSaleLineProducts(lineId, searchTerm) {
+  const lineElement = getSaleCreateLineById(lineId);
+
+  if (!lineElement) {
+    return;
+  }
+
+  const requestState = getSaleProductLookupRequest(lineId);
+  const controller = new AbortController();
+  requestState.controller = controller;
+
+  renderSaleProductLookupMessage(lineElement, "Поиск товаров...");
+
+  try {
+    const productsResponse = await request(getProductLookupPath(searchTerm), {
+      signal: controller.signal,
+    });
+
+    if (!isCurrentSaleProductLookupRequest(lineId, controller, searchTerm)) {
+      return;
+    }
+
+    const productsPage = getPaginatedPage(productsResponse);
+    const products = productsPage.items;
+
+    setSaleLineProducts(lineElement, products);
+    renderSaleProductResults(lineElement, products);
+    renderSaleProductLookupMessage(
+      lineElement,
+      products.length > 0 ? "" : "Товары не найдены.",
+    );
+  } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
+
+    if (!isCurrentSaleProductLookupRequest(lineId, controller, searchTerm)) {
+      return;
+    }
+
+    console.error("Could not search products for sale create:", error);
+    renderSaleProductLookupMessage(
+      lineElement,
+      getRequestErrorMessage(error, "товары"),
+      true,
+    );
+  } finally {
+    if (requestState.controller === controller) {
+      requestState.controller = null;
+    }
+  }
+}
+
+function isCurrentSaleProductLookupRequest(lineId, controller, searchTerm) {
+  const lineElement = getSaleCreateLineById(lineId);
+  const requestState = saleProductLookupRequests.get(lineId);
+
+  return Boolean(lineElement) &&
+    requestState?.controller === controller &&
+    !controller.signal.aborted &&
+    getSaleLineProductSearchInput(lineElement).value.trim() === searchTerm;
+}
+
+function getSaleProductLookupRequest(lineId) {
+  if (!saleProductLookupRequests.has(lineId)) {
+    saleProductLookupRequests.set(lineId, {
+      debounceId: null,
+      controller: null,
+    });
+  }
+
+  return saleProductLookupRequests.get(lineId);
+}
+
+function cancelSaleProductLookupRequest(lineId) {
+  const requestState = saleProductLookupRequests.get(lineId);
+
+  if (!requestState) {
+    return;
+  }
+
+  if (requestState.debounceId !== null) {
+    window.clearTimeout(requestState.debounceId);
+    requestState.debounceId = null;
+  }
+
+  if (requestState.controller) {
+    requestState.controller.abort();
+    requestState.controller = null;
+  }
+}
+
+function cancelAllSaleProductLookupRequests() {
+  for (const lineId of saleProductLookupRequests.keys()) {
+    cancelSaleProductLookupRequest(lineId);
+  }
+
+  saleProductLookupRequests.clear();
+}
+
+function setSaleLineSelectedProduct(lineElement, product) {
+  cancelSaleProductLookupRequest(lineElement.dataset.saleLineId);
+
+  lineElement.dataset.productId = String(product.id || "");
+  lineElement.dataset.availableQuantity = String(product.quantity ?? "");
+  lineElement.dataset.quantityUnit = product.quantity_unit || DEFAULT_QUANTITY_UNIT;
+
+  const productIdInput = lineElement.querySelector("[data-sale-product-id-input]");
+  const searchInput = getSaleLineProductSearchInput(lineElement);
+  const selected = lineElement.querySelector("[data-sale-product-selected]");
+  const selectedName = lineElement.querySelector("[data-sale-product-selected-name]");
+  const selectedMeta = lineElement.querySelector("[data-sale-product-selected-meta]");
+
+  productIdInput.value = product?.id ? String(product.id) : "";
+  searchInput.value = product.name || "";
+  selectedName.textContent = product.name || "Без названия";
+  selectedMeta.textContent =
+    `ID ${formatInlineCount(product.id)} | Остаток: ${formatInlineQuantity(
+      product.quantity,
+      product.quantity_unit,
+    )} | Продажа: ${formatInlineCurrency(product.sale_price)}`;
+  selected.classList.remove("d-none");
+
+  setSaleLineProducts(lineElement, []);
+  renderSaleProductResults(lineElement, []);
+  renderSaleProductLookupMessage(lineElement, "");
+  setSaleCreateError("");
+}
+
+function clearSaleLineSelectedProduct(lineElement, shouldClearInput = true) {
+  lineElement.dataset.productId = "";
+  lineElement.dataset.availableQuantity = "";
+  lineElement.dataset.quantityUnit = "";
+
+  const productIdInput = lineElement.querySelector("[data-sale-product-id-input]");
+  const searchInput = getSaleLineProductSearchInput(lineElement);
+  const selected = lineElement.querySelector("[data-sale-product-selected]");
+  const selectedName = lineElement.querySelector("[data-sale-product-selected-name]");
+  const selectedMeta = lineElement.querySelector("[data-sale-product-selected-meta]");
+
+  productIdInput.value = "";
+  selected.classList.add("d-none");
+  selectedName.textContent = "";
+  selectedMeta.textContent = "";
+
+  if (shouldClearInput) {
+    searchInput.value = "";
+  }
+}
+
+function setSaleLineProducts(lineElement, products) {
+  lineElement.dataset.lookupProducts = JSON.stringify(Array.isArray(products) ? products : []);
+}
+
+function getSaleLineProducts(lineElement) {
+  try {
+    const products = JSON.parse(lineElement.dataset.lookupProducts || "[]");
+    return Array.isArray(products) ? products : [];
+  } catch (error) {
+    console.error("Could not parse sale product lookup data:", error);
+    return [];
+  }
+}
+
+function renderSaleProductResults(lineElement, products) {
+  const results = lineElement.querySelector("[data-sale-product-results]");
+  const productList = Array.isArray(products) ? products : [];
+
+  results.replaceChildren();
+  results.classList.toggle("d-none", productList.length === 0);
+
+  if (productList.length === 0) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const product of productList) {
+    fragment.append(createSaleProductResultButton(product));
+  }
+
+  results.append(fragment);
+}
+
+function createSaleProductResultButton(product) {
+  const button = document.createElement("button");
+  button.className = "list-group-item list-group-item-action sale-create-product-result";
+  button.type = "button";
+  button.dataset.saleProductId = String(product.id || "");
+  button.disabled = state.sales.isCreating || Number(product.quantity) <= 0;
+  button.setAttribute("role", "option");
+
+  const name = document.createElement("span");
+  name.className = "fw-semibold d-block";
+  name.textContent = product.name || "Без названия";
+
+  const meta = document.createElement("span");
+  meta.className = "sale-meta d-block";
+  meta.textContent =
+    `ID ${formatInlineCount(product.id)} | Остаток: ${formatInlineQuantity(
+      product.quantity,
+      product.quantity_unit,
+    )} | Продажа: ${formatInlineCurrency(product.sale_price)}`;
+
+  button.append(name, meta);
+  return button;
+}
+
+function renderSaleProductLookupMessage(lineElement, message, isError = false) {
+  const messageElement = lineElement.querySelector("[data-sale-product-message]");
+
+  messageElement.textContent = message;
+  messageElement.classList.toggle("d-none", !message);
+  messageElement.classList.toggle("text-danger", isError);
+  messageElement.classList.toggle("text-secondary", !isError);
+}
+
+function getSaleLineProductSearchInput(lineElement) {
+  return lineElement.querySelector("[data-sale-product-search]");
+}
+
 async function loadInitialData() {
   await Promise.all([
     loadDashboardSummary(),
@@ -1038,6 +1650,7 @@ async function loadInitialData() {
     loadCompanies(),
     loadSuppliers(),
     loadRestocks(),
+    loadSales(),
   ]);
 }
 
@@ -1166,6 +1779,34 @@ async function loadRestocks(dateFrom = "", dateTo = "", page = FIRST_LIST_PAGE) 
     setRestocksError(getRequestErrorMessage(error, "пополнения"));
   } finally {
     setRestocksLoading(false);
+  }
+}
+
+async function loadSales(dateFrom = "", dateTo = "", page = FIRST_LIST_PAGE) {
+  setSalesLoading(true);
+  setSalesDateRange(dateFrom, dateTo);
+  setSalesError("");
+
+  try {
+    const salesResponse = await request(getSalesPath(dateFrom, dateTo, page));
+    const salesPage = getPaginatedPage(salesResponse);
+
+    setSalesPagination(salesPage.pagination);
+    setState("sales.list", salesPage.items);
+  } catch (error) {
+    console.error("Could not load sales:", error);
+    setSalesPagination({
+      page,
+      pageSize: state.sales.pageSize,
+      total: 0,
+      totalPages: 0,
+      hasNext: false,
+      hasPrevious: false,
+    });
+    setState("sales.list", []);
+    setSalesError(getRequestErrorMessage(error, "продажи"));
+  } finally {
+    setSalesLoading(false);
   }
 }
 
@@ -1393,6 +2034,35 @@ async function createRestock() {
   }
 }
 
+async function createSale() {
+  setSaleCreateSubmitting(true);
+  setSaleCreateLineControlsDisabled(true);
+  setSaleCreateError("");
+
+  try {
+    await request("/sales", {
+      method: "POST",
+      body: JSON.stringify(getSaleCreatePayload()),
+    });
+
+    cancelAllSaleProductLookupRequests();
+    hideSaleCreateModal();
+    resetSaleCreateModalState();
+
+    await Promise.all([
+      loadDashboardSummary(),
+      loadProducts(state.products.searchTerm, state.products.page),
+      loadSales(state.sales.dateFrom, state.sales.dateTo, FIRST_LIST_PAGE),
+    ]);
+  } catch (error) {
+    console.error("Could not create sale:", error);
+    setSaleCreateError(getCreateSaleErrorMessage(error));
+  } finally {
+    setSaleCreateSubmitting(false);
+    setSaleCreateLineControlsDisabled(false);
+  }
+}
+
 function getProductsPath(searchTerm, page) {
   return getListPath("/products", searchTerm, page);
 }
@@ -1424,6 +2094,22 @@ function getRestocksPath(dateFrom, dateTo, page) {
   params.set("page", String(Math.max(page, FIRST_LIST_PAGE)));
 
   return `/restocks?${params.toString()}`;
+}
+
+function getSalesPath(dateFrom, dateTo, page) {
+  const params = new URLSearchParams();
+
+  if (dateFrom) {
+    params.set("from", dateFrom);
+  }
+
+  if (dateTo) {
+    params.set("to", dateTo);
+  }
+
+  params.set("page", String(Math.max(page, FIRST_LIST_PAGE)));
+
+  return `/sales?${params.toString()}`;
 }
 
 function getProductsPage(productsResponse) {
@@ -1512,12 +2198,32 @@ function getRestockCreateLinePayload(lineElement) {
     ),
     quantity_unit_snapshot:
       getRestockLineTextValue(lineElement, "[data-restock-unit]") ||
-      RESTOCK_DEFAULT_QUANTITY_UNIT,
+      DEFAULT_QUANTITY_UNIT,
+  };
+}
+
+function getSaleCreatePayload() {
+  const note = elements.sales.createNoteInput.value.trim();
+
+  return {
+    note: note || null,
+    lines: getSaleCreateLineRows().map(getSaleCreateLinePayload),
+  };
+}
+
+function getSaleCreateLinePayload(lineElement) {
+  return {
+    product_id: Number(lineElement.dataset.productId),
+    sale_quantity: getSaleLineNumberValue(lineElement, "[data-sale-quantity]"),
   };
 }
 
 function getRestockLineNumberValue(lineElement, selector) {
   return Number(getRestockLineTextValue(lineElement, selector));
+}
+
+function getSaleLineNumberValue(lineElement, selector) {
+  return Number(getSaleLineTextValue(lineElement, selector));
 }
 
 function getRestockLineOptionalNumberValue(lineElement, selector) {
@@ -1526,6 +2232,10 @@ function getRestockLineOptionalNumberValue(lineElement, selector) {
 }
 
 function getRestockLineTextValue(lineElement, selector) {
+  return String(lineElement.querySelector(selector)?.value || "").trim();
+}
+
+function getSaleLineTextValue(lineElement, selector) {
   return String(lineElement.querySelector(selector)?.value || "").trim();
 }
 
@@ -1612,6 +2322,10 @@ function hideRestockCreateModal() {
   hideModal(elements.restocks.createModal);
 }
 
+function hideSaleCreateModal() {
+  hideModal(elements.sales.createModal);
+}
+
 function hideModal(modalElement) {
   const Modal = window.bootstrap?.Modal;
 
@@ -1636,6 +2350,10 @@ function getCreateSupplierErrorMessage(error) {
 
 function getCreateRestockErrorMessage(error) {
   return getCreateErrorMessage(error, "пополнение");
+}
+
+function getCreateSaleErrorMessage(error) {
+  return getCreateErrorMessage(error, "продажу");
 }
 
 function getCreateErrorMessage(error, label) {
@@ -1679,5 +2397,5 @@ function formatInlineCount(value) {
 }
 
 function formatInlineQuantity(quantity, unit) {
-  return `${formatInlineCount(quantity)} ${unit || RESTOCK_DEFAULT_QUANTITY_UNIT}`;
+  return `${formatInlineCount(quantity)} ${unit || DEFAULT_QUANTITY_UNIT}`;
 }

@@ -12,6 +12,7 @@ export const elements = {
     companies: getElement("#companies"),
     suppliers: getElement("#suppliers"),
     restocks: getElement("#restocks"),
+    sales: getElement("#sales"),
   },
   dashboard: {
     salesValueCard: getElement("#dashboard-sales-value-card"),
@@ -123,6 +124,31 @@ export const elements = {
     nextPageButton: getElement("#restocks-next-page-button"),
     pageSummary: getElement("#restocks-page-summary"),
   },
+  sales: {
+    filterForm: getElement("#sales-filter-form"),
+    dateFromInput: getElement("#sales-date-from-input"),
+    dateToInput: getElement("#sales-date-to-input"),
+    filterButton: getElement("#sales-filter-button"),
+    resetButton: getElement("#sales-reset-button"),
+    openCreateModalButton: getElement("#open-sale-create-modal-button"),
+    createModal: getElement("#sale-create-modal"),
+    createForm: getElement("#sale-create-form"),
+    createSubmitButton: getElement("#sale-create-submit-button"),
+    createError: getElement("#sale-create-error"),
+    createNoteInput: getElement("#sale-create-note"),
+    createAddLineButton: getElement("#sale-create-add-line-button"),
+    createLines: getElement("#sale-create-lines"),
+    count: getElement("#sales-count"),
+    loading: getElement("#sales-loading"),
+    error: getElement("#sales-error"),
+    empty: getElement("#sales-empty"),
+    table: getElement("#sales-table"),
+    tableBody: getElement("#sales-table-body"),
+    pagination: getElement("#sales-pagination"),
+    previousPageButton: getElement("#sales-previous-page-button"),
+    nextPageButton: getElement("#sales-next-page-button"),
+    pageSummary: getElement("#sales-page-summary"),
+  },
 };
 
 export const state = {
@@ -131,6 +157,18 @@ export const state = {
   sales: {
     value: 0,
     count: 0,
+    list: [],
+    dateFrom: "",
+    dateTo: "",
+    isLoading: true,
+    error: "",
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 0,
+    hasNext: false,
+    hasPrevious: false,
+    isCreating: false,
   },
   products: {
     list: [],
@@ -597,6 +635,57 @@ export function resetRestockCreateForm() {
   setRestockCreateError("");
 }
 
+export function setSalesLoading(isLoading) {
+  state.sales.isLoading = isLoading;
+  elements.sales.filterButton.disabled = isLoading;
+  elements.sales.resetButton.disabled = isLoading;
+  updateSalesPaginationControls();
+  renderSales(state.sales.list);
+}
+
+export function setSalesError(message) {
+  state.sales.error = message;
+  elements.sales.error.textContent = message;
+  elements.sales.error.classList.toggle("d-none", !message);
+  renderSales(state.sales.list);
+}
+
+export function setSalesDateRange(dateFrom, dateTo) {
+  state.sales.dateFrom = dateFrom;
+  state.sales.dateTo = dateTo;
+  renderSales(state.sales.list);
+}
+
+export function setSalesPagination(pagination) {
+  state.sales.page = pagination.page;
+  state.sales.pageSize = pagination.pageSize;
+  state.sales.total = pagination.total;
+  state.sales.totalPages = pagination.totalPages;
+  state.sales.hasNext = pagination.hasNext;
+  state.sales.hasPrevious = pagination.hasPrevious;
+  renderSales(state.sales.list);
+}
+
+export function setSaleCreateSubmitting(isSubmitting) {
+  state.sales.isCreating = isSubmitting;
+  elements.sales.createSubmitButton.disabled = isSubmitting;
+  elements.sales.openCreateModalButton.disabled = isSubmitting;
+  elements.sales.createAddLineButton.disabled = isSubmitting;
+  elements.sales.createSubmitButton.textContent = isSubmitting
+    ? "Создание..."
+    : "Создать продажу";
+}
+
+export function setSaleCreateError(message) {
+  elements.sales.createError.textContent = message;
+  elements.sales.createError.classList.toggle("d-none", !message);
+}
+
+export function resetSaleCreateForm() {
+  elements.sales.createForm.reset();
+  setSaleCreateError("");
+}
+
 const stateBindings = {
   "sales.value": {
     update(value) {
@@ -643,6 +732,12 @@ const stateBindings = {
   "restocks.list": {
     update(restocks) {
       renderRestocks(restocks);
+    },
+  },
+
+  "sales.list": {
+    update(sales) {
+      renderSales(sales);
     },
   },
 };
@@ -1012,6 +1107,55 @@ function hasRestockDateFilter() {
   return Boolean(state.restocks.dateFrom || state.restocks.dateTo);
 }
 
+function renderSales(sales) {
+  const saleList = Array.isArray(sales) ? sales : [];
+  const hasSales = saleList.length > 0;
+  const shouldShowTable = hasSales && !state.sales.isLoading;
+  const shouldShowEmpty =
+    !hasSales && !state.sales.isLoading && !state.sales.error;
+
+  elements.sales.count.textContent = formatSalesCount(state.sales.total);
+  elements.sales.loading.classList.toggle("d-none", !state.sales.isLoading);
+  elements.sales.empty.textContent = hasSaleDateFilter()
+    ? "За выбранный период продажи не найдены."
+    : "Продажи пока не зарегистрированы.";
+  elements.sales.empty.classList.toggle("d-none", !shouldShowEmpty);
+  elements.sales.table.classList.toggle("d-none", !shouldShowTable);
+  updateSalesPaginationControls();
+
+  elements.sales.tableBody.replaceChildren();
+
+  if (!shouldShowTable) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const sale of saleList) {
+    fragment.append(createSaleRow(sale));
+  }
+
+  elements.sales.tableBody.append(fragment);
+}
+
+function updateSalesPaginationControls() {
+  const shouldShowPagination =
+    state.sales.total > 0 && !state.sales.isLoading && !state.sales.error;
+  const totalPages = Math.max(state.sales.totalPages, 1);
+
+  elements.sales.pagination.classList.toggle("d-none", !shouldShowPagination);
+  elements.sales.previousPageButton.disabled =
+    state.sales.isLoading || !state.sales.hasPrevious;
+  elements.sales.nextPageButton.disabled =
+    state.sales.isLoading || !state.sales.hasNext;
+  elements.sales.pageSummary.textContent =
+    `Страница ${formatCount(state.sales.page)} из ${formatCount(totalPages)}`;
+}
+
+function hasSaleDateFilter() {
+  return Boolean(state.sales.dateFrom || state.sales.dateTo);
+}
+
 function createCompanyRow(company) {
   const row = document.createElement("tr");
 
@@ -1155,6 +1299,113 @@ function createRestockTotalCell(lines) {
 }
 
 function createRestockNoteCell(note) {
+  const cell = document.createElement("td");
+  cell.textContent = note || "Без комментария";
+  return cell;
+}
+
+function createSaleRow(sale) {
+  const row = document.createElement("tr");
+
+  row.append(
+    createSaleSummaryCell(sale),
+    createSaleDateCell(sale.created_at),
+    createSaleLinesCell(sale.lines),
+    createSaleTotalCell(sale.lines),
+    createSaleNoteCell(sale.note),
+  );
+
+  return row;
+}
+
+function createSaleSummaryCell(sale) {
+  const cell = document.createElement("td");
+  cell.className = "sale-summary-cell";
+
+  const title = document.createElement("div");
+  title.className = "fw-semibold";
+  title.textContent = `Продажа #${formatCount(sale.id)}`;
+
+  const meta = document.createElement("div");
+  meta.className = "sale-meta";
+  meta.textContent = formatSaleLinesCount(getSaleLines(sale.lines).length);
+
+  cell.append(title, meta);
+  return cell;
+}
+
+function createSaleDateCell(createdAt) {
+  const cell = document.createElement("td");
+  cell.textContent = formatDateTime(createdAt);
+  return cell;
+}
+
+function createSaleLinesCell(lines) {
+  const cell = document.createElement("td");
+  const lineList = getSaleLines(lines);
+
+  if (lineList.length === 0) {
+    cell.className = "text-secondary";
+    cell.textContent = "Нет позиций";
+    return cell;
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "sale-lines";
+
+  for (const line of lineList) {
+    wrapper.append(createSaleLineItem(line));
+  }
+
+  cell.append(wrapper);
+  return cell;
+}
+
+function createSaleLineItem(line) {
+  const item = document.createElement("div");
+  item.className = "sale-line";
+
+  const title = document.createElement("div");
+  title.textContent =
+    `Товар #${formatCount(line.product_id)}: -${formatQuantity(
+      line.sale_quantity,
+      line.quantity_unit_snapshot,
+    )}`;
+
+  const meta = document.createElement("div");
+  meta.className = "sale-meta";
+  meta.textContent =
+    line.unit_sale_price_snapshot === null || line.unit_sale_price_snapshot === undefined
+      ? "Цена продажи не указана"
+      : `Цена продажи: ${formatCurrency(line.unit_sale_price_snapshot)}`;
+
+  item.append(title, meta);
+  return item;
+}
+
+function createSaleTotalCell(lines) {
+  const cell = document.createElement("td");
+  const summary = getSaleRevenueSummary(lines);
+
+  const total = document.createElement("div");
+  total.className = "fw-semibold";
+  total.textContent = summary.hasKnownPrice
+    ? formatCurrency(summary.total)
+    : "Не указана";
+
+  cell.append(total);
+
+  if (summary.hasMissingPrice) {
+    const meta = document.createElement("div");
+    meta.className = "sale-meta";
+    meta.textContent = "Есть позиции без цены";
+    cell.append(meta);
+  }
+
+  return cell;
+}
+
+function createSaleNoteCell(note) {
   const cell = document.createElement("td");
   cell.textContent = note || "Без комментария";
   return cell;
@@ -1337,12 +1588,26 @@ function formatRestocksCount(count) {
   return count === 1 ? `${formattedCount} пополнение` : `${formattedCount} пополнений`;
 }
 
+function formatSalesCount(count) {
+  const formattedCount = formatCount(count);
+  return count === 1 ? `${formattedCount} продажа` : `${formattedCount} продаж`;
+}
+
 function formatRestockLinesCount(count) {
   const formattedCount = formatCount(count);
   return count === 1 ? `${formattedCount} позиция` : `${formattedCount} позиций`;
 }
 
+function formatSaleLinesCount(count) {
+  const formattedCount = formatCount(count);
+  return count === 1 ? `${formattedCount} позиция` : `${formattedCount} позиций`;
+}
+
 function getRestockLines(lines) {
+  return Array.isArray(lines) ? lines : [];
+}
+
+function getSaleLines(lines) {
   return Array.isArray(lines) ? lines : [];
 }
 
@@ -1369,6 +1634,37 @@ function getRestockCostSummary(lines) {
 
     summary.hasKnownPrice = true;
     summary.total += unitCost * (Number.isFinite(quantity) ? quantity : 0);
+  }
+
+  return summary;
+}
+
+function getSaleRevenueSummary(lines) {
+  const summary = {
+    total: 0,
+    hasKnownPrice: false,
+    hasMissingPrice: false,
+  };
+
+  for (const line of getSaleLines(lines)) {
+    if (
+      line.unit_sale_price_snapshot === null ||
+      line.unit_sale_price_snapshot === undefined
+    ) {
+      summary.hasMissingPrice = true;
+      continue;
+    }
+
+    const unitPrice = Number(line.unit_sale_price_snapshot);
+    const quantity = Number(line.sale_quantity);
+
+    if (!Number.isFinite(unitPrice)) {
+      summary.hasMissingPrice = true;
+      continue;
+    }
+
+    summary.hasKnownPrice = true;
+    summary.total += unitPrice * (Number.isFinite(quantity) ? quantity : 0);
   }
 
   return summary;

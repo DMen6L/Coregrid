@@ -176,6 +176,9 @@ class Product(Base):
     restock_lines: Mapped[list["RestockLine"]] = relationship(
         back_populates="product",
     )
+    sale_lines: Mapped[list["SaleLine"]] = relationship(
+        back_populates="product",
+    )
 
     __table_args__ = (
         CheckConstraint("purchase_price > 0", name="ck_products_purchase_price"),
@@ -282,5 +285,79 @@ class RestockLine(Base):
             "restock_id",
             "product_id",
             name="uq_restock_lines_restock_product",
+        ),
+    )
+
+
+class Sale(Base):
+    __tablename__ = "sales"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    note: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    lines: Mapped[list["SaleLine"]] = relationship(
+        back_populates="sale",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="SaleLine.id",
+    )
+
+
+class SaleLine(Base):
+    __tablename__ = "sale_lines"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sale_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sales.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id"),
+        nullable=False,
+    )
+
+    sale_quantity: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+    unit_cost_snapshot: Mapped[int] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    unit_sale_price_snapshot: Mapped[int] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    quantity_unit_snapshot: Mapped[str] = mapped_column(
+        String(QUANTITY_UNIT_MAX_LENGTH),
+        nullable=False,
+    )
+
+    sale: Mapped["Sale"] = relationship(
+        back_populates="lines",
+    )
+    product: Mapped["Product"] = relationship(
+        back_populates="sale_lines",
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "sale_quantity > 0",
+            name="ck_sale_lines_sale_quantity",
+        ),
+        UniqueConstraint(
+            "sale_id",
+            "product_id",
+            name="uq_sale_lines_sale_product",
         ),
     )

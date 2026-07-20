@@ -101,7 +101,7 @@
                 id="stock-actions-dropdown"
                 type="button"
                 data-bs-toggle="dropdown"
-                data-view-menu-views="restocks"
+                data-view-menu-views="restocks sales"
                 aria-expanded="false"
               >
                 Операции склада
@@ -118,6 +118,19 @@
                     aria-selected="false"
                   >
                     Пополнения
+                  </button>
+                </li>
+                <li>
+                  <button
+                    class="dropdown-item"
+                    id="sales-tab"
+                    type="button"
+                    role="tab"
+                    data-view-tab="sales"
+                    aria-controls="sales"
+                    aria-selected="false"
+                  >
+                    Продажи
                   </button>
                 </li>
               </ul>
@@ -529,6 +542,106 @@
           </button>
         </nav>
       </section>
+
+      <section
+        class="container-fluid p-4 d-none"
+        id="sales"
+        role="tabpanel"
+        aria-labelledby="sales-tab"
+        hidden
+      >
+        <div class="sales-toolbar d-flex align-items-end justify-content-between flex-wrap gap-3 mb-3">
+          <form class="sales-filters" id="sales-filter-form">
+            <label class="form-label" for="sales-date-from-input">Период продаж</label>
+            <div class="sales-filter-controls">
+              <input
+                class="form-control"
+                id="sales-date-from-input"
+                name="from"
+                type="date"
+                aria-label="Дата начала"
+              >
+              <input
+                class="form-control"
+                id="sales-date-to-input"
+                name="to"
+                type="date"
+                aria-label="Дата окончания"
+              >
+              <button
+                class="btn btn-primary"
+                id="sales-filter-button"
+                type="submit"
+              >
+                Показать
+              </button>
+              <button
+                class="btn btn-outline-secondary"
+                id="sales-reset-button"
+                type="button"
+              >
+                Сбросить
+              </button>
+            </div>
+          </form>
+          <div class="sales-actions">
+            <button
+              class="btn btn-success"
+              id="open-sale-create-modal-button"
+              type="button"
+              data-bs-toggle="modal"
+              data-bs-target="#sale-create-modal"
+            >
+              Зарегистрировать продажу
+            </button>
+            <span class="badge text-bg-secondary sales-count" id="sales-count">0 продаж</span>
+          </div>
+        </div>
+        <div class="text-secondary py-4" id="sales-loading" aria-live="polite">
+          Загрузка продаж...
+        </div>
+        <div class="alert alert-danger d-none" id="sales-error" role="alert"></div>
+        <div class="alert alert-light border d-none" id="sales-empty" role="status">
+          Продажи пока не зарегистрированы.
+        </div>
+        <div class="table-responsive sales-table d-none" id="sales-table">
+          <table class="table table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th scope="col">Продажа</th>
+                <th scope="col">Дата</th>
+                <th scope="col">Позиции</th>
+                <th scope="col">Выручка</th>
+                <th scope="col">Комментарий</th>
+              </tr>
+            </thead>
+            <tbody id="sales-table-body"></tbody>
+          </table>
+        </div>
+        <nav
+          class="sales-pagination d-none mt-3"
+          id="sales-pagination"
+          aria-label="Пагинация продаж"
+        >
+          <button
+            class="btn btn-outline-primary"
+            id="sales-previous-page-button"
+            type="button"
+          >
+            Назад
+          </button>
+          <span class="sales-page-summary" id="sales-page-summary">
+            Страница 1 из 1
+          </span>
+          <button
+            class="btn btn-outline-primary"
+            id="sales-next-page-button"
+            type="button"
+          >
+            Вперед
+          </button>
+        </nav>
+      </section>
     </main>
 
     <div
@@ -583,6 +696,65 @@
               </button>
               <button class="btn btn-primary" id="restock-create-submit-button" type="submit">
                 Создать пополнение
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade"
+      id="sale-create-modal"
+      tabindex="-1"
+      aria-labelledby="sale-create-modal-title"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <form class="sale-create-form" id="sale-create-form">
+            <div class="modal-header">
+              <h2 class="modal-title fs-5" id="sale-create-modal-title">Зарегистрировать продажу</h2>
+              <button
+                class="btn-close"
+                type="button"
+                data-bs-dismiss="modal"
+                aria-label="Закрыть"
+              ></button>
+            </div>
+            <div class="modal-body">
+              <div class="alert alert-danger d-none" id="sale-create-error" role="alert"></div>
+
+              <div class="mb-3">
+                <label class="form-label" for="sale-create-note">Комментарий</label>
+                <textarea
+                  class="form-control"
+                  id="sale-create-note"
+                  name="note"
+                  rows="2"
+                  maxlength="500"
+                ></textarea>
+              </div>
+
+              <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                <h3 class="fs-6 mb-0">Позиции продажи</h3>
+                <button
+                  class="btn btn-outline-primary"
+                  id="sale-create-add-line-button"
+                  type="button"
+                >
+                  Добавить позицию
+                </button>
+              </div>
+
+              <div class="sale-create-lines" id="sale-create-lines"></div>
+            </div>
+            <div class="modal-footer sale-create-footer">
+              <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">
+                Отмена
+              </button>
+              <button class="btn btn-primary" id="sale-create-submit-button" type="submit">
+                Создать продажу
               </button>
             </div>
           </form>

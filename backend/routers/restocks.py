@@ -54,7 +54,7 @@ def get_restocks(
             Restock.created_at < end_datetime,
         )
         count_statement = count_statement.where(
-            Restock.created_at >= end_datetime,
+            Restock.created_at < end_datetime,
         )
 
     return paginate(
