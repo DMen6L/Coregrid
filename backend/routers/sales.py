@@ -86,7 +86,7 @@ def add_sale(db: DbSession, sale_data: SaleCreate):
     for line_data in sale_data.lines:
         product = products_by_id[line_data.product_id]
 
-        product.quantity += line_data.sale_quantity
+        product.quantity -= line_data.sale_quantity
 
         sale.lines.append(
             SaleLine(

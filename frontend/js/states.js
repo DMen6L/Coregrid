@@ -19,6 +19,13 @@ export const elements = {
     salesCountCard: getElement("#dashboard-sales-count-card"),
     lowStockCard: getElement("#dashboard-low-stock"),
     outOfStockCard: getElement("#dashboard-out-of-stock"),
+    salesPeriodForm: getElement("#dashboard-sales-period-form"),
+    salesPeriodInput: getElement("#dashboard-sales-period-input"),
+    salesPeriodButton: getElement("#dashboard-sales-period-button"),
+    salesTrendSummary: getElement("#dashboard-sales-trend-summary"),
+    salesTrendChart: getElement("#dashboard-sales-chart"),
+    salesTrendEmpty: getElement("#dashboard-sales-trend-empty"),
+    salesDailyTableBody: getElement("#dashboard-sales-daily-table-body"),
   },
   products: {
     searchForm: getElement("#products-search-form"),
@@ -157,6 +164,9 @@ export const state = {
   sales: {
     value: 0,
     count: 0,
+    summaryDays: 7,
+    dailyTotals: [],
+    isSummaryLoading: true,
     list: [],
     dateFrom: "",
     dateTo: "",
@@ -686,6 +696,22 @@ export function resetSaleCreateForm() {
   setSaleCreateError("");
 }
 
+export function setDashboardSalesSummaryLoading(isLoading) {
+  state.sales.isSummaryLoading = isLoading;
+  elements.dashboard.salesPeriodInput.disabled = isLoading;
+  elements.dashboard.salesPeriodButton.disabled = isLoading;
+  elements.dashboard.salesPeriodButton.textContent = isLoading
+    ? "Загрузка..."
+    : "Обновить";
+  elements.dashboard.salesTrendChart.setAttribute("aria-busy", String(isLoading));
+}
+
+export function setDashboardSalesSummaryDays(days) {
+  state.sales.summaryDays = days;
+  elements.dashboard.salesPeriodInput.value = String(days);
+  renderDashboardSalesTrend(state.sales.dailyTotals);
+}
+
 const stateBindings = {
   "sales.value": {
     update(value) {
@@ -696,6 +722,12 @@ const stateBindings = {
   "sales.count": {
     update(value) {
       elements.dashboard.salesCountCard.textContent = formatCount(value);
+    },
+  },
+
+  "sales.dailyTotals": {
+    update(dailyTotals) {
+      renderDashboardSalesTrend(dailyTotals);
     },
   },
 
@@ -745,6 +777,113 @@ const stateBindings = {
 function getMenuToggleViews(toggle) {
   const views = toggle.dataset.viewMenuViews || toggle.dataset.viewMenuToggle || "";
   return views.split(" ").filter(Boolean);
+}
+
+function renderDashboardSalesTrend(dailyTotals) {
+  const rows = Array.isArray(dailyTotals) ? dailyTotals : [];
+  const total = rows.reduce(
+    (sum, row) => sum + getNumericSalesValue(row.salesValue),
+    0,
+  );
+  const maxValue = rows.reduce(
+    (max, row) => Math.max(max, getNumericSalesValue(row.salesValue)),
+    0,
+  );
+  const hasSales = total > 0;
+
+  elements.dashboard.salesTrendSummary.textContent =
+    `Последние ${formatCount(state.sales.summaryDays)} дней | Итого ${formatCurrency(total)}`;
+  elements.dashboard.salesTrendEmpty.classList.toggle("d-none", hasSales);
+  renderDashboardSalesChart(rows, maxValue);
+  renderDashboardSalesTable(rows);
+}
+
+function renderDashboardSalesChart(rows, maxValue) {
+  elements.dashboard.salesTrendChart.replaceChildren();
+
+  if (rows.length === 0) {
+    return;
+  }
+
+  const chartBars = document.createElement("div");
+  chartBars.className = "dashboard-sales-chart-bars";
+
+  rows.forEach((row, index) => {
+    chartBars.append(createDashboardSalesChartItem(row, index, rows.length, maxValue));
+  });
+
+  elements.dashboard.salesTrendChart.append(chartBars);
+}
+
+function createDashboardSalesChartItem(row, index, rowCount, maxValue) {
+  const item = document.createElement("div");
+  item.className = "dashboard-sales-chart-item";
+
+  const salesValue = getNumericSalesValue(row.salesValue);
+  const track = document.createElement("div");
+  const bar = document.createElement("div");
+  const height = maxValue > 0
+    ? Math.max((salesValue / maxValue) * 100, salesValue > 0 ? 4 : 0)
+    : 0;
+
+  track.className = "dashboard-sales-chart-track";
+  bar.className = "dashboard-sales-chart-bar";
+  bar.classList.toggle("is-empty", salesValue === 0);
+  bar.style.height = `${height}%`;
+  bar.title = `${row.displayDate}: ${formatCurrency(salesValue)}`;
+  bar.setAttribute("aria-label", bar.title);
+  track.append(bar);
+
+  const label = document.createElement("div");
+  label.className = "dashboard-sales-chart-label";
+  label.textContent = shouldShowDashboardSalesChartLabel(index, rowCount)
+    ? row.shortDate
+    : "";
+
+  item.append(track, label);
+  return item;
+}
+
+function shouldShowDashboardSalesChartLabel(index, rowCount) {
+  if (index === 0 || index === rowCount - 1) {
+    return true;
+  }
+
+  if (rowCount <= 14) {
+    return true;
+  }
+
+  const interval = Math.ceil(rowCount / 8);
+  return index % interval === 0;
+}
+
+function renderDashboardSalesTable(rows) {
+  elements.dashboard.salesDailyTableBody.replaceChildren();
+
+  if (rows.length === 0) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const row of rows) {
+    fragment.append(createDashboardSalesTableRow(row));
+  }
+
+  elements.dashboard.salesDailyTableBody.append(fragment);
+}
+
+function createDashboardSalesTableRow(row) {
+  const tableRow = document.createElement("tr");
+  const dateCell = document.createElement("td");
+  const valueCell = document.createElement("td");
+
+  dateCell.textContent = row.displayDate;
+  valueCell.className = "fw-semibold";
+  valueCell.textContent = formatCurrency(row.salesValue);
+
+  tableRow.append(dateCell, valueCell);
+  return tableRow;
 }
 
 function renderProducts(products) {
@@ -1668,6 +1807,11 @@ function getSaleRevenueSummary(lines) {
   }
 
   return summary;
+}
+
+function getNumericSalesValue(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : 0;
 }
 
 function getPositiveIntegerInputValue(input, fallbackValue) {

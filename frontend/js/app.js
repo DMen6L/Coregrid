@@ -8,6 +8,8 @@ import {
   clearProductSupplierLookup,
   resetCompanyCreateForm,
   resetProductCreateForm,
+  setDashboardSalesSummaryDays,
+  setDashboardSalesSummaryLoading,
   setCompanyCreateError,
   setCompanyCreateSubmitting,
   setCompaniesError,
@@ -58,6 +60,8 @@ const FIRST_LIST_PAGE = 1;
 const PRODUCT_LOOKUP_MIN_SEARCH_LENGTH = 2;
 const PRODUCT_LOOKUP_DEBOUNCE_MS = 300;
 const PRODUCT_LOOKUP_PAGE_SIZE = 10;
+const DASHBOARD_SALES_MIN_DAYS = 7;
+const DASHBOARD_SALES_MAX_DAYS = 365;
 const DEFAULT_QUANTITY_UNIT = "шт";
 
 const productLookupRequests = {
@@ -80,6 +84,7 @@ initializeApp();
 
 function initializeApp() {
   bindNavigation();
+  bindDashboardSalesSummary();
   bindProductSearch();
   bindProductPagination();
   bindProductPricingCalculation();
@@ -108,6 +113,29 @@ function bindNavigation() {
       setActiveView(tab.dataset.viewTab);
     });
   }
+}
+
+function bindDashboardSalesSummary() {
+  elements.dashboard.salesPeriodForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    if (
+      elements.dashboard.salesPeriodButton.disabled ||
+      !elements.dashboard.salesPeriodForm.reportValidity()
+    ) {
+      return;
+    }
+
+    const days = getDashboardSalesPeriodInputValue();
+
+    if (days === null) {
+      setAppMessage("Период продаж должен быть от 7 до 365 дней.");
+      elements.dashboard.salesPeriodInput.focus();
+      return;
+    }
+
+    loadDashboardSummary(days);
+  });
 }
 
 function bindProductSearch() {
@@ -1654,19 +1682,32 @@ async function loadInitialData() {
   ]);
 }
 
-async function loadDashboardSummary() {
+async function loadDashboardSummary(days = state.sales.summaryDays) {
+  const summaryDays = clampDashboardSalesDays(days);
+
+  setDashboardSalesSummaryLoading(true);
   setAppMessage("");
 
   try {
-    const summary = await request("/summaries");
+    const summary = await request(getSummariesPath(summaryDays));
 
     setState("sales.value", summary.dashboard_sales_value);
     setState("sales.count", summary.dashboard_sales_count);
+    setDashboardSalesSummaryDays(summaryDays);
+    setState(
+      "sales.dailyTotals",
+      getDashboardSalesTrendRows(
+        summary.latest_sales || summary.latestSales,
+        summaryDays,
+      ),
+    );
     setState("products.lowStock", summary.low_stock);
     setState("products.outOfStock", summary.out_of_stock);
   } catch (error) {
     console.error("Could not load dashboard summaries:", error);
     setAppMessage(getRequestErrorMessage(error, "показатели дэшборда"));
+  } finally {
+    setDashboardSalesSummaryLoading(false);
   }
 }
 
@@ -2067,6 +2108,12 @@ function getProductsPath(searchTerm, page) {
   return getListPath("/products", searchTerm, page);
 }
 
+function getSummariesPath(days) {
+  const params = new URLSearchParams();
+  params.set("days_ago", String(clampDashboardSalesDays(days)));
+  return `/summaries?${params.toString()}`;
+}
+
 function getListPath(basePath, searchTerm, page) {
   const params = new URLSearchParams();
 
@@ -2264,6 +2311,143 @@ function getSupplierLookupPath(searchTerm) {
   params.set("page_size", String(PRODUCT_LOOKUP_PAGE_SIZE));
 
   return `/suppliers?${params.toString()}`;
+}
+
+function getDashboardSalesPeriodInputValue() {
+  const days = Number(elements.dashboard.salesPeriodInput.value);
+
+  if (
+    !Number.isInteger(days) ||
+    days < DASHBOARD_SALES_MIN_DAYS ||
+    days > DASHBOARD_SALES_MAX_DAYS
+  ) {
+    return null;
+  }
+
+  return days;
+}
+
+function clampDashboardSalesDays(days) {
+  const numberValue = Number(days);
+
+  if (!Number.isFinite(numberValue)) {
+    return DASHBOARD_SALES_MIN_DAYS;
+  }
+
+  return Math.min(
+    Math.max(Math.trunc(numberValue), DASHBOARD_SALES_MIN_DAYS),
+    DASHBOARD_SALES_MAX_DAYS,
+  );
+}
+
+function getDashboardSalesTrendRows(latestSales, days) {
+  const dailySales = new Map();
+  const sourceRows = Array.isArray(latestSales) ? latestSales : [];
+
+  for (const row of sourceRows) {
+    const dateKey = getDateKeyFromApiValue(row?.date);
+    const salesValue = getDashboardSalesValueFromApiRow(row);
+
+    if (!dateKey) {
+      continue;
+    }
+
+    dailySales.set(dateKey, (dailySales.get(dateKey) || 0) + salesValue);
+  }
+
+  const clampedDays = clampDashboardSalesDays(days);
+  const endDateKey = getDashboardSalesTrendEndDateKey(sourceRows);
+  const startDate = getDateFromDateKey(endDateKey);
+  startDate.setDate(startDate.getDate() - clampedDays + 1);
+
+  return Array.from({ length: clampedDays }, (_, index) => {
+    const currentDate = new Date(startDate);
+    currentDate.setDate(startDate.getDate() + index);
+
+    const dateKey = getDateKey(currentDate);
+
+    return {
+      date: dateKey,
+      displayDate: formatDashboardDate(currentDate),
+      shortDate: formatDashboardShortDate(currentDate),
+      salesValue: dailySales.get(dateKey) || 0,
+    };
+  });
+}
+
+function getDashboardSalesValueFromApiRow(row) {
+  const rawValue = row?.sales_value ?? row?.salesValue ?? 0;
+  const salesValue = Number(rawValue);
+  return Number.isFinite(salesValue) ? salesValue : 0;
+}
+
+function getDashboardSalesTrendEndDateKey(sourceRows) {
+  const todayKey = getDateKey(getStartOfToday());
+  let latestDateKey = todayKey;
+
+  for (const row of sourceRows) {
+    const dateKey = getDateKeyFromApiValue(row?.date);
+
+    if (dateKey && dateKey > latestDateKey) {
+      latestDateKey = dateKey;
+    }
+  }
+
+  return latestDateKey;
+}
+
+function getDateKeyFromApiValue(value) {
+  if (!value) {
+    return "";
+  }
+
+  if (value instanceof Date) {
+    return getDateKey(value);
+  }
+
+  const textValue = String(value);
+  const isoDate = textValue.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+
+  return isoDate || "";
+}
+
+function getDateFromDateKey(dateKey) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return getStartOfToday();
+  }
+
+  return new Date(year, month - 1, day);
+}
+
+function getStartOfToday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
+function getDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatDashboardDate(date) {
+  return date.toLocaleDateString("ru-KZ", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function formatDashboardShortDate(date) {
+  return date.toLocaleDateString("ru-KZ", {
+    day: "2-digit",
+    month: "short",
+  });
 }
 
 function getTextField(formData, key) {

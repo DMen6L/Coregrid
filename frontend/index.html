@@ -185,6 +185,63 @@
             </div>
           </div>
         </div>
+
+        <div class="dashboard-sales-trend mt-4">
+          <div class="dashboard-sales-trend-header">
+            <div>
+              <h2 class="fs-5 mb-1">Продажи по дням</h2>
+              <p class="text-secondary mb-0" id="dashboard-sales-trend-summary">
+                Последние 7 дней
+              </p>
+            </div>
+            <form class="dashboard-sales-period-form" id="dashboard-sales-period-form">
+              <label class="form-label" for="dashboard-sales-period-input">Период</label>
+              <div class="input-group">
+                <input
+                  class="form-control"
+                  id="dashboard-sales-period-input"
+                  name="days_ago"
+                  type="number"
+                  min="7"
+                  max="365"
+                  step="1"
+                  value="7"
+                  required
+                >
+                <span class="input-group-text">дней</span>
+                <button
+                  class="btn btn-primary"
+                  id="dashboard-sales-period-button"
+                  type="submit"
+                >
+                  Обновить
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div
+            class="dashboard-sales-chart"
+            id="dashboard-sales-chart"
+            role="img"
+            aria-label="График продаж по дням"
+          >
+          </div>
+          <div class="alert alert-light border d-none" id="dashboard-sales-trend-empty" role="status">
+            За выбранный период продаж не найдено.
+          </div>
+          <div class="table-responsive dashboard-sales-daily-table">
+            <table class="table table-hover align-middle mb-0">
+              <thead>
+                <tr>
+                  <th scope="col">Дата</th>
+                  <th scope="col">Продажи</th>
+                </tr>
+              </thead>
+              <tbody id="dashboard-sales-daily-table-body"></tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
       <section

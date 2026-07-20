@@ -1,5 +1,5 @@
-from datetime import datetime
-from typing import Annotated, Generic, Literal, TypeVar
+from datetime import date, datetime
+from typing import Annotated, Any, Generic, Literal, TypeVar
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -264,11 +264,17 @@ class SaleResponse(BaseModel):
     lines: list[SaleLineResponse]
 
 
+class DailySalesResponse(BaseModel):
+    date: date
+    sales_value: int
+
+
 class SummariesResponse(BaseModel):
     dashboard_sales_value: int
     dashboard_sales_count: int
     low_stock: int
     out_of_stock: int
+    latest_sales: list[DailySalesResponse]
 
 
 class PaginatedResponse(BaseModel, Generic[ItemT]):
