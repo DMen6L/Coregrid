@@ -22,10 +22,15 @@ export const elements = {
     salesPeriodForm: getElement("#dashboard-sales-period-form"),
     salesPeriodInput: getElement("#dashboard-sales-period-input"),
     salesPeriodButton: getElement("#dashboard-sales-period-button"),
+    bestSalesModeSelect: getElement("#dashboard-best-sales-mode-select"),
     salesTrendSummary: getElement("#dashboard-sales-trend-summary"),
     salesTrendChart: getElement("#dashboard-sales-chart"),
     salesTrendEmpty: getElement("#dashboard-sales-trend-empty"),
     salesDailyTableBody: getElement("#dashboard-sales-daily-table-body"),
+    bestSalesSummary: getElement("#dashboard-best-sales-summary"),
+    bestSalesEmpty: getElement("#dashboard-best-sales-empty"),
+    bestSalesMetricHeading: getElement("#dashboard-best-sales-metric-heading"),
+    bestSalesTableBody: getElement("#dashboard-best-sales-table-body"),
   },
   products: {
     searchForm: getElement("#products-search-form"),
@@ -165,7 +170,9 @@ export const state = {
     value: 0,
     count: 0,
     summaryDays: 7,
+    bestSalesMode: "quantity",
     dailyTotals: [],
+    topProducts: [],
     isSummaryLoading: true,
     list: [],
     dateFrom: "",
@@ -699,6 +706,7 @@ export function resetSaleCreateForm() {
 export function setDashboardSalesSummaryLoading(isLoading) {
   state.sales.isSummaryLoading = isLoading;
   elements.dashboard.salesPeriodInput.disabled = isLoading;
+  elements.dashboard.bestSalesModeSelect.disabled = isLoading;
   elements.dashboard.salesPeriodButton.disabled = isLoading;
   elements.dashboard.salesPeriodButton.textContent = isLoading
     ? "Загрузка..."
@@ -710,6 +718,12 @@ export function setDashboardSalesSummaryDays(days) {
   state.sales.summaryDays = days;
   elements.dashboard.salesPeriodInput.value = String(days);
   renderDashboardSalesTrend(state.sales.dailyTotals);
+}
+
+export function setDashboardBestSalesMode(mode) {
+  state.sales.bestSalesMode = getDashboardBestSalesModeConfig(mode).value;
+  elements.dashboard.bestSalesModeSelect.value = state.sales.bestSalesMode;
+  renderDashboardBestSales(state.sales.topProducts);
 }
 
 const stateBindings = {
@@ -728,6 +742,12 @@ const stateBindings = {
   "sales.dailyTotals": {
     update(dailyTotals) {
       renderDashboardSalesTrend(dailyTotals);
+    },
+  },
+
+  "sales.topProducts": {
+    update(topProducts) {
+      renderDashboardBestSales(topProducts);
     },
   },
 
@@ -884,6 +904,84 @@ function createDashboardSalesTableRow(row) {
 
   tableRow.append(dateCell, valueCell);
   return tableRow;
+}
+
+function renderDashboardBestSales(topProducts) {
+  const productList = Array.isArray(topProducts) ? topProducts : [];
+  const config = getDashboardBestSalesModeConfig(state.sales.bestSalesMode);
+  const hasProducts = productList.length > 0;
+
+  elements.dashboard.bestSalesSummary.textContent = config.summaryLabel;
+  elements.dashboard.bestSalesMetricHeading.textContent = config.heading;
+  elements.dashboard.bestSalesEmpty.classList.toggle("d-none", hasProducts);
+  elements.dashboard.bestSalesTableBody.replaceChildren();
+
+  if (!hasProducts) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  productList.forEach((product, index) => {
+    fragment.append(createDashboardBestSalesRow(product, index, config));
+  });
+
+  elements.dashboard.bestSalesTableBody.append(fragment);
+}
+
+function createDashboardBestSalesRow(product, index, config) {
+  const row = document.createElement("tr");
+  const productCell = document.createElement("td");
+  const metricCell = document.createElement("td");
+
+  const productName = product.product_name || product.productName || "Без названия";
+  const productId = product.product_id ?? product.productId;
+
+  const name = document.createElement("div");
+  name.className = "fw-semibold";
+  name.textContent = `${index + 1}. ${productName}`;
+
+  const meta = document.createElement("div");
+  meta.className = "product-meta";
+  meta.textContent = productId ? `ID ${formatCount(productId)}` : "ID не указан";
+
+  metricCell.className = "fw-semibold";
+  metricCell.textContent = formatDashboardBestSalesMetric(product.metric, config);
+
+  productCell.append(name, meta);
+  row.append(productCell, metricCell);
+  return row;
+}
+
+function getDashboardBestSalesModeConfig(mode) {
+  const configs = {
+    quantity: {
+      value: "quantity",
+      heading: "Количество",
+      summaryLabel: "По количеству",
+      isCurrency: false,
+    },
+    revenue: {
+      value: "revenue",
+      heading: "Выручка",
+      summaryLabel: "По выручке",
+      isCurrency: true,
+    },
+    gross_profit: {
+      value: "gross_profit",
+      heading: "Валовая прибыль",
+      summaryLabel: "По валовой прибыли",
+      isCurrency: true,
+    },
+  };
+
+  return configs[mode] || configs.quantity;
+}
+
+function formatDashboardBestSalesMetric(value, config) {
+  return config.isCurrency
+    ? formatCurrency(value)
+    : formatCount(value);
 }
 
 function renderProducts(products) {

@@ -269,12 +269,19 @@ class DailySalesResponse(BaseModel):
     sales_value: int
 
 
+class TopProduct(BaseModel):
+    product_id: int
+    product_name: str
+    metric: int = Field(default=0, ge=0)
+
+
 class SummariesResponse(BaseModel):
     dashboard_sales_value: int
     dashboard_sales_count: int
     low_stock: int
     out_of_stock: int
     latest_sales: list[DailySalesResponse]
+    top_products: list[TopProduct]
 
 
 class PaginatedResponse(BaseModel, Generic[ItemT]):

@@ -8,6 +8,7 @@ import {
   clearProductSupplierLookup,
   resetCompanyCreateForm,
   resetProductCreateForm,
+  setDashboardBestSalesMode,
   setDashboardSalesSummaryDays,
   setDashboardSalesSummaryLoading,
   setCompanyCreateError,
@@ -62,6 +63,7 @@ const PRODUCT_LOOKUP_DEBOUNCE_MS = 300;
 const PRODUCT_LOOKUP_PAGE_SIZE = 10;
 const DASHBOARD_SALES_MIN_DAYS = 7;
 const DASHBOARD_SALES_MAX_DAYS = 365;
+const DASHBOARD_BEST_SALES_MODES = new Set(["quantity", "revenue", "gross_profit"]);
 const DEFAULT_QUANTITY_UNIT = "шт";
 
 const productLookupRequests = {
@@ -127,6 +129,7 @@ function bindDashboardSalesSummary() {
     }
 
     const days = getDashboardSalesPeriodInputValue();
+    const bestSalesMode = getDashboardBestSalesModeInputValue();
 
     if (days === null) {
       setAppMessage("Период продаж должен быть от 7 до 365 дней.");
@@ -134,7 +137,7 @@ function bindDashboardSalesSummary() {
       return;
     }
 
-    loadDashboardSummary(days);
+    loadDashboardSummary(days, bestSalesMode);
   });
 }
 
@@ -1682,24 +1685,33 @@ async function loadInitialData() {
   ]);
 }
 
-async function loadDashboardSummary(days = state.sales.summaryDays) {
+async function loadDashboardSummary(
+  days = state.sales.summaryDays,
+  bestSalesMode = state.sales.bestSalesMode,
+) {
   const summaryDays = clampDashboardSalesDays(days);
+  const summaryBestSalesMode = getValidDashboardBestSalesMode(bestSalesMode);
 
   setDashboardSalesSummaryLoading(true);
   setAppMessage("");
 
   try {
-    const summary = await request(getSummariesPath(summaryDays));
+    const summary = await request(getSummariesPath(summaryDays, summaryBestSalesMode));
 
     setState("sales.value", summary.dashboard_sales_value);
     setState("sales.count", summary.dashboard_sales_count);
     setDashboardSalesSummaryDays(summaryDays);
+    setDashboardBestSalesMode(summaryBestSalesMode);
     setState(
       "sales.dailyTotals",
       getDashboardSalesTrendRows(
         summary.latest_sales || summary.latestSales,
         summaryDays,
       ),
+    );
+    setState(
+      "sales.topProducts",
+      getDashboardTopProducts(summary.top_products || summary.topProducts),
     );
     setState("products.lowStock", summary.low_stock);
     setState("products.outOfStock", summary.out_of_stock);
@@ -2108,9 +2120,10 @@ function getProductsPath(searchTerm, page) {
   return getListPath("/products", searchTerm, page);
 }
 
-function getSummariesPath(days) {
+function getSummariesPath(days, bestSalesMode) {
   const params = new URLSearchParams();
   params.set("days_ago", String(clampDashboardSalesDays(days)));
+  params.set("best_sales_mode", getValidDashboardBestSalesMode(bestSalesMode));
   return `/summaries?${params.toString()}`;
 }
 
@@ -2327,6 +2340,14 @@ function getDashboardSalesPeriodInputValue() {
   return days;
 }
 
+function getDashboardBestSalesModeInputValue() {
+  return getValidDashboardBestSalesMode(elements.dashboard.bestSalesModeSelect.value);
+}
+
+function getValidDashboardBestSalesMode(mode) {
+  return DASHBOARD_BEST_SALES_MODES.has(mode) ? mode : "quantity";
+}
+
 function clampDashboardSalesDays(days) {
   const numberValue = Number(days);
 
@@ -2373,6 +2394,21 @@ function getDashboardSalesTrendRows(latestSales, days) {
       salesValue: dailySales.get(dateKey) || 0,
     };
   });
+}
+
+function getDashboardTopProducts(topProducts) {
+  const productList = Array.isArray(topProducts) ? topProducts : [];
+
+  return productList.map((product) => ({
+    product_id: product?.product_id ?? product?.productId ?? null,
+    product_name: product?.product_name ?? product?.productName ?? "",
+    metric: getDashboardTopProductMetric(product),
+  }));
+}
+
+function getDashboardTopProductMetric(product) {
+  const metric = Number(product?.metric ?? 0);
+  return Number.isFinite(metric) ? metric : 0;
 }
 
 function getDashboardSalesValueFromApiRow(row) {

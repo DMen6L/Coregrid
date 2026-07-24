@@ -57,7 +57,14 @@ body {
 }
 
 .dashboard-sales-period-form {
-  flex: 0 1 24rem;
+  flex: 0 1 36rem;
+}
+
+.dashboard-sales-controls {
+  display: grid;
+  align-items: end;
+  grid-template-columns: minmax(11rem, 1fr) minmax(11rem, 1fr) auto;
+  gap: 0.75rem;
 }
 
 .dashboard-sales-chart {
@@ -110,6 +117,20 @@ body {
   text-align: center;
 }
 
+.dashboard-table-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.dashboard-best-sales,
+.dashboard-sales-daily-table {
+  min-width: 0;
+}
+
+.dashboard-best-sales-table,
 .dashboard-sales-daily-table {
   max-height: 24rem;
   overflow: auto;
@@ -117,6 +138,7 @@ body {
   border-radius: 0.5rem;
 }
 
+.dashboard-best-sales-table table,
 .dashboard-sales-daily-table table {
   min-width: 420px;
 }
@@ -435,6 +457,10 @@ body {
 
   .dashboard-sales-period-form {
     flex-basis: auto;
+  }
+
+  .dashboard-sales-controls {
+    grid-template-columns: 1fr;
   }
 
   .products-search .input-group,

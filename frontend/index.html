@@ -195,20 +195,36 @@
               </p>
             </div>
             <form class="dashboard-sales-period-form" id="dashboard-sales-period-form">
-              <label class="form-label" for="dashboard-sales-period-input">Период</label>
-              <div class="input-group">
-                <input
-                  class="form-control"
-                  id="dashboard-sales-period-input"
-                  name="days_ago"
-                  type="number"
-                  min="7"
-                  max="365"
-                  step="1"
-                  value="7"
-                  required
-                >
-                <span class="input-group-text">дней</span>
+              <div class="dashboard-sales-controls">
+                <div>
+                  <label class="form-label" for="dashboard-sales-period-input">Период</label>
+                  <div class="input-group">
+                    <input
+                      class="form-control"
+                      id="dashboard-sales-period-input"
+                      name="days_ago"
+                      type="number"
+                      min="7"
+                      max="365"
+                      step="1"
+                      value="7"
+                      required
+                    >
+                    <span class="input-group-text">дней</span>
+                  </div>
+                </div>
+                <div>
+                  <label class="form-label" for="dashboard-best-sales-mode-select">Метрика</label>
+                  <select
+                    class="form-select"
+                    id="dashboard-best-sales-mode-select"
+                    name="best_sales_mode"
+                  >
+                    <option value="quantity">Количество</option>
+                    <option value="revenue">Выручка</option>
+                    <option value="gross_profit">Валовая прибыль</option>
+                  </select>
+                </div>
                 <button
                   class="btn btn-primary"
                   id="dashboard-sales-period-button"
@@ -229,6 +245,26 @@
           </div>
           <div class="alert alert-light border d-none" id="dashboard-sales-trend-empty" role="status">
             За выбранный период продаж не найдено.
+          </div>
+          <div class="dashboard-best-sales">
+            <div class="dashboard-table-heading">
+              <h3 class="fs-6 mb-0">Топ 5 товаров</h3>
+              <span class="text-secondary" id="dashboard-best-sales-summary">По количеству</span>
+            </div>
+            <div class="alert alert-light border d-none" id="dashboard-best-sales-empty" role="status">
+              За выбранный период нет товаров для рейтинга.
+            </div>
+            <div class="table-responsive dashboard-best-sales-table">
+              <table class="table table-hover align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th scope="col">Товар</th>
+                    <th scope="col" id="dashboard-best-sales-metric-heading">Количество</th>
+                  </tr>
+                </thead>
+                <tbody id="dashboard-best-sales-table-body"></tbody>
+              </table>
+            </div>
           </div>
           <div class="table-responsive dashboard-sales-daily-table">
             <table class="table table-hover align-middle mb-0">
