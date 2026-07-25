@@ -40,7 +40,6 @@ QuantityUnit = Annotated[
         max_length=QUANTITY_UNIT_MAX_LENGTH,
     ),
 ]
-MovementType = Literal["in", "out", "adjustment"]
 StockStatus = Literal["available", "low", "out"]
 
 ItemT = TypeVar("ItemT")
@@ -107,8 +106,8 @@ class TagResponse(BaseModel):
     name: str
 
 
-class ProductCreate(BaseModel):
-    name: Name
+class ProductSupplierCreate(BaseModel):
+    supplier_id: int = Field(gt=0)
     purchase_price: int = Field(gt=0)
     margin_percent: int = Field(default=0, ge=0, validate_default=True)
     sale_price: int | None = Field(default=None, gt=0)
@@ -118,10 +117,6 @@ class ProductCreate(BaseModel):
         validate_default=True,
     )
     low_stock_threshold: int = Field(default=5, ge=0, validate_default=True)
-
-    company_id: int | None = None
-    supplier_id: int | None = None
-    tags: list[TagName] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def sale_price_must_not_be_below_floor(self):
@@ -138,11 +133,14 @@ class ProductCreate(BaseModel):
         return self
 
 
-class ProductResponse(BaseModel):
+class ProductSupplierResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    name: str
+    product_id: int
+    supplier_id: int
+    product_name: str | None = None
+    supplier_name: str | None = None
     purchase_price: int
     margin_percent: int
     floor_price: int
@@ -151,38 +149,86 @@ class ProductResponse(BaseModel):
     quantity_unit: str
     low_stock_threshold: int
     stock_status: StockStatus
+
+
+class ProductCreate(BaseModel):
+    name: Name
+    company_id: int = Field(gt=0)
+    tags: list[TagName] = Field(default_factory=list)
+
+
+class ProductResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
     created_at: datetime
 
-    company_id: int | None
-    supplier_id: int | None
+    company_id: int
     company_name: str | None = None
-    supplier_name: str | None = None
     tags: list[TagResponse] = Field(default_factory=list)
+    supplier_links: list[ProductSupplierResponse] = Field(default_factory=list)
 
 
 class ProductUpdate(UpdateValidator):
     name: Name | None = None
-    purchase_price: int | None = Field(default=None, gt=0)
-    margin_percent: int | None = Field(default=None, ge=0)
-    sale_price: int | None = Field(default=None, gt=0)
-    quantity: int | None = Field(default=None, ge=0, validate_default=True)
-    quantity_unit: QuantityUnit | None = None
-    low_stock_threshold: int | None = Field(default=None, ge=0)
-
     company_id: int | None = None
-    supplier_id: int | None = None
     tags: list[TagName] | None = None
 
 
+class ProductSupplierUpdate(UpdateValidator):
+    supplier_id: int | None = Field(default=None, gt=0)
+    purchase_price: int | None = Field(default=None, gt=0)
+    margin_percent: int | None = Field(default=None, ge=0)
+    sale_price: int | None = Field(default=None, gt=0)
+    quantity: int | None = Field(default=None, ge=0)
+    quantity_unit: QuantityUnit | None = None
+    low_stock_threshold: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def sale_price_must_not_be_below_floor_if_possible(self):
+        if (
+            self.sale_price is None
+            or self.purchase_price is None
+            or self.margin_percent is None
+        ):
+            return self
+
+        floor_price = calculate_floor_price(
+            self.purchase_price,
+            self.margin_percent,
+        )
+        if self.sale_price < floor_price:
+            raise ValueError("sale_price cannot be lower than floor_price")
+
+        return self
+
+
+class ProductSummaryResponse(BaseModel):
+    id: int
+    name: str
+    tags: list[str] = Field(default_factory=list)
+
+    company_name: str
+    most_profit_supplier: str | None = None
+    other_suppliers_count: int | None = None
+    available_quantity: int = Field(default=0, ge=0)
+    available_min_cost: int | None = None
+    available_margin: int | None = None
+    available_min_price: int | None = None
+    low_stock_threshold: int | None = None
+    stock_status: StockStatus
+
+
 class RestockLineCreate(BaseModel):
-    product_id: int = Field(gt=0)
+    product_supplier_id: int = Field(gt=0)
     restock_quantity: int = Field(gt=0)
     unit_cost_snapshot: int | None = Field(
         default=None,
         ge=0,
     )
-    quantity_unit_snapshot: str = Field(
-        default=DEFAULT_QUANTITY_UNIT,
+    quantity_unit_snapshot: QuantityUnit | None = Field(
+        default=None,
         min_length=1,
         max_length=QUANTITY_UNIT_MAX_LENGTH,
     )
@@ -196,11 +242,13 @@ class RestockCreate(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_unique_products(self) -> "RestockCreate":
-        product_ids = [line.product_id for line in self.lines]
+    def validate_unique_product_suppliers(self) -> "RestockCreate":
+        product_supplier_ids = [line.product_supplier_id for line in self.lines]
 
-        if len(product_ids) != len(set(product_ids)):
-            raise ValueError("Each product may appear only once in a restock.")
+        if len(product_supplier_ids) != len(set(product_supplier_ids)):
+            raise ValueError(
+                "Each product-supplier link may appear only once in a restock."
+            )
         return self
 
 
@@ -208,7 +256,11 @@ class RestockLineResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    product_supplier_id: int
     product_id: int
+    product_name: str | None = None
+    supplier_id: int
+    supplier_name: str | None = None
     restock_quantity: int
     unit_cost_snapshot: int | None
     quantity_unit_snapshot: str
@@ -224,7 +276,7 @@ class RestockResponse(BaseModel):
 
 
 class SaleLineCreate(BaseModel):
-    product_id: int = Field(gt=0)
+    product_supplier_id: int = Field(gt=0)
     sale_quantity: int = Field(gt=0)
 
 
@@ -236,11 +288,13 @@ class SaleCreate(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_unique_products(self) -> "SaleCreate":
-        product_ids = [line.product_id for line in self.lines]
+    def validate_unique_product_suppliers(self) -> "SaleCreate":
+        product_supplier_ids = [line.product_supplier_id for line in self.lines]
 
-        if len(product_ids) != len(set(product_ids)):
-            raise ValueError("Each product may appear only once in a sale.")
+        if len(product_supplier_ids) != len(set(product_supplier_ids)):
+            raise ValueError(
+                "Each product-supplier link may appear only once in a sale."
+            )
         return self
 
 
@@ -248,10 +302,14 @@ class SaleLineResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    product_supplier_id: int
     product_id: int
+    product_name: str | None = None
+    supplier_id: int
+    supplier_name: str | None = None
     sale_quantity: int
-    unit_cost_snapshot: int
-    unit_sale_price_snapshot: int
+    unit_cost_snapshot: int | None
+    unit_sale_price_snapshot: int | None
     quantity_unit_snapshot: str
 
 

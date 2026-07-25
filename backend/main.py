@@ -1,21 +1,13 @@
-from datetime import date, datetime, time, timedelta
 from typing import Annotated
 
 from fastapi import FastAPI, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 
-from sqlalchemy import func, select
-
-from app.schemas import (
-    DailySalesResponse,
-    SummariesResponse,
-    TopProduct,
-)
-from app.models import Product, Sale, SaleLine
+from app.schemas import SummariesResponse
 
 from devs import DbSession
 from routers import companies, products, restocks, sales, suppliers, tags
-from utils import BestSalesMode, build_summaries, get_best_sales_expr
+from utils import BestSalesMode, build_summaries
 
 
 LOCAL_DEVELOPMENT_ORIGINS = [

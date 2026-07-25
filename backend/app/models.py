@@ -38,6 +38,115 @@ product_tags = Table(
 )
 
 
+class ProductSupplier(Base):
+    __tablename__ = "product_suppliers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    supplier_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("suppliers.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    purchase_price: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+    margin_percent: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+    )
+    sale_price: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+    quantity: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+    )
+    quantity_unit: Mapped[str] = mapped_column(
+        String(QUANTITY_UNIT_MAX_LENGTH),
+        default=DEFAULT_QUANTITY_UNIT,
+        server_default=DEFAULT_QUANTITY_UNIT,
+        nullable=False,
+    )
+    low_stock_threshold: Mapped[int] = mapped_column(
+        Integer,
+        default=5,
+        server_default="5",
+    )
+
+    product: Mapped["Product"] = relationship(
+        back_populates="supplier_links",
+    )
+    supplier: Mapped["Supplier"] = relationship(
+        back_populates="product_links",
+    )
+    restock_lines: Mapped[list["RestockLine"]] = relationship(
+        back_populates="product_supplier",
+    )
+    sale_lines: Mapped[list["SaleLine"]] = relationship(
+        back_populates="product_supplier",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "product_id",
+            "supplier_id",
+            name="uq_product_suppliers_product_supplier",
+        ),
+        CheckConstraint(
+            "purchase_price > 0",
+            name="ck_product_suppliers_purchase_price",
+        ),
+        CheckConstraint(
+            "margin_percent >= 0",
+            name="ck_product_suppliers_margin_percent",
+        ),
+        CheckConstraint("sale_price > 0", name="ck_product_suppliers_sale_price"),
+        CheckConstraint(
+            "sale_price * 100 >= purchase_price * (100 + margin_percent)",
+            name="ck_product_suppliers_sale_price_floor",
+        ),
+        CheckConstraint("quantity >= 0", name="ck_product_suppliers_quantity"),
+        CheckConstraint(
+            "char_length(quantity_unit) > 0",
+            name="ck_product_suppliers_quantity_unit_not_empty",
+        ),
+        CheckConstraint(
+            "low_stock_threshold >= 0",
+            name="ck_product_suppliers_low_stock_threshold",
+        ),
+    )
+
+    @property
+    def floor_price(self) -> int:
+        return calculate_floor_price(self.purchase_price, self.margin_percent)
+
+    @property
+    def stock_status(self) -> str:
+        if self.quantity == 0:
+            return "out"
+        if 0 < self.quantity <= self.low_stock_threshold:
+            return "low"
+        return "available"
+
+    @property
+    def supplier_name(self) -> str | None:
+        return self.supplier.name if self.supplier else None
+
+    @property
+    def product_name(self) -> str | None:
+        return self.product.name if self.product else None
+
+
 class Company(Base):
     __tablename__ = "companies"
 
@@ -74,9 +183,8 @@ class Supplier(Base):
         nullable=False,
     )
 
-    products: Mapped[list["Product"]] = relationship(
+    product_links: Mapped[list["ProductSupplier"]] = relationship(
         back_populates="supplier",
-        passive_deletes=True,
     )
 
     __table_args__ = (
@@ -117,48 +225,15 @@ class Product(Base):
     __tablename__ = "products"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int | None] = mapped_column(
+    company_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("companies.id", ondelete="SET NULL"),
-        nullable=True,
+        ForeignKey("companies.id"),
+        nullable=False,
     )
-    supplier_id: Mapped[int | None] = mapped_column(
-        Integer,
-        ForeignKey("suppliers.id", ondelete="SET NULL"),
-        nullable=True,
-    )
+
     name: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
-    )
-    purchase_price: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-    )
-    margin_percent: Mapped[int] = mapped_column(
-        Integer,
-        default=0,
-        server_default="0",
-    )
-    sale_price: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-    )
-    quantity: Mapped[int] = mapped_column(
-        Integer,
-        default=0,
-        server_default="0",
-    )
-    quantity_unit: Mapped[str] = mapped_column(
-        String(QUANTITY_UNIT_MAX_LENGTH),
-        default=DEFAULT_QUANTITY_UNIT,
-        server_default=DEFAULT_QUANTITY_UNIT,
-        nullable=False,
-    )
-    low_stock_threshold: Mapped[int] = mapped_column(
-        Integer,
-        default=5,
-        server_default="5",
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -166,58 +241,30 @@ class Product(Base):
         server_default=func.now(),
     )
 
-    company: Mapped["Company | None"] = relationship(back_populates="products")
-    supplier: Mapped["Supplier | None"] = relationship(back_populates="products")
+    supplier_links: Mapped[list["ProductSupplier"]] = relationship(
+        back_populates="product",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="ProductSupplier.id",
+    )
+    company: Mapped["Company"] = relationship(back_populates="products")
     tags: Mapped[list["Tag"]] = relationship(
         secondary=product_tags,
         back_populates="products",
         order_by="Tag.name",
     )
-    restock_lines: Mapped[list["RestockLine"]] = relationship(
-        back_populates="product",
-    )
-    sale_lines: Mapped[list["SaleLine"]] = relationship(
-        back_populates="product",
-    )
-
-    __table_args__ = (
-        CheckConstraint("purchase_price > 0", name="ck_products_purchase_price"),
-        CheckConstraint("margin_percent >= 0", name="ck_products_margin_percent"),
-        CheckConstraint("sale_price > 0", name="ck_products_sale_price"),
-        CheckConstraint(
-            "sale_price * 100 >= purchase_price * (100 + margin_percent)",
-            name="ck_products_sale_price_floor",
-        ),
-        CheckConstraint("quantity >= 0", name="ck_products_quantity"),
-        CheckConstraint(
-            "char_length(quantity_unit) > 0",
-            name="ck_products_quantity_unit_not_empty",
-        ),
-        CheckConstraint(
-            "low_stock_threshold >= 0",
-            name="ck_products_low_stock_threshold",
-        ),
-    )
-
-    @property
-    def floor_price(self) -> int:
-        return calculate_floor_price(self.purchase_price, self.margin_percent)
-
-    @property
-    def stock_status(self) -> str:
-        if self.quantity == 0:
-            return "out"
-        if 0 < self.quantity <= self.low_stock_threshold:
-            return "low"
-        return "available"
 
     @property
     def company_name(self) -> str | None:
         return self.company.name if self.company else None
 
-    @property
-    def supplier_name(self) -> str | None:
-        return self.supplier.name if self.supplier else None
+    __table_args__ = (
+        UniqueConstraint(
+            "name",
+            "company_id",
+            name="uq_products_name_company",
+        ),
+    )
 
 
 class Restock(Base):
@@ -251,8 +298,9 @@ class RestockLine(Base):
         ForeignKey("restocks.id", ondelete="CASCADE"),
         nullable=False,
     )
-    product_id: Mapped[int] = mapped_column(
-        ForeignKey("products.id"),
+    product_supplier_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("product_suppliers.id"),
         nullable=False,
     )
 
@@ -260,9 +308,9 @@ class RestockLine(Base):
         Integer,
         nullable=False,
     )
-    unit_cost_snapshot: Mapped[int | None] = mapped_column(
+    unit_cost_snapshot: Mapped[int] = mapped_column(
         Integer,
-        nullable=True,
+        nullable=False,
     )
     quantity_unit_snapshot: Mapped[str] = mapped_column(
         String(QUANTITY_UNIT_MAX_LENGTH),
@@ -272,21 +320,37 @@ class RestockLine(Base):
     restock: Mapped["Restock"] = relationship(
         back_populates="lines",
     )
-    product: Mapped["Product"] = relationship(
+    product_supplier: Mapped["ProductSupplier"] = relationship(
         back_populates="restock_lines",
     )
 
     __table_args__ = (
         CheckConstraint(
             "restock_quantity > 0",
-            name="ck_restock_lines_requested_restock",
+            name="ck_restock_lines_restock_quantity",
         ),
         UniqueConstraint(
             "restock_id",
-            "product_id",
-            name="uq_restock_lines_restock_product",
+            "product_supplier_id",
+            name="uq_restock_lines_restock_product_supplier",
         ),
     )
+
+    @property
+    def product_id(self) -> int:
+        return self.product_supplier.product_id
+
+    @property
+    def product_name(self) -> str | None:
+        return self.product_supplier.product_name
+
+    @property
+    def supplier_id(self) -> int:
+        return self.product_supplier.supplier_id
+
+    @property
+    def supplier_name(self) -> str | None:
+        return self.product_supplier.supplier_name
 
 
 class Sale(Base):
@@ -321,8 +385,9 @@ class SaleLine(Base):
         ForeignKey("sales.id", ondelete="CASCADE"),
         nullable=False,
     )
-    product_id: Mapped[int] = mapped_column(
-        ForeignKey("products.id"),
+    product_supplier_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("product_suppliers.id"),
         nullable=False,
     )
 
@@ -332,9 +397,9 @@ class SaleLine(Base):
     )
     unit_cost_snapshot: Mapped[int] = mapped_column(
         Integer,
-        nullable=True,
+        nullable=False,
     )
-    unit_sale_price_snapshot: Mapped[int] = mapped_column(
+    unit_sale_price_snapshot: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True,
     )
@@ -346,7 +411,7 @@ class SaleLine(Base):
     sale: Mapped["Sale"] = relationship(
         back_populates="lines",
     )
-    product: Mapped["Product"] = relationship(
+    product_supplier: Mapped["ProductSupplier"] = relationship(
         back_populates="sale_lines",
     )
 
@@ -357,7 +422,23 @@ class SaleLine(Base):
         ),
         UniqueConstraint(
             "sale_id",
-            "product_id",
-            name="uq_sale_lines_sale_product",
+            "product_supplier_id",
+            name="uq_sale_lines_sale_product_supplier",
         ),
     )
+
+    @property
+    def product_id(self) -> int:
+        return self.product_supplier.product_id
+
+    @property
+    def product_name(self) -> str | None:
+        return self.product_supplier.product_name
+
+    @property
+    def supplier_id(self) -> int:
+        return self.product_supplier.supplier_id
+
+    @property
+    def supplier_name(self) -> str | None:
+        return self.product_supplier.supplier_name

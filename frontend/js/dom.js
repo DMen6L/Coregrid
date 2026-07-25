@@ -1,0 +1,118 @@
+export const elements = {
+  appMessage: getElement("#app-message"),
+  navTabs: Array.from(document.querySelectorAll("[data-view-tab]")),
+  navMenuToggles: Array.from(document.querySelectorAll("[data-view-menu-views]")),
+  views: {
+    dashboard: getElement("#dashboard"),
+    products: getElement("#products"),
+    companies: getElement("#companies"),
+    suppliers: getElement("#suppliers"),
+    restocks: getElement("#restocks"),
+    sales: getElement("#sales"),
+  },
+  parked: {
+    dashboardControls: Array.from(
+      document.querySelectorAll(
+        "#dashboard-sales-period-input, #dashboard-best-sales-mode-select, #dashboard-sales-period-button",
+      ),
+    ),
+    restockControls: Array.from(
+      document.querySelectorAll(
+        "#restocks input, #restocks button, #open-restock-create-modal-button",
+      ),
+    ),
+    saleControls: Array.from(
+      document.querySelectorAll(
+        "#sales input, #sales button, #open-sale-create-modal-button",
+      ),
+    ),
+  },
+  dashboard: {
+    salesValue: getElement("#dashboard-sales-value-card"),
+    salesCount: getElement("#dashboard-sales-count-card"),
+    lowStock: getElement("#dashboard-low-stock"),
+    outOfStock: getElement("#dashboard-out-of-stock"),
+    salesButton: getElement("#dashboard-sales-period-button"),
+    salesTrendEmpty: getElement("#dashboard-sales-trend-empty"),
+    bestSalesEmpty: getElement("#dashboard-best-sales-empty"),
+    salesDailyTableBody: getElement("#dashboard-sales-daily-table-body"),
+    bestSalesTableBody: getElement("#dashboard-best-sales-table-body"),
+  },
+  products: {
+    searchForm: getElement("#products-search-form"),
+    searchInput: getElement("#products-search-input"),
+    searchButton: getElement("#products-search-button"),
+    count: getElement("#products-count"),
+    loading: getElement("#products-loading"),
+    error: getElement("#products-error"),
+    empty: getElement("#products-empty"),
+    table: getElement("#products-table"),
+    tableBody: getElement("#products-table-body"),
+    pagination: getElement("#products-pagination"),
+    previousPageButton: getElement("#products-previous-page-button"),
+    nextPageButton: getElement("#products-next-page-button"),
+    pageSummary: getElement("#products-page-summary"),
+    modal: getElement("#product-create-modal"),
+    form: getElement("#product-create-form"),
+    submitButton: getElement("#product-create-submit-button"),
+    createError: getElement("#product-create-error"),
+    companyModeInputs: Array.from(document.querySelectorAll("[name='product_company_mode']")),
+    companyExistingPanel: getElement("#product-create-company-existing-panel"),
+    companyNewPanel: getElement("#product-create-company-new-panel"),
+    companySearchInput: getElement("#product-create-company-search"),
+    companyIdInput: getElement("#product-create-company-id"),
+    companyResults: getElement("#product-create-company-results"),
+    companySelected: getElement("#product-create-company-selected"),
+    companySelectedName: getElement("#product-create-company-selected-name"),
+    companySelectedMeta: getElement("#product-create-company-selected-meta"),
+    companyClearButton: getElement("#product-create-company-clear-button"),
+    companyLookupMessage: getElement("#product-create-company-lookup-message"),
+    linkEnabledInput: getElement("#product-create-link-enabled"),
+    supplierSection: getElement("#product-create-supplier-section"),
+    supplierModeInputs: Array.from(document.querySelectorAll("[name='product_supplier_mode']")),
+    supplierExistingPanel: getElement("#product-create-supplier-existing-panel"),
+    supplierNewPanel: getElement("#product-create-supplier-new-panel"),
+    supplierSearchInput: getElement("#product-create-supplier-search"),
+    supplierIdInput: getElement("#product-create-supplier-id"),
+    supplierResults: getElement("#product-create-supplier-results"),
+    supplierSelected: getElement("#product-create-supplier-selected"),
+    supplierSelectedName: getElement("#product-create-supplier-selected-name"),
+    supplierSelectedMeta: getElement("#product-create-supplier-selected-meta"),
+    supplierClearButton: getElement("#product-create-supplier-clear-button"),
+    supplierLookupMessage: getElement("#product-create-supplier-lookup-message"),
+  },
+  companies: getListElements("companies", "company"),
+  suppliers: getListElements("suppliers", "supplier"),
+};
+
+function getListElements(key, singular) {
+  return {
+    searchForm: getElement(`#${key}-search-form`),
+    searchInput: getElement(`#${key}-search-input`),
+    searchButton: getElement(`#${key}-search-button`),
+    count: getElement(`#${key}-count`),
+    loading: getElement(`#${key}-loading`),
+    error: getElement(`#${key}-error`),
+    empty: getElement(`#${key}-empty`),
+    table: getElement(`#${key}-table`),
+    tableBody: getElement(`#${key}-table-body`),
+    pagination: getElement(`#${key}-pagination`),
+    previousPageButton: getElement(`#${key}-previous-page-button`),
+    nextPageButton: getElement(`#${key}-next-page-button`),
+    pageSummary: getElement(`#${key}-page-summary`),
+    modal: getElement(`#${singular}-create-modal`),
+    form: getElement(`#${singular}-create-form`),
+    submitButton: getElement(`#${singular}-create-submit-button`),
+    createError: getElement(`#${singular}-create-error`),
+  };
+}
+
+function getElement(selector) {
+  const element = document.querySelector(selector);
+
+  if (!element) {
+    throw new Error(`Missing frontend element: ${selector}`);
+  }
+
+  return element;
+}

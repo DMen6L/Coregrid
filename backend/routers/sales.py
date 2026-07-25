@@ -5,27 +5,34 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from app.models import Product, Sale, SaleLine
+from app.models import ProductSupplier, Sale, SaleLine
 from app.schemas import PaginatedResponse, SaleCreate, SaleResponse
 from devs import DbSession
 from errors import commit_or_raise
 from utils import paginate
 
 
-router = APIRouter(prefix="/sales", tags=["salees"])
+router = APIRouter(prefix="/sales", tags=["sales"])
 
 
 @router.get("", response_model=PaginatedResponse[SaleResponse], status_code=200)
 def get_sales(
     db: DbSession,
-    date_from: Annotated[date | None, Query(alias="drom")] = None,
+    date_from: Annotated[date | None, Query(alias="from")] = None,
     date_to: Annotated[date | None, Query(alias="to")] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
     statement = (
         select(Sale)
-        .options(selectinload(Sale.lines))
+        .options(
+            selectinload(Sale.lines)
+            .selectinload(SaleLine.product_supplier)
+            .selectinload(ProductSupplier.product),
+            selectinload(Sale.lines)
+            .selectinload(SaleLine.product_supplier)
+            .selectinload(ProductSupplier.supplier),
+        )
         .order_by(Sale.created_at.desc(), Sale.id.desc())
     )
     count_statement = select(func.count(Sale.id)).select_from(Sale)
@@ -60,41 +67,59 @@ def get_sales(
 
 @router.post("", response_model=SaleResponse, status_code=201)
 def add_sale(db: DbSession, sale_data: SaleCreate):
-    product_ids = {line.product_id for line in sale_data.lines}
+    product_supplier_ids = {line.product_supplier_id for line in sale_data.lines}
 
-    products = list(
+    product_suppliers = list(
         db.scalars(
-            select(Product).where(Product.id.in_(product_ids)).with_for_update()
+            select(ProductSupplier)
+            .where(ProductSupplier.id.in_(product_supplier_ids))
+            .with_for_update()
         ).all()
     )
 
-    products_by_id = {product.id: product for product in products}
+    product_suppliers_by_id = {
+        product_supplier.id: product_supplier
+        for product_supplier in product_suppliers
+    }
 
-    missing_product_ids = product_ids - products_by_id.keys()
+    missing_product_supplier_ids = (
+        product_supplier_ids - product_suppliers_by_id.keys()
+    )
 
-    if missing_product_ids:
+    if missing_product_supplier_ids:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
-                "message": "Some products were not found.",
-                "product_ids": sorted(missing_product_ids),
+                "message": "Some product-supplier links were not found.",
+                "product_supplier_ids": sorted(missing_product_supplier_ids),
             },
         )
 
     sale = Sale(note=sale_data.note)
 
     for line_data in sale_data.lines:
-        product = products_by_id[line_data.product_id]
+        product_supplier = product_suppliers_by_id[line_data.product_supplier_id]
 
-        product.quantity -= line_data.sale_quantity
+        if product_supplier.quantity < line_data.sale_quantity:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "message": "Sale quantity exceeds available stock.",
+                    "product_supplier_id": product_supplier.id,
+                    "available_quantity": product_supplier.quantity,
+                    "requested_quantity": line_data.sale_quantity,
+                },
+            )
+
+        product_supplier.quantity -= line_data.sale_quantity
 
         sale.lines.append(
             SaleLine(
-                product=product,
+                product_supplier=product_supplier,
                 sale_quantity=line_data.sale_quantity,
-                unit_cost_snapshot=product.purchase_price,
-                unit_sale_price_snapshot=product.sale_price,
-                quantity_unit_snapshot=product.quantity_unit,
+                unit_cost_snapshot=product_supplier.purchase_price,
+                unit_sale_price_snapshot=product_supplier.sale_price,
+                quantity_unit_snapshot=product_supplier.quantity_unit,
             )
         )
 

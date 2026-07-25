@@ -1,7 +1,7 @@
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import Integer, func, select, type_coerce
+from fastapi import APIRouter, Query
+from sqlalchemy import func, select
 
 from app.models import Supplier
 from app.schemas import PaginatedResponse, SupplierCreate, SupplierResponse
@@ -9,20 +9,20 @@ from devs import DbSession
 from errors import commit_or_raise
 from utils import paginate
 
+
 router = APIRouter(prefix="/suppliers", tags=["suppliers"])
 
 
 @router.get("", response_model=PaginatedResponse[SupplierResponse], status_code=200)
-def get_supplier_by_name(
+def get_suppliers(
     db: DbSession,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     search: Annotated[str | None, Query(max_length=100)] = None,
 ):
+
     statement = select(Supplier).order_by(Supplier.id)
-    count_statement = select(type_coerce(func.count(Supplier.id), Integer)).select_from(
-        Supplier
-    )
+    count_statement = select(func.count(Supplier.id)).select_from(Supplier)
 
     if search and (search := search.strip()):
         condition = Supplier.name.ilike(f"%{search}%")

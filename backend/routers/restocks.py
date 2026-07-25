@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from app.models import Product, Restock, RestockLine
+from app.models import ProductSupplier, Restock, RestockLine
 from app.schemas import PaginatedResponse, RestockCreate, RestockResponse
 from devs import DbSession
 from errors import commit_or_raise
@@ -31,7 +31,14 @@ def get_restocks(
 ):
     statement = (
         select(Restock)
-        .options(selectinload(Restock.lines))
+        .options(
+            selectinload(Restock.lines)
+            .selectinload(RestockLine.product_supplier)
+            .selectinload(ProductSupplier.product),
+            selectinload(Restock.lines)
+            .selectinload(RestockLine.product_supplier)
+            .selectinload(ProductSupplier.supplier),
+        )
         .order_by(Restock.created_at.desc(), Restock.id.desc())
     )
     count_statement = select(func.count(Restock.id)).select_from(Restock)
@@ -76,40 +83,57 @@ def add_restock(
     db: DbSession,
     restock_data: RestockCreate,
 ):
-    product_ids = {line.product_id for line in restock_data.lines}
+    product_supplier_ids = {
+        line.product_supplier_id for line in restock_data.lines
+    }
 
-    products = list(
+    product_suppliers = list(
         db.scalars(
-            select(Product).where(Product.id.in_(product_ids)).with_for_update()
+            select(ProductSupplier)
+            .where(ProductSupplier.id.in_(product_supplier_ids))
+            .with_for_update()
         ).all()
     )
 
-    products_by_id = {product.id: product for product in products}
+    product_suppliers_by_id = {
+        product_supplier.id: product_supplier
+        for product_supplier in product_suppliers
+    }
 
-    missing_product_ids = product_ids - products_by_id.keys()
+    missing_product_supplier_ids = (
+        product_supplier_ids - product_suppliers_by_id.keys()
+    )
 
-    if missing_product_ids:
+    if missing_product_supplier_ids:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
-                "message": "Some products were not found.",
-                "product_ids": sorted(missing_product_ids),
+                "message": "Some product-supplier links were not found.",
+                "product_supplier_ids": sorted(missing_product_supplier_ids),
             },
         )
 
     restock = Restock(note=restock_data.note)
 
     for line_data in restock_data.lines:
-        product = products_by_id[line_data.product_id]
+        product_supplier = product_suppliers_by_id[line_data.product_supplier_id]
 
-        product.quantity += line_data.restock_quantity
+        product_supplier.quantity += line_data.restock_quantity
 
         restock.lines.append(
             RestockLine(
-                product=product,
+                product_supplier=product_supplier,
                 restock_quantity=line_data.restock_quantity,
-                unit_cost_snapshot=line_data.unit_cost_snapshot,
-                quantity_unit_snapshot=line_data.quantity_unit_snapshot,
+                unit_cost_snapshot=(
+                    line_data.unit_cost_snapshot
+                    if line_data.unit_cost_snapshot is not None
+                    else product_supplier.purchase_price
+                ),
+                quantity_unit_snapshot=(
+                    line_data.quantity_unit_snapshot
+                    if line_data.quantity_unit_snapshot is not None
+                    else product_supplier.quantity_unit
+                ),
             )
         )
 

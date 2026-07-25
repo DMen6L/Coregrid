@@ -22,21 +22,33 @@ Stores identities and contact information of the people that provide the listed 
 
 ### Products
 
-Stores products assigning them unique identifiers and created for easier access of data on those products and for easy modification of the data.
+Stores catalog product identities. Supplier-specific stock and pricing lives in
+`product_suppliers`.
 
 - `id` unique identifier of each product
 - `company_id` optional reference to the company/brand connected to the product
-- `supplier_id` optional reference to the supplier connected to the product
 - `name` stores the names of each of the products
-- `purchase_price` stores the price paid when buying the product
-- `margin_percent` stores the desired markup percentage over `purchase_price`
-- `sale_price` stores the final editable selling price shown to sellers
-- `quantity` stores the amount of currently stored products, default set to 0
-- `quantity_unit` stores the short unit label for `quantity`, default set to `шт`
-- `low_stock_threshold` stores the per-product low-stock warning threshold, default set to 5
 - `created_at` needed to identify the creation time of the product
 
-Product `floor_price` is calculated by the API and is not stored as a column:
+### Product suppliers
+
+Stores the many-to-many relationship between products and suppliers. This is the
+current inventory and pricing row used by restocks and sales.
+
+- `id` unique identifier of each product-supplier link
+- `product_id` reference to the catalog product
+- `supplier_id` reference to the supplier
+- `purchase_price` stores the price paid when buying this product from this supplier
+- `margin_percent` stores the desired markup percentage over `purchase_price`
+- `sale_price` stores the final editable selling price shown to sellers
+- `quantity` stores the currently stored amount for this product-supplier link
+- `quantity_unit` stores the short unit label for `quantity`, default set to `шт`
+- `low_stock_threshold` stores the warning threshold, default set to 5
+
+`(product_id, supplier_id)` is unique, so one supplier has only one active link
+for a given product.
+
+`floor_price` is calculated by the API and is not stored as a column:
 
 ```text
 floor_price = ceil(purchase_price * (1 + margin_percent / 100))
@@ -45,13 +57,13 @@ floor_price = ceil(purchase_price * (1 + margin_percent / 100))
 `sale_price` must be equal to or higher than `floor_price`. This lets sellers
 round prices up to cleaner values while preserving the minimum margin.
 
-Product stock status is calculated by the API and is not stored as a column:
+Stock status is calculated by the API and is not stored as a column:
 
 - `out` when `quantity` is `0`
 - `low` when `low_stock_threshold > 0` and `quantity` is within the threshold
 - `available` otherwise
 
-`low_stock_threshold = 0` disables low-stock warnings for that product.
+`low_stock_threshold = 0` disables low-stock warnings for that link.
 
 ### Tags
 
@@ -72,40 +84,44 @@ Stores the many-to-many relationship between products and tags.
 Deleting a product removes only rows from `product_tags`; reusable tag records
 remain available for other products.
 
-### Stock movements
+### Restocks
 
-Stores the header of each stock change transaction.
+Stores incoming stock transaction headers.
 
-- `id` unique identifier of each stock movement
-- `movement_type` controlled value of `in`, `out`, or `adjustment`
-- `note` optional text note for the stock movement
-- `created_at` time when the stock movement was created
+- `id` unique identifier of each restock
+- `note` optional text note for the restock
+- `created_at` time when the restock was created
+
+### Restock lines
+
+Stores the product-supplier level changes inside a restock.
+
+- `id` unique identifier of each restock line
+- `restock_id` reference to the restock header
+- `product_supplier_id` reference to the product-supplier link that changed
+- `restock_quantity` positive quantity added to stock
+- `unit_cost_snapshot` optional copied or entered purchase cost
+- `quantity_unit_snapshot` product-supplier quantity unit copied when created
 
 ### Sales
 
-Stores commercial sale records linked to the outgoing stock movement that
-changed inventory.
+Stores commercial sale records.
 
 - `id` unique identifier of each sale
-- `stock_movement_id` unique reference to the outgoing stock movement created for the sale
 - `note` optional text note for the sale
 - `created_at` time when the sale was created
 
-### Stock movement lines
+### Sale lines
 
-Stores the product-level changes inside a stock movement.
+Stores the product-supplier level changes inside a sale.
 
-- `id` unique identifier of each movement line
-- `movement_id` reference to the stock movement header
-- `product_id` reference to the product that changed
-- `quantity_delta` amount of stock change, positive or negative
-- `quantity_before` product quantity before the movement line
-- `quantity_after` product quantity after the movement line
-- `unit_price_snapshot` sale price copied when the movement was created; sales use the entered actual line price
-- `quantity_unit_snapshot` product quantity unit copied when the movement was created
-
-See [stock movements design](STOCK_MOVEMENTS.md) for the detailed API and
-business rules.
+- `id` unique identifier of each sale line
+- `sale_id` reference to the sale header
+- `product_supplier_id` reference to the product-supplier link that changed
+- `sale_quantity` positive quantity removed from stock
+- `unit_cost_snapshot` purchase price copied when the sale was created
+- `unit_sale_price_snapshot` sale price copied when the sale was created
+- `quantity_unit_snapshot` product-supplier quantity unit copied when created
 
 ## Connection and working with Coregrid database
 

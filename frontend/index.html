@@ -335,8 +335,8 @@
                 <th scope="col">Товар</th>
                 <th scope="col">Статус</th>
                 <th scope="col">Остаток</th>
-                <th scope="col">Цены</th>
-                <th scope="col">Поставщик / компания</th>
+                <th scope="col">Лучшая цена</th>
+                <th scope="col">Компания / поставщик</th>
                 <th scope="col">Теги</th>
               </tr>
             </thead>
@@ -877,103 +877,68 @@
             <div class="modal-body">
               <div class="alert alert-danger d-none" id="product-create-error" role="alert"></div>
 
-              <div class="row g-3">
-                <div class="col-12 col-lg-6">
-                  <label class="form-label" for="product-create-name">Название</label>
-                  <input
-                    class="form-control"
-                    id="product-create-name"
-                    name="name"
-                    type="text"
-                    maxlength="255"
-                    required
-                  >
-                </div>
-                <div class="col-12 col-md-6 col-lg-3">
-                  <label class="form-label" for="product-create-purchase-price">Цена закупки</label>
-                  <input
-                    class="form-control"
-                    id="product-create-purchase-price"
-                    name="purchase_price"
-                    type="number"
-                    min="1"
-                    step="1"
-                    value="1"
-                    required
-                  >
-                </div>
-                <div class="col-12 col-md-6 col-lg-3">
-                  <label class="form-label" for="product-create-margin-percent">Маржа, %</label>
-                  <input
-                    class="form-control"
-                    id="product-create-margin-percent"
-                    name="margin_percent"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value="0"
-                    required
-                  >
-                </div>
-
-                <div class="col-12 col-md-6 col-lg-3">
-                  <label class="form-label" for="product-create-sale-price">Цена продажи</label>
-                  <input
-                    class="form-control"
-                    id="product-create-sale-price"
-                    name="sale_price"
-                    type="number"
-                    min="1"
-                    step="1"
-                    value="1"
-                    aria-describedby="product-create-sale-price-help"
-                    required
-                  >
-                  <div class="form-text" id="product-create-sale-price-help">
-                    Минимум рассчитывается от цены закупки и маржи.
+              <section class="product-create-section">
+                <h3 class="product-create-section-title">Базовый товар</h3>
+                <div class="row g-3">
+                  <div class="col-12 col-lg-7">
+                    <label class="form-label" for="product-create-name">Название</label>
+                    <input
+                      class="form-control"
+                      id="product-create-name"
+                      name="name"
+                      type="text"
+                      maxlength="255"
+                      required
+                    >
+                  </div>
+                  <div class="col-12 col-lg-5">
+                    <label class="form-label" for="product-create-tags">Теги</label>
+                    <input
+                      class="form-control"
+                      id="product-create-tags"
+                      name="tags"
+                      type="text"
+                      maxlength="500"
+                      placeholder="склад, сезон, импорт"
+                    >
                   </div>
                 </div>
-                <div class="col-12 col-md-6 col-lg-3">
-                  <label class="form-label" for="product-create-quantity">Количество</label>
-                  <input
-                    class="form-control"
-                    id="product-create-quantity"
-                    name="quantity"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value="0"
-                    required
-                  >
-                </div>
-                <div class="col-12 col-md-6 col-lg-3">
-                  <label class="form-label" for="product-create-quantity-unit">Единица</label>
-                  <input
-                    class="form-control"
-                    id="product-create-quantity-unit"
-                    name="quantity_unit"
-                    type="text"
-                    maxlength="20"
-                    value="шт"
-                    required
-                  >
-                </div>
-                <div class="col-12 col-md-6 col-lg-3">
-                  <label class="form-label" for="product-create-low-stock-threshold">Порог остатков</label>
-                  <input
-                    class="form-control"
-                    id="product-create-low-stock-threshold"
-                    name="low_stock_threshold"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value="5"
-                    required
-                  >
+              </section>
+
+              <section class="product-create-section">
+                <div class="product-create-section-header">
+                  <h3 class="product-create-section-title">Компания</h3>
+                  <div class="product-create-mode" role="group" aria-label="Способ выбора компании">
+                    <div class="form-check form-check-inline">
+                      <input
+                        class="form-check-input"
+                        id="product-create-company-mode-existing"
+                        name="product_company_mode"
+                        type="radio"
+                        value="existing"
+                        checked
+                      >
+                      <label class="form-check-label" for="product-create-company-mode-existing">
+                        Выбрать
+                      </label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                      <input
+                        class="form-check-input"
+                        id="product-create-company-mode-new"
+                        name="product_company_mode"
+                        type="radio"
+                        value="new"
+                      >
+                      <label class="form-check-label" for="product-create-company-mode-new">
+                        Создать
+                      </label>
+                    </div>
+                  </div>
                 </div>
 
-                <div class="col-12 col-md-6">
-                  <label class="form-label" for="product-create-company-search">Компания</label>
+                <div id="product-create-company-existing-panel">
+                  <label class="form-label" for="product-create-company-search">Поиск компании</label>
                   <input
                     class="form-control"
                     id="product-create-company-search"
@@ -982,12 +947,8 @@
                     autocomplete="off"
                     aria-autocomplete="list"
                     aria-controls="product-create-company-results"
-                    aria-describedby="product-create-company-help"
                   >
                   <input id="product-create-company-id" name="company_id" type="hidden">
-                  <div class="form-text" id="product-create-company-help">
-                    Введите минимум 2 символа и выберите компанию из списка.
-                  </div>
                   <div
                     class="product-company-selected d-none mt-2"
                     id="product-create-company-selected"
@@ -1016,63 +977,236 @@
                     aria-label="Найденные компании"
                   ></div>
                 </div>
-                <div class="col-12 col-md-6">
-                  <label class="form-label" for="product-create-supplier-search">Поставщик</label>
-                  <input
-                    class="form-control"
-                    id="product-create-supplier-search"
-                    type="search"
-                    placeholder="Введите название поставщика"
-                    autocomplete="off"
-                    aria-autocomplete="list"
-                    aria-controls="product-create-supplier-results"
-                    aria-describedby="product-create-supplier-help"
-                  >
-                  <input id="product-create-supplier-id" name="supplier_id" type="hidden">
-                  <div class="form-text" id="product-create-supplier-help">
-                    Введите минимум 2 символа и выберите поставщика из списка.
-                  </div>
-                  <div
-                    class="product-supplier-selected d-none mt-2"
-                    id="product-create-supplier-selected"
-                  >
-                    <div>
-                      <div class="fw-semibold" id="product-create-supplier-selected-name"></div>
-                      <div class="product-meta" id="product-create-supplier-selected-meta"></div>
+
+                <div class="d-none" id="product-create-company-new-panel">
+                  <div class="row g-3">
+                    <div class="col-12 col-lg-7">
+                      <label class="form-label" for="product-create-new-company-name">Название компании</label>
+                      <input
+                        class="form-control"
+                        id="product-create-new-company-name"
+                        name="new_company_name"
+                        type="text"
+                        maxlength="255"
+                        autocomplete="organization"
+                        required
+                      >
                     </div>
-                    <button
-                      class="btn btn-sm btn-outline-secondary"
-                      id="product-create-supplier-clear-button"
-                      type="button"
-                    >
-                      Сбросить
-                    </button>
+                    <div class="col-12 col-lg-5">
+                      <label class="form-label" for="product-create-new-company-iin">ИИН</label>
+                      <input
+                        class="form-control"
+                        id="product-create-new-company-iin"
+                        name="new_company_iin"
+                        type="text"
+                        inputmode="numeric"
+                        pattern="[0-9]{12}"
+                        maxlength="12"
+                        required
+                      >
+                    </div>
                   </div>
-                  <div
-                    class="product-supplier-lookup-message text-secondary small d-none mt-2"
-                    id="product-create-supplier-lookup-message"
-                    role="status"
-                  ></div>
-                  <div
-                    class="list-group product-supplier-results d-none mt-2"
-                    id="product-create-supplier-results"
-                    role="listbox"
-                    aria-label="Найденные поставщики"
-                  ></div>
                 </div>
-                <div class="col-12">
-                  <label class="form-label" for="product-create-tags">Теги</label>
+              </section>
+
+              <section class="product-create-section">
+                <div class="form-check form-switch product-create-link-toggle">
                   <input
-                    class="form-control"
-                    id="product-create-tags"
-                    name="tags"
-                    type="text"
-                    maxlength="500"
-                    placeholder="Например: склад, сезон, импорт"
+                    class="form-check-input"
+                    id="product-create-link-enabled"
+                    type="checkbox"
+                    role="switch"
                   >
-                  <div class="form-text">Разделяйте теги запятыми.</div>
+                  <label class="form-check-label fw-semibold" for="product-create-link-enabled">
+                    Добавить поставщика сразу
+                  </label>
                 </div>
-              </div>
+
+                <div class="d-none product-create-supplier-section" id="product-create-supplier-section">
+                  <div class="product-create-section-header">
+                    <h3 class="product-create-section-title">Поставщик</h3>
+                    <div class="product-create-mode" role="group" aria-label="Способ выбора поставщика">
+                      <div class="form-check form-check-inline">
+                        <input
+                          class="form-check-input"
+                          id="product-create-supplier-mode-existing"
+                          name="product_supplier_mode"
+                          type="radio"
+                          value="existing"
+                          checked
+                        >
+                        <label class="form-check-label" for="product-create-supplier-mode-existing">
+                          Выбрать
+                        </label>
+                      </div>
+                      <div class="form-check form-check-inline">
+                        <input
+                          class="form-check-input"
+                          id="product-create-supplier-mode-new"
+                          name="product_supplier_mode"
+                          type="radio"
+                          value="new"
+                        >
+                        <label class="form-check-label" for="product-create-supplier-mode-new">
+                          Создать
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div id="product-create-supplier-existing-panel">
+                    <label class="form-label" for="product-create-supplier-search">Поиск поставщика</label>
+                    <input
+                      class="form-control"
+                      id="product-create-supplier-search"
+                      type="search"
+                      placeholder="Введите название поставщика"
+                      autocomplete="off"
+                      aria-autocomplete="list"
+                      aria-controls="product-create-supplier-results"
+                    >
+                    <input id="product-create-supplier-id" name="supplier_id" type="hidden">
+                    <div
+                      class="product-supplier-selected d-none mt-2"
+                      id="product-create-supplier-selected"
+                    >
+                      <div>
+                        <div class="fw-semibold" id="product-create-supplier-selected-name"></div>
+                        <div class="product-meta" id="product-create-supplier-selected-meta"></div>
+                      </div>
+                      <button
+                        class="btn btn-sm btn-outline-secondary"
+                        id="product-create-supplier-clear-button"
+                        type="button"
+                      >
+                        Сбросить
+                      </button>
+                    </div>
+                    <div
+                      class="product-supplier-lookup-message text-secondary small d-none mt-2"
+                      id="product-create-supplier-lookup-message"
+                      role="status"
+                    ></div>
+                    <div
+                      class="list-group product-supplier-results d-none mt-2"
+                      id="product-create-supplier-results"
+                      role="listbox"
+                      aria-label="Найденные поставщики"
+                    ></div>
+                  </div>
+
+                  <div class="d-none" id="product-create-supplier-new-panel">
+                    <div class="row g-3">
+                      <div class="col-12 col-lg-7">
+                        <label class="form-label" for="product-create-new-supplier-name">Название поставщика</label>
+                        <input
+                          class="form-control"
+                          id="product-create-new-supplier-name"
+                          name="new_supplier_name"
+                          type="text"
+                          maxlength="255"
+                          autocomplete="organization"
+                          required
+                        >
+                      </div>
+                      <div class="col-12 col-lg-5">
+                        <label class="form-label" for="product-create-new-supplier-phone-number">Телефон</label>
+                        <input
+                          class="form-control"
+                          id="product-create-new-supplier-phone-number"
+                          name="new_supplier_phone_number"
+                          type="tel"
+                          inputmode="tel"
+                          pattern="(8[0-9]{10}|\+7[0-9]{10})"
+                          maxlength="12"
+                          autocomplete="tel"
+                          placeholder="+77001234567"
+                          required
+                        >
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="row g-3 mt-1">
+                    <div class="col-12 col-md-6 col-xl-4">
+                      <label class="form-label" for="product-create-purchase-price">Цена закупки</label>
+                      <input
+                        class="form-control"
+                        id="product-create-purchase-price"
+                        name="purchase_price"
+                        type="number"
+                        min="1"
+                        step="1"
+                        value="1"
+                        required
+                      >
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-4">
+                      <label class="form-label" for="product-create-margin-percent">Маржа, %</label>
+                      <input
+                        class="form-control"
+                        id="product-create-margin-percent"
+                        name="margin_percent"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value="0"
+                        required
+                      >
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-4">
+                      <label class="form-label" for="product-create-sale-price">Цена продажи</label>
+                      <input
+                        class="form-control"
+                        id="product-create-sale-price"
+                        name="sale_price"
+                        type="number"
+                        min="1"
+                        step="1"
+                        placeholder="Авто"
+                      >
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-4">
+                      <label class="form-label" for="product-create-quantity">Количество</label>
+                      <input
+                        class="form-control"
+                        id="product-create-quantity"
+                        name="quantity"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value="0"
+                        required
+                      >
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-4">
+                      <label class="form-label" for="product-create-quantity-unit">Единица</label>
+                      <input
+                        class="form-control"
+                        id="product-create-quantity-unit"
+                        name="quantity_unit"
+                        type="text"
+                        maxlength="20"
+                        value="шт"
+                        required
+                      >
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-4">
+                      <label class="form-label" for="product-create-low-stock-threshold">Порог остатков</label>
+                      <input
+                        class="form-control"
+                        id="product-create-low-stock-threshold"
+                        name="low_stock_threshold"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value="5"
+                        required
+                      >
+                    </div>
+                  </div>
+                </div>
+              </section>
             </div>
             <div class="modal-footer product-create-footer">
               <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">
