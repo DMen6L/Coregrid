@@ -334,9 +334,9 @@
               <tr>
                 <th scope="col">Товар</th>
                 <th scope="col">Статус</th>
-                <th scope="col">Остаток</th>
-                <th scope="col">Лучшая цена</th>
-                <th scope="col">Компания / поставщик</th>
+                <th scope="col">Всего на складе</th>
+                <th scope="col">Мин. цена</th>
+                <th scope="col">Компания</th>
                 <th scope="col">Теги</th>
               </tr>
             </thead>
@@ -880,7 +880,7 @@
               <section class="product-create-section">
                 <h3 class="product-create-section-title">Базовый товар</h3>
                 <div class="row g-3">
-                  <div class="col-12 col-lg-7">
+                  <div class="col-12 col-lg-6">
                     <label class="form-label" for="product-create-name">Название</label>
                     <input
                       class="form-control"
@@ -891,7 +891,32 @@
                       required
                     >
                   </div>
-                  <div class="col-12 col-lg-5">
+                  <div class="col-12 col-sm-6 col-lg-3">
+                    <label class="form-label" for="product-create-quantity-unit">Единица</label>
+                    <input
+                      class="form-control"
+                      id="product-create-quantity-unit"
+                      name="quantity_unit"
+                      type="text"
+                      maxlength="20"
+                      value="шт"
+                      required
+                    >
+                  </div>
+                  <div class="col-12 col-sm-6 col-lg-3">
+                    <label class="form-label" for="product-create-low-stock-threshold">Порог остатков</label>
+                    <input
+                      class="form-control"
+                      id="product-create-low-stock-threshold"
+                      name="low_stock_threshold"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value="5"
+                      required
+                    >
+                  </div>
+                  <div class="col-12">
                     <label class="form-label" for="product-create-tags">Теги</label>
                     <input
                       class="form-control"
@@ -1176,31 +1201,6 @@
                         min="0"
                         step="1"
                         value="0"
-                        required
-                      >
-                    </div>
-                    <div class="col-12 col-md-6 col-xl-4">
-                      <label class="form-label" for="product-create-quantity-unit">Единица</label>
-                      <input
-                        class="form-control"
-                        id="product-create-quantity-unit"
-                        name="quantity_unit"
-                        type="text"
-                        maxlength="20"
-                        value="шт"
-                        required
-                      >
-                    </div>
-                    <div class="col-12 col-md-6 col-xl-4">
-                      <label class="form-label" for="product-create-low-stock-threshold">Порог остатков</label>
-                      <input
-                        class="form-control"
-                        id="product-create-low-stock-threshold"
-                        name="low_stock_threshold"
-                        type="number"
-                        min="0"
-                        step="1"
-                        value="5"
                         required
                       >
                     </div>

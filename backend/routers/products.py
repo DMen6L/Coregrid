@@ -1,13 +1,10 @@
-from cProfile import label
-from itertools import groupby
 from typing import Annotated
 
 from fastapi import APIRouter, Body, HTTPException, Path, Query, status
-from sqlalchemy import String, func, or_, outerjoin, select, case
-from sqlalchemy.dialects.postgresql import array
+from sqlalchemy import String, case, func, select
+from sqlalchemy.dialects.postgresql import aggregate_order_by, array
 from sqlalchemy.orm import selectinload
 
-from app import tags
 from app.models import Company, Product, ProductSupplier, Supplier, Tag
 from app.pricing import calculate_floor_price
 from app.schemas import (
@@ -21,7 +18,7 @@ from app.schemas import (
 from app.tags import get_or_create_tags
 from devs import DbSession
 from errors import commit_or_raise
-from utils import aggr_paginate, paginate
+from utils import aggr_paginate
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -37,56 +34,13 @@ def get_products_by_name(
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> PaginatedResponse[ProductSummaryResponse]:
-    supplier_summary = (
-        select(
-            ProductSupplier.product_id.label("product_id"),
-            func.coalesce(func.sum(ProductSupplier.quantity), 0).label(
-                "available_quantity"
-            ),
-            func.count(ProductSupplier.id).label("supplier_count"),
-            func.count(ProductSupplier.id)
-            .filter(ProductSupplier.quantity > 0)
-            .label("available_supplier_count"),
-            func.count(ProductSupplier.id)
-            .filter(
-                ProductSupplier.quantity > 0,
-                ProductSupplier.quantity <= ProductSupplier.low_stock_threshold,
-            )
-            .label("low_supplier_count"),
-        )
-        .group_by(ProductSupplier.product_id)
-        .subquery()
-    )
-
-    ranked_supplier = (
-        select(
-            ProductSupplier.product_id.label("product_id"),
-            Supplier.name.label("most_profit_supplier"),
-            ProductSupplier.purchase_price.label("available_min_cost"),
-            ProductSupplier.margin_percent.label("available_margin"),
-            ProductSupplier.sale_price.label("available_min_price"),
-            ProductSupplier.low_stock_threshold.label("low_stock_threshold"),
-            func.row_number()
-            .over(
-                partition_by=ProductSupplier.product_id,
-                order_by=(ProductSupplier.sale_price.asc(), ProductSupplier.id.asc()),
-            )
-            .label("rank"),
-        )
-        .join(ProductSupplier.supplier)
-        .where(ProductSupplier.quantity > 0)
-        .subquery()
-    )
-
-    best_supplier = (
-        select(ranked_supplier).where(ranked_supplier.c.rank == 1).subquery()
-    )
-
     tag_summary = (
         select(
             Product.id.label("product_id"),
             func.coalesce(
-                func.array_agg(Tag.name).filter(Tag.id.is_not(None)),
+                func.array_agg(
+                    aggregate_order_by(Tag.name, Tag.name),
+                ).filter(Tag.id.is_not(None)),
                 array([], type_=String),
             ).label("tags"),
         )
@@ -96,27 +50,67 @@ def get_products_by_name(
         .subquery()
     )
 
+    supplier_summary = (
+        select(
+            ProductSupplier.product_id.label("product_id"),
+            func.count(ProductSupplier.id).label("suppliers_count"),
+            func.coalesce(func.sum(ProductSupplier.quantity), 0).label(
+                "total_quantity"
+            ),
+        )
+        .group_by(ProductSupplier.product_id)
+        .subquery()
+    )
+
+    ranked_available_supplier = (
+        select(
+            ProductSupplier.product_id.label("product_id"),
+            ProductSupplier.purchase_price.label("min_purchase_price"),
+            ProductSupplier.margin_percent.label("margin_percent"),
+            ProductSupplier.sale_price.label("min_sale_price"),
+            func.row_number()
+            .over(
+                partition_by=ProductSupplier.product_id,
+                order_by=(
+                    ProductSupplier.sale_price.asc(),
+                    ProductSupplier.purchase_price.asc(),
+                    ProductSupplier.id.asc(),
+                ),
+            )
+            .label("rank"),
+        )
+        .where(ProductSupplier.quantity > 0)
+        .subquery()
+    )
+
+    cheapest_available_supplier = (
+        select(ranked_available_supplier)
+        .where(ranked_available_supplier.c.rank == 1)
+        .subquery()
+    )
+
     summary_statement = (
         select(
             Product.id.label("id"),
             Product.name.label("name"),
-            tag_summary.c.tags.label("tags"),
+            Product.created_at.label("created_at"),
+            Product.quantity_unit.label("quantity_unit"),
+            Product.low_stock_threshold.label("low_stock_threshold"),
             Company.name.label("company_name"),
-            best_supplier.c.most_profit_supplier,
-            func.greatest(supplier_summary.c.supplier_count - 1, 0).label(
-                "other_suppliers_count"
+            tag_summary.c.tags.label("tags"),
+            func.coalesce(supplier_summary.c.suppliers_count, 0).label(
+                "suppliers_count"
             ),
-            func.coalesce(supplier_summary.c.available_quantity, 0).label(
-                "available_quantity"
-            ),
-            best_supplier.c.available_min_cost,
-            best_supplier.c.available_margin,
-            best_supplier.c.available_min_price,
-            best_supplier.c.low_stock_threshold,
+            func.coalesce(supplier_summary.c.total_quantity, 0).label("total_quantity"),
+            cheapest_available_supplier.c.min_purchase_price,
+            cheapest_available_supplier.c.margin_percent,
+            cheapest_available_supplier.c.min_sale_price,
             case(
-                (supplier_summary.c.supplier_count.is_(None), "out"),
-                (supplier_summary.c.available_quantity == 0, "out"),
-                (supplier_summary.c.low_supplier_count > 0, "low"),
+                (func.coalesce(supplier_summary.c.total_quantity, 0) == 0, "out"),
+                (
+                    supplier_summary.c.total_quantity <= Product.low_stock_threshold,
+                    "low",
+                ),
                 else_="available",
             ).label("stock_status"),
         )
@@ -124,18 +118,19 @@ def get_products_by_name(
         .join(Product.company)
         .outerjoin(tag_summary, tag_summary.c.product_id == Product.id)
         .outerjoin(supplier_summary, supplier_summary.c.product_id == Product.id)
-        .outerjoin(best_supplier, best_supplier.c.product_id == Product.id)
+        .outerjoin(
+            cheapest_available_supplier,
+            cheapest_available_supplier.c.product_id == Product.id,
+        )
         .order_by(Product.id)
     )
+
     count_statement = select(func.count(Product.id)).select_from(Product)
 
     if search and (search := search.strip()):
-        condition = or_(
-            Product.name.ilike(f"%{search}%"),
-        )
-
-        summary_statement = summary_statement.where(condition)
-        count_statement = count_statement.where(condition)
+        search_condition = Product.name.ilike(f"%{search}%")
+        summary_statement = summary_statement.where(search_condition)
+        count_statement = count_statement.where(search_condition)
 
     return aggr_paginate(
         db=db,
@@ -161,6 +156,8 @@ def app_product(
     product = Product(
         name=product_data.name,
         company_id=product_data.company_id,
+        low_stock_threshold=product_data.low_stock_threshold,
+        quantity_unit=product_data.quantity_unit,
         tags=tags,
     )
 
@@ -227,8 +224,6 @@ def add_supplier_links(
                 margin_percent=supplier_link_data.margin_percent,
                 sale_price=sale_price,
                 quantity=supplier_link_data.quantity,
-                quantity_unit=supplier_link_data.quantity_unit,
-                low_stock_threshold=supplier_link_data.low_stock_threshold,
             )
         )
 

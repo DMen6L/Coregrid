@@ -276,6 +276,8 @@ function getProductBasePayload() {
 
   return {
     name: getText(formData, "name"),
+    quantity_unit: getText(formData, "quantity_unit") || DEFAULT_QUANTITY_UNIT,
+    low_stock_threshold: getNumber(formData, "low_stock_threshold"),
     tags: getTags(formData),
   };
 }
@@ -288,8 +290,6 @@ function getSupplierLinkBasePayload() {
     margin_percent: getNumber(formData, "margin_percent"),
     sale_price: getOptionalNumber(formData, "sale_price"),
     quantity: getNumber(formData, "quantity"),
-    quantity_unit: getText(formData, "quantity_unit") || DEFAULT_QUANTITY_UNIT,
-    low_stock_threshold: getNumber(formData, "low_stock_threshold"),
   };
 }
 

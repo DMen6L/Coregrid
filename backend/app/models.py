@@ -71,17 +71,6 @@ class ProductSupplier(Base):
         default=0,
         server_default="0",
     )
-    quantity_unit: Mapped[str] = mapped_column(
-        String(QUANTITY_UNIT_MAX_LENGTH),
-        default=DEFAULT_QUANTITY_UNIT,
-        server_default=DEFAULT_QUANTITY_UNIT,
-        nullable=False,
-    )
-    low_stock_threshold: Mapped[int] = mapped_column(
-        Integer,
-        default=5,
-        server_default="5",
-    )
 
     product: Mapped["Product"] = relationship(
         back_populates="supplier_links",
@@ -116,14 +105,6 @@ class ProductSupplier(Base):
             name="ck_product_suppliers_sale_price_floor",
         ),
         CheckConstraint("quantity >= 0", name="ck_product_suppliers_quantity"),
-        CheckConstraint(
-            "char_length(quantity_unit) > 0",
-            name="ck_product_suppliers_quantity_unit_not_empty",
-        ),
-        CheckConstraint(
-            "low_stock_threshold >= 0",
-            name="ck_product_suppliers_low_stock_threshold",
-        ),
     )
 
     @property
@@ -134,7 +115,7 @@ class ProductSupplier(Base):
     def stock_status(self) -> str:
         if self.quantity == 0:
             return "out"
-        if 0 < self.quantity <= self.low_stock_threshold:
+        if 0 < self.quantity <= self.product.low_stock_threshold:
             return "low"
         return "available"
 
@@ -235,10 +216,21 @@ class Product(Base):
         String(255),
         nullable=False,
     )
-
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         server_default=func.now(),
+    )
+    quantity_unit: Mapped[str] = mapped_column(
+        String(QUANTITY_UNIT_MAX_LENGTH),
+        default=DEFAULT_QUANTITY_UNIT,
+        server_default=DEFAULT_QUANTITY_UNIT,
+        nullable=False,
+    )
+    low_stock_threshold: Mapped[int] = mapped_column(
+        Integer,
+        default=5,
+        server_default="5",
+        nullable=False,
     )
 
     supplier_links: Mapped[list["ProductSupplier"]] = relationship(
@@ -262,7 +254,16 @@ class Product(Base):
         UniqueConstraint(
             "name",
             "company_id",
-            name="uq_products_name_company",
+            "quantity_unit",
+            name="uq_products_name_company_unit",
+        ),
+        CheckConstraint(
+            "char_length(quantity_unit) > 0",
+            name="ck_products_quantity_unit_not_empty",
+        ),
+        CheckConstraint(
+            "low_stock_threshold >= 0",
+            name="ck_products_low_stock_threshold",
         ),
     )
 

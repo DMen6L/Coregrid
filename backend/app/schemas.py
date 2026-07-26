@@ -112,11 +112,6 @@ class ProductSupplierCreate(BaseModel):
     margin_percent: int = Field(default=0, ge=0, validate_default=True)
     sale_price: int | None = Field(default=None, gt=0)
     quantity: int = Field(default=0, ge=0, validate_default=True)
-    quantity_unit: QuantityUnit = Field(
-        default=DEFAULT_QUANTITY_UNIT,
-        validate_default=True,
-    )
-    low_stock_threshold: int = Field(default=5, ge=0, validate_default=True)
 
     @model_validator(mode="after")
     def sale_price_must_not_be_below_floor(self):
@@ -146,8 +141,6 @@ class ProductSupplierResponse(BaseModel):
     floor_price: int
     sale_price: int
     quantity: int
-    quantity_unit: str
-    low_stock_threshold: int
     stock_status: StockStatus
 
 
@@ -155,6 +148,11 @@ class ProductCreate(BaseModel):
     name: Name
     company_id: int = Field(gt=0)
     tags: list[TagName] = Field(default_factory=list)
+    quantity_unit: QuantityUnit = Field(
+        default=DEFAULT_QUANTITY_UNIT,
+        validate_default=True,
+    )
+    low_stock_threshold: int = Field(default=5, ge=0, validate_default=True)
 
 
 class ProductResponse(BaseModel):
@@ -166,6 +164,8 @@ class ProductResponse(BaseModel):
 
     company_id: int
     company_name: str | None = None
+    quantity_unit: str
+    low_stock_threshold: int
     tags: list[TagResponse] = Field(default_factory=list)
     supplier_links: list[ProductSupplierResponse] = Field(default_factory=list)
 
@@ -174,6 +174,8 @@ class ProductUpdate(UpdateValidator):
     name: Name | None = None
     company_id: int | None = None
     tags: list[TagName] | None = None
+    quantity_unit: QuantityUnit | None = None
+    low_stock_threshold: int | None = Field(default=None, ge=0)
 
 
 class ProductSupplierUpdate(UpdateValidator):
@@ -182,8 +184,6 @@ class ProductSupplierUpdate(UpdateValidator):
     margin_percent: int | None = Field(default=None, ge=0)
     sale_price: int | None = Field(default=None, gt=0)
     quantity: int | None = Field(default=None, ge=0)
-    quantity_unit: QuantityUnit | None = None
-    low_stock_threshold: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def sale_price_must_not_be_below_floor_if_possible(self):
@@ -207,16 +207,17 @@ class ProductSupplierUpdate(UpdateValidator):
 class ProductSummaryResponse(BaseModel):
     id: int
     name: str
+    created_at: datetime
+    quantity_unit: str
+    low_stock_threshold: int = Field(default=5, ge=0)
+    company_name: str
     tags: list[str] = Field(default_factory=list)
 
-    company_name: str
-    most_profit_supplier: str | None = None
-    other_suppliers_count: int | None = None
-    available_quantity: int = Field(default=0, ge=0)
-    available_min_cost: int | None = None
-    available_margin: int | None = None
-    available_min_price: int | None = None
-    low_stock_threshold: int | None = None
+    suppliers_count: int
+    total_quantity: int = Field(default=0, ge=0)
+    min_purchase_price: int | None = None
+    margin_percent: int | None = None
+    min_sale_price: int | None = None
     stock_status: StockStatus
 
 

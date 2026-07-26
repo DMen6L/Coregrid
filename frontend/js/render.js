@@ -1,12 +1,18 @@
 import { elements } from "./dom.js";
 import { state } from "./state.js";
-import { formatCount, formatCurrency, formatQuantity } from "./format.js";
+import {
+  DEFAULT_QUANTITY_UNIT,
+  formatCount,
+  formatCurrency,
+  formatDateTime,
+  formatQuantity,
+} from "./format.js";
 
 const STOCK_STATUS = {
   available: { label: "В наличии", className: "text-bg-success" },
   low: { label: "Мало", className: "text-bg-warning" },
   out: { label: "Нет", className: "text-bg-danger" },
-  none: { label: "Без поставщика", className: "text-bg-secondary" },
+  none: { label: "Без данных", className: "text-bg-secondary" },
 };
 
 export function setAppMessage(message = "", variant = "danger") {
@@ -253,7 +259,7 @@ function createProductNameCell(product) {
   name.className = "fw-semibold";
   name.textContent = product.name || "Без названия";
   meta.className = "product-meta";
-  meta.textContent = `ID ${formatCount(product.id)}`;
+  meta.textContent = `ID ${formatCount(product.id)} | Создан: ${formatDateTime(product.created_at)}`;
   cell.append(name, meta);
   return cell;
 }
@@ -272,24 +278,15 @@ function createStatusCell(product) {
 
 function createStockCell(product) {
   const cell = document.createElement("td");
-  const quantity = Number(product.available_quantity || 0);
+  const totalQuantity = Number(product.total_quantity || 0);
+  const unit = getProductUnit(product);
   const quantityText = document.createElement("div");
   const meta = document.createElement("div");
 
-  if (!hasSummarySupplier(product)) {
-    cell.textContent = "Нет доступного остатка";
-    cell.className = "text-secondary";
-    return cell;
-  }
-
   quantityText.className = "fw-semibold";
-  quantityText.textContent = formatQuantity(quantity);
+  quantityText.textContent = formatQuantity(totalQuantity, unit);
   meta.className = "product-meta";
-  if (product.low_stock_threshold !== null && product.low_stock_threshold !== undefined) {
-    meta.textContent = `Порог выбранного поставщика: ${formatCount(product.low_stock_threshold)}`;
-  } else {
-    meta.textContent = "Порог не задан";
-  }
+  meta.textContent = getSummaryStockMeta(product);
 
   cell.append(quantityText, meta);
   return cell;
@@ -297,7 +294,7 @@ function createStockCell(product) {
 
 function createPricingCell(product) {
   const cell = document.createElement("td");
-  const price = product.available_min_price;
+  const price = product.min_sale_price;
   const salePrice = document.createElement("div");
   const details = document.createElement("div");
 
@@ -324,7 +321,7 @@ function createOwnerCell(product) {
   company.className = "fw-semibold";
   company.textContent = product.company_name || "Компания не указана";
   suppliers.className = "product-meta";
-  suppliers.textContent = getSummarySupplierText(product);
+  suppliers.textContent = getSupplierCountText(product.suppliers_count);
   cell.append(company, suppliers);
   return cell;
 }
@@ -434,11 +431,7 @@ function getSummaryStockStatus(product) {
     return product.stock_status;
   }
 
-  if (!hasSummarySupplier(product)) {
-    return "none";
-  }
-
-  const quantity = Number(product.available_quantity || 0);
+  const quantity = Number(product.total_quantity || 0);
   const threshold = Number(product.low_stock_threshold);
 
   if (!Number.isFinite(quantity) || quantity <= 0) {
@@ -451,33 +444,40 @@ function getSummaryStockStatus(product) {
 function getSummaryPriceMeta(product) {
   const parts = [];
 
-  if (product.available_min_cost !== null && product.available_min_cost !== undefined) {
-    parts.push(`Закупка: ${formatCurrency(product.available_min_cost)}`);
+  if (product.min_purchase_price !== null && product.min_purchase_price !== undefined) {
+    parts.push(`Закупка: ${formatCurrency(product.min_purchase_price)}`);
   }
 
-  if (product.available_margin !== null && product.available_margin !== undefined) {
-    parts.push(`Маржа: ${formatCount(product.available_margin)}%`);
+  if (product.margin_percent !== null && product.margin_percent !== undefined) {
+    parts.push(`Маржа: ${formatCount(product.margin_percent)}%`);
   }
 
   return parts.length ? parts.join(" | ") : "Детали цены не заданы";
 }
 
-function getSummarySupplierText(product) {
-  if (!hasSummarySupplier(product)) {
-    return "Нет доступного поставщика";
+function getSummaryStockMeta(product) {
+  const unit = getProductUnit(product);
+  const parts = [];
+
+  if (product.low_stock_threshold !== null && product.low_stock_threshold !== undefined) {
+    parts.push(`Порог: ${formatQuantity(product.low_stock_threshold, unit)}`);
   }
 
-  const otherSuppliersCount = Number(product.other_suppliers_count || 0);
-
-  if (otherSuppliersCount > 0) {
-    return `${product.most_profit_supplier} и еще ${formatCount(otherSuppliersCount)}`;
-  }
-
-  return product.most_profit_supplier;
+  return parts.length ? parts.join(" | ") : "";
 }
 
-function hasSummarySupplier(product) {
-  return Boolean(product.most_profit_supplier);
+function getProductUnit(product) {
+  return String(product.quantity_unit || "").trim() || DEFAULT_QUANTITY_UNIT;
+}
+
+function getSupplierCountText(value) {
+  const count = Number(value || 0);
+
+  if (!Number.isFinite(count) || count <= 0) {
+    return "Нет поставщиков";
+  }
+
+  return `Поставщиков: ${formatCount(count)}`;
 }
 
 function normalizeTags(tags) {
