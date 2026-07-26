@@ -329,6 +329,12 @@ class TopProduct(BaseModel):
     metric: int = Field(default=0, ge=0)
 
 
+class TopSupplier(BaseModel):
+    supplier_id: int
+    supplier_name: str
+    supplied_products: int
+
+
 class SummariesResponse(BaseModel):
     dashboard_sales_value: int
     dashboard_sales_count: int
@@ -336,6 +342,7 @@ class SummariesResponse(BaseModel):
     out_of_stock: int
     latest_sales: list[DailySalesResponse]
     top_products: list[TopProduct]
+    top_suppliers: list[TopSupplier]
 
 
 class PaginatedResponse(BaseModel, Generic[ItemT]):

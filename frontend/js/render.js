@@ -22,6 +22,7 @@ const EMPTY_DASHBOARD_DATA = {
   out_of_stock: 0,
   latest_sales: [],
   top_products: [],
+  top_suppliers: [],
 };
 
 const BEST_SALES_MODE_CONFIG = {
@@ -101,6 +102,10 @@ export function renderDashboard() {
     isLoading: dashboard.isLoading,
   });
   renderDashboardTopProducts(data.top_products, modeConfig, {
+    error: dashboard.error,
+    isLoading: dashboard.isLoading,
+  });
+  renderDashboardTopSuppliers(data.top_suppliers, {
     error: dashboard.error,
     isLoading: dashboard.isLoading,
   });
@@ -301,6 +306,28 @@ function renderDashboardTopProducts(items, modeConfig, { error, isLoading }) {
   elements.dashboard.bestSalesTableBody.append(fragment);
 }
 
+function renderDashboardTopSuppliers(items, { error, isLoading }) {
+  const rows = Array.isArray(items) ? items : [];
+  const shouldShowEmpty = Boolean(error) || (!isLoading && rows.length === 0);
+
+  elements.dashboard.topSuppliersEmpty.textContent =
+    error || "Поставщики с товарами пока не найдены.";
+  elements.dashboard.topSuppliersEmpty.classList.toggle("d-none", !shouldShowEmpty);
+  elements.dashboard.topSuppliersTableBody.replaceChildren();
+
+  if (error || rows.length === 0) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const item of rows) {
+    fragment.append(createTopSupplierRow(item));
+  }
+
+  elements.dashboard.topSuppliersTableBody.append(fragment);
+}
+
 function createSalesChart(items) {
   const wrapper = document.createElement("div");
   const maxValue = Math.max(...items.map((item) => Number(item.sales_value || 0)), 0);
@@ -359,6 +386,24 @@ function createTopProductRow(item, modeConfig) {
   metricCell.className = "fw-semibold";
   metricCell.textContent = modeConfig.format(item.metric);
   row.append(productCell, metricCell);
+  return row;
+}
+
+function createTopSupplierRow(item) {
+  const row = document.createElement("tr");
+  const supplierCell = document.createElement("td");
+  const countCell = document.createElement("td");
+  const supplierName = document.createElement("div");
+  const supplierMeta = document.createElement("div");
+
+  supplierName.className = "fw-semibold";
+  supplierName.textContent = item.supplier_name || "Без названия";
+  supplierMeta.className = "supplier-meta";
+  supplierMeta.textContent = `ID ${formatCount(item.supplier_id)}`;
+  supplierCell.append(supplierName, supplierMeta);
+  countCell.className = "fw-semibold";
+  countCell.textContent = formatCount(item.supplied_products);
+  row.append(supplierCell, countCell);
   return row;
 }
 

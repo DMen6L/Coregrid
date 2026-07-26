@@ -25,8 +25,10 @@ export const elements = {
     bestSalesSummary: getElement("#dashboard-best-sales-summary"),
     bestSalesMetricHeading: getElement("#dashboard-best-sales-metric-heading"),
     bestSalesEmpty: getElement("#dashboard-best-sales-empty"),
+    topSuppliersEmpty: getElement("#dashboard-top-suppliers-empty"),
     salesDailyTableBody: getElement("#dashboard-sales-daily-table-body"),
     bestSalesTableBody: getElement("#dashboard-best-sales-table-body"),
+    topSuppliersTableBody: getElement("#dashboard-top-suppliers-table-body"),
   },
   products: {
     searchForm: getElement("#products-search-form"),

@@ -126,11 +126,13 @@ body {
 }
 
 .dashboard-best-sales,
+.dashboard-top-suppliers,
 .dashboard-sales-daily-table {
   min-width: 0;
 }
 
 .dashboard-best-sales-table,
+.dashboard-top-suppliers-table,
 .dashboard-sales-daily-table {
   max-height: 24rem;
   overflow: auto;
@@ -139,6 +141,7 @@ body {
 }
 
 .dashboard-best-sales-table table,
+.dashboard-top-suppliers-table table,
 .dashboard-sales-daily-table table {
   min-width: 420px;
 }

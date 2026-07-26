@@ -5,12 +5,13 @@ from pydantic import BaseModel
 from sqlalchemy import Select, func, outerjoin, select
 from sqlalchemy.orm import Session
 
-from app.models import Product, ProductSupplier, Sale, SaleLine
+from app.models import Product, ProductSupplier, Sale, SaleLine, Supplier
 from app.schemas import (
     DailySalesResponse,
     PaginatedResponse,
     SummariesResponse,
     TopProduct,
+    TopSupplier,
 )
 from devs import DbSession
 
@@ -79,7 +80,7 @@ def build_summaries(
     )
     total_quantity = func.coalesce(product_stock_summary.c.total_quantity, 0)
     low_stock_subquery = (
-        select(func.count(ProductSupplier.id))
+        select(func.count(Product.id))
         .select_from(Product)
         .outerjoin(
             product_stock_summary,
@@ -92,7 +93,7 @@ def build_summaries(
         .scalar_subquery()
     )
     out_of_stock_subquery = (
-        select(func.count(ProductSupplier.id))
+        select(func.count(Product.id))
         .select_from(Product)
         .outerjoin(
             product_stock_summary,
@@ -155,6 +156,18 @@ def build_summaries(
         .order_by(sales_metric.desc())
         .limit(5)
     )
+    top_suppliers_statement = (
+        select(
+            Supplier.id.label("supplier_id"),
+            Supplier.name.label("supplier_name"),
+            func.count(ProductSupplier.product_id).label("supplied_products"),
+        )
+        .select_from(Supplier)
+        .join(Supplier.product_links)
+        .group_by(Supplier.id, Supplier.name)
+        .order_by(func.count(ProductSupplier.product_id).desc())
+        .limit(5)
+    )
 
     # Results
     initial_summaries = db.execute(initial_summaries_statement).one()
@@ -170,6 +183,12 @@ def build_summaries(
         )
         for top_product in db.execute(top_products_statement).mappings().all()
     ]
+    top_suppliers = [
+        TopSupplier(
+            **top_supplier,
+        )
+        for top_supplier in db.execute(top_suppliers_statement).mappings().all()
+    ]
 
     return SummariesResponse(
         dashboard_sales_value=initial_summaries.dashboard_sales_value,
@@ -178,6 +197,7 @@ def build_summaries(
         out_of_stock=initial_summaries.out_of_stock,
         latest_sales=latest_sales,
         top_products=top_products,
+        top_suppliers=top_suppliers,
     )
 
 
