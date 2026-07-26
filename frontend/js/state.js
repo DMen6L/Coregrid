@@ -1,8 +1,11 @@
 export const state = {
-  activeView: "products",
+  activeView: "dashboard",
+  dashboard: createDashboardState(),
   products: createListState(),
   companies: createListState(),
   suppliers: createListState(),
+  restocks: createDatedListState(),
+  sales: createDatedListState(),
   productCreate: {
     isSubmitting: false,
     selectedCompany: null,
@@ -19,7 +22,23 @@ export const state = {
   supplierCreate: {
     isSubmitting: false,
   },
+  restockCreate: {
+    isSubmitting: false,
+  },
+  saleCreate: {
+    isSubmitting: false,
+  },
 };
+
+export function createDashboardState() {
+  return {
+    data: null,
+    days: 7,
+    bestSalesMode: "quantity",
+    isLoading: true,
+    error: "",
+  };
+}
 
 export function createListState() {
   return {
@@ -42,6 +61,14 @@ export function createLookupState() {
     error: "",
     hasSearched: false,
     results: [],
+  };
+}
+
+export function createDatedListState() {
+  return {
+    ...createListState(),
+    dateFrom: "",
+    dateTo: "",
   };
 }
 

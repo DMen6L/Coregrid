@@ -279,8 +279,28 @@ body {
   margin-bottom: 0.75rem;
 }
 
-.restock-create-product-selected,
-.sale-create-product-selected {
+.operation-line-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(16rem, 2fr)
+    minmax(14rem, 1.4fr)
+    minmax(10rem, 0.8fr)
+    minmax(10rem, 0.8fr);
+  gap: 1rem;
+}
+
+.sale-create-line .operation-line-grid {
+  grid-template-columns:
+    minmax(16rem, 2fr)
+    minmax(14rem, 1.4fr)
+    minmax(10rem, 0.8fr);
+}
+
+.operation-line-product {
+  min-width: 0;
+}
+
+.operation-product-selected {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -291,14 +311,12 @@ body {
   border-radius: 0.5rem;
 }
 
-.restock-create-product-results,
-.sale-create-product-results {
-  max-height: 13rem;
+.operation-product-results {
+  max-height: 14rem;
   overflow-y: auto;
 }
 
-.restock-create-product-result,
-.sale-create-product-result {
+.operation-product-result {
   text-align: left;
 }
 
@@ -459,8 +477,7 @@ body {
 
   .product-company-selected,
   .product-supplier-selected,
-  .restock-create-product-selected,
-  .sale-create-product-selected {
+  .operation-product-selected {
     align-items: stretch;
     flex-direction: column;
   }
@@ -516,6 +533,11 @@ body {
   }
 
   .dashboard-sales-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .operation-line-grid,
+  .sale-create-line .operation-line-grid {
     grid-template-columns: 1fr;
   }
 

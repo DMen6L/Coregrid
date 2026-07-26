@@ -142,6 +142,35 @@ def get_products_by_name(
     )
 
 
+@router.get(
+    "/{product_id}",
+    response_model=ProductResponse,
+    status_code=status.HTTP_200_OK,
+)
+def get_product_by_id(
+    db: DbSession,
+    product_id: Annotated[int, Path(gt=0)],
+):
+    statement = (
+        select(Product)
+        .options(
+            selectinload(Product.company),
+            selectinload(Product.supplier_links).selectinload(ProductSupplier.supplier),
+        )
+        .where(Product.id == product_id)
+    )
+
+    product = db.scalars(statement).one_or_none()
+
+    if product is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="product with such id does not exist.",
+        )
+
+    return product
+
+
 @router.post(
     "",
     response_model=ProductResponse,

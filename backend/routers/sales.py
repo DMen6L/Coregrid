@@ -78,13 +78,10 @@ def add_sale(db: DbSession, sale_data: SaleCreate):
     )
 
     product_suppliers_by_id = {
-        product_supplier.id: product_supplier
-        for product_supplier in product_suppliers
+        product_supplier.id: product_supplier for product_supplier in product_suppliers
     }
 
-    missing_product_supplier_ids = (
-        product_supplier_ids - product_suppliers_by_id.keys()
-    )
+    missing_product_supplier_ids = product_supplier_ids - product_suppliers_by_id.keys()
 
     if missing_product_supplier_ids:
         raise HTTPException(
@@ -119,7 +116,7 @@ def add_sale(db: DbSession, sale_data: SaleCreate):
                 sale_quantity=line_data.sale_quantity,
                 unit_cost_snapshot=product_supplier.purchase_price,
                 unit_sale_price_snapshot=product_supplier.sale_price,
-                quantity_unit_snapshot=product_supplier.quantity_unit,
+                quantity_unit_snapshot=product_supplier.product.quantity_unit,
             )
         )
 

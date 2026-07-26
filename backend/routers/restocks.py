@@ -83,9 +83,7 @@ def add_restock(
     db: DbSession,
     restock_data: RestockCreate,
 ):
-    product_supplier_ids = {
-        line.product_supplier_id for line in restock_data.lines
-    }
+    product_supplier_ids = {line.product_supplier_id for line in restock_data.lines}
 
     product_suppliers = list(
         db.scalars(
@@ -96,13 +94,10 @@ def add_restock(
     )
 
     product_suppliers_by_id = {
-        product_supplier.id: product_supplier
-        for product_supplier in product_suppliers
+        product_supplier.id: product_supplier for product_supplier in product_suppliers
     }
 
-    missing_product_supplier_ids = (
-        product_supplier_ids - product_suppliers_by_id.keys()
-    )
+    missing_product_supplier_ids = product_supplier_ids - product_suppliers_by_id.keys()
 
     if missing_product_supplier_ids:
         raise HTTPException(
@@ -129,11 +124,7 @@ def add_restock(
                     if line_data.unit_cost_snapshot is not None
                     else product_supplier.purchase_price
                 ),
-                quantity_unit_snapshot=(
-                    line_data.quantity_unit_snapshot
-                    if line_data.quantity_unit_snapshot is not None
-                    else product_supplier.quantity_unit
-                ),
+                quantity_unit_snapshot=product_supplier.product.quantity_unit,
             )
         )
 

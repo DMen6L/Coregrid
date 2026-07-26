@@ -23,6 +23,7 @@ import {
 } from "./render.js";
 import { createLookupState, applyPage, resetPage, state } from "./state.js";
 import { loadCompanies } from "./companies.js";
+import { loadDashboard } from "./dashboard.js";
 import { loadSuppliers } from "./suppliers.js";
 import { request } from "./utils.js";
 
@@ -233,6 +234,7 @@ async function submitProductCreate() {
     }
 
     await Promise.all([
+      loadDashboard(),
       loadProducts(state.products.searchTerm, state.products.page),
       loadCompanies(state.companies.searchTerm, state.companies.page),
       loadSuppliers(state.suppliers.searchTerm, state.suppliers.page),

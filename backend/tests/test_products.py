@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from app.models import Company, ProductSupplier, Supplier
+from app.models import Company, Product, ProductSupplier, Supplier
 from main import app
 
 
@@ -31,9 +31,9 @@ def create_company(db_session, suffix: str) -> Company:
     return company
 
 
-def create_supplier(db_session, suffix: str) -> Supplier:
+def create_supplier(db_session, suffix: str, name: str | None = None) -> Supplier:
     supplier = Supplier(
-        name=f"Product test supplier {suffix}",
+        name=name or f"Product test supplier {suffix}",
         phone_number=unique_phone_number(),
     )
 
@@ -42,6 +42,55 @@ def create_supplier(db_session, suffix: str) -> Supplier:
     db_session.refresh(supplier)
 
     return supplier
+
+
+def create_product_model(
+    db_session,
+    suffix: str,
+    *,
+    name: str | None = None,
+    company: Company | None = None,
+    quantity_unit: str = "шт",
+    low_stock_threshold: int = 5,
+) -> Product:
+    product = Product(
+        name=name or f"Product test item {suffix}",
+        company=company or create_company(db_session, suffix),
+        quantity_unit=quantity_unit,
+        low_stock_threshold=low_stock_threshold,
+    )
+
+    db_session.add(product)
+    db_session.commit()
+    db_session.refresh(product)
+
+    return product
+
+
+def create_product_supplier_link(
+    db_session,
+    product: Product,
+    supplier: Supplier,
+    *,
+    purchase_price: int = 100,
+    margin_percent: int = 20,
+    sale_price: int = 125,
+    quantity: int = 4,
+) -> ProductSupplier:
+    link = ProductSupplier(
+        product=product,
+        supplier=supplier,
+        purchase_price=purchase_price,
+        margin_percent=margin_percent,
+        sale_price=sale_price,
+        quantity=quantity,
+    )
+
+    db_session.add(link)
+    db_session.commit()
+    db_session.refresh(link)
+
+    return link
 
 
 def create_product(payload: dict) -> dict:
@@ -70,6 +119,41 @@ def assert_paginated_response(data: dict) -> None:
     assert isinstance(data["has_previous"], bool)
 
 
+def assert_product_summary_response_shape(product: dict) -> None:
+    assert set(product) == {
+        "id",
+        "name",
+        "created_at",
+        "quantity_unit",
+        "low_stock_threshold",
+        "company_name",
+        "tags",
+        "suppliers_count",
+        "total_quantity",
+        "min_purchase_price",
+        "margin_percent",
+        "min_sale_price",
+        "stock_status",
+    }
+    assert isinstance(product["id"], int)
+    assert isinstance(product["name"], str)
+    assert datetime.fromisoformat(product["created_at"])
+    assert isinstance(product["quantity_unit"], str)
+    assert isinstance(product["low_stock_threshold"], int)
+    assert isinstance(product["company_name"], str)
+    assert isinstance(product["tags"], list)
+    assert isinstance(product["suppliers_count"], int)
+    assert isinstance(product["total_quantity"], int)
+    assert product["min_purchase_price"] is None or isinstance(
+        product["min_purchase_price"], int
+    )
+    assert product["margin_percent"] is None or isinstance(
+        product["margin_percent"], int
+    )
+    assert product["min_sale_price"] is None or isinstance(product["min_sale_price"], int)
+    assert product["stock_status"] in {"available", "low", "out", "none"}
+
+
 def assert_product_response_shape(product: dict) -> None:
     assert set(product) == {
         "id",
@@ -77,15 +161,17 @@ def assert_product_response_shape(product: dict) -> None:
         "created_at",
         "company_id",
         "company_name",
-        "tags",
+        "quantity_unit",
+        "low_stock_threshold",
         "supplier_links",
     }
     assert isinstance(product["id"], int)
     assert isinstance(product["name"], str)
     assert datetime.fromisoformat(product["created_at"])
-    assert product["company_id"] is None or isinstance(product["company_id"], int)
-    assert product["company_name"] is None or isinstance(product["company_name"], str)
-    assert isinstance(product["tags"], list)
+    assert isinstance(product["company_id"], int)
+    assert isinstance(product["company_name"], str)
+    assert isinstance(product["quantity_unit"], str)
+    assert isinstance(product["low_stock_threshold"], int)
     assert isinstance(product["supplier_links"], list)
 
 
@@ -101,8 +187,6 @@ def assert_product_supplier_response_shape(link: dict) -> None:
         "floor_price",
         "sale_price",
         "quantity",
-        "quantity_unit",
-        "low_stock_threshold",
         "stock_status",
     }
     assert isinstance(link["id"], int)
@@ -115,8 +199,6 @@ def assert_product_supplier_response_shape(link: dict) -> None:
     assert isinstance(link["floor_price"], int)
     assert isinstance(link["sale_price"], int)
     assert isinstance(link["quantity"], int)
-    assert isinstance(link["quantity_unit"], str)
-    assert isinstance(link["low_stock_threshold"], int)
     assert link["stock_status"] in {"available", "low", "out"}
 
 
@@ -136,7 +218,9 @@ def test_get_products_returns_empty_paginated_response():
     assert data["has_previous"] is False
 
 
-def test_post_products_creates_catalog_product_with_company_and_tags(db_session):
+def test_post_products_creates_catalog_product_with_company_and_stock_fields(
+    db_session,
+):
     suffix = unique_suffix()
     company = create_company(db_session, suffix)
 
@@ -145,6 +229,8 @@ def test_post_products_creates_catalog_product_with_company_and_tags(db_session)
             "name": f"  Catalog product {suffix}  ",
             "company_id": company.id,
             "tags": ["Retail", "retail", "Warehouse"],
+            "quantity_unit": "уп",
+            "low_stock_threshold": 3,
         }
     )
 
@@ -152,41 +238,39 @@ def test_post_products_creates_catalog_product_with_company_and_tags(db_session)
     assert product["name"] == f"Catalog product {suffix}"
     assert product["company_id"] == company.id
     assert product["company_name"] == company.name
-    assert [tag["name"] for tag in product["tags"]] == ["retail", "warehouse"]
+    assert product["quantity_unit"] == "уп"
+    assert product["low_stock_threshold"] == 3
     assert product["supplier_links"] == []
     assert "purchase_price" not in product
     assert "supplier_id" not in product
 
 
-def test_get_products_supports_name_search_and_returns_supplier_links(db_session):
+def test_get_products_supports_name_search_and_returns_summaries(db_session):
     suffix = unique_suffix()
+    company = create_company(db_session, suffix)
     supplier = create_supplier(db_session, suffix)
-    matching_product = create_product(
-        {
-            "name": f"Searchable product {suffix}",
-            "tags": [],
-        }
+    matching_product = create_product_model(
+        db_session,
+        suffix,
+        name=f"Searchable product {suffix}",
+        company=company,
+        low_stock_threshold=2,
     )
-    create_product(
-        {
-            "name": f"Unmatched product {suffix}",
-            "tags": [],
-        }
+    create_product_model(
+        db_session,
+        suffix,
+        name=f"Unmatched product {suffix}",
+        company=company,
     )
-
-    link_response = client.post(
-        f"/products/{matching_product['id']}/links",
-        json={
-            "supplier_id": supplier.id,
-            "purchase_price": 101,
-            "margin_percent": 25,
-            "quantity": 4,
-            "quantity_unit": "шт",
-            "low_stock_threshold": 5,
-        },
+    create_product_supplier_link(
+        db_session,
+        matching_product,
+        supplier,
+        purchase_price=101,
+        margin_percent=25,
+        sale_price=127,
+        quantity=4,
     )
-
-    assert link_response.status_code == 201
 
     response = client.get(
         "/products",
@@ -201,72 +285,172 @@ def test_get_products_supports_name_search_and_returns_supplier_links(db_session
     assert len(data["items"]) == 1
 
     product = data["items"][0]
-    assert_product_response_shape(product)
-    assert product["id"] == matching_product["id"]
-    assert len(product["supplier_links"]) == 1
+    assert_product_summary_response_shape(product)
+    assert product["id"] == matching_product.id
+    assert product["name"] == matching_product.name
+    assert product["company_name"] == company.name
+    assert product["quantity_unit"] == "шт"
+    assert product["low_stock_threshold"] == 2
+    assert product["suppliers_count"] == 1
+    assert product["total_quantity"] == 4
+    assert product["min_purchase_price"] == 101
+    assert product["margin_percent"] == 25
+    assert product["min_sale_price"] == 127
+    assert product["stock_status"] == "available"
 
-    link = product["supplier_links"][0]
-    assert_product_supplier_response_shape(link)
-    assert link["product_id"] == matching_product["id"]
-    assert link["supplier_id"] == supplier.id
-    assert link["product_name"] == matching_product["name"]
-    assert link["supplier_name"] == supplier.name
+
+def test_get_product_by_id_returns_detail_with_supplier_links(db_session):
+    suffix = unique_suffix()
+    company = create_company(db_session, suffix)
+    first_supplier = create_supplier(db_session, suffix, name=f"First supplier {suffix}")
+    second_supplier = create_supplier(db_session, suffix, name=f"Second supplier {suffix}")
+    other_supplier = create_supplier(db_session, suffix, name=f"Other supplier {suffix}")
+    product = create_product_model(
+        db_session,
+        suffix,
+        name=f"Detailed product {suffix}",
+        company=company,
+        quantity_unit="кг",
+        low_stock_threshold=7,
+    )
+    other_product = create_product_model(
+        db_session,
+        suffix,
+        name=f"Other detailed product {suffix}",
+        company=company,
+    )
+    first_link = create_product_supplier_link(
+        db_session,
+        product,
+        first_supplier,
+        purchase_price=100,
+        margin_percent=20,
+        sale_price=125,
+        quantity=10,
+    )
+    second_link = create_product_supplier_link(
+        db_session,
+        product,
+        second_supplier,
+        purchase_price=90,
+        margin_percent=30,
+        sale_price=117,
+        quantity=0,
+    )
+    create_product_supplier_link(
+        db_session,
+        other_product,
+        other_supplier,
+        purchase_price=50,
+        margin_percent=10,
+        sale_price=55,
+        quantity=99,
+    )
+
+    response = client.get(f"/products/{product.id}")
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert_product_response_shape(data)
+    assert data["id"] == product.id
+    assert data["name"] == product.name
+    assert data["company_id"] == company.id
+    assert data["company_name"] == company.name
+    assert data["quantity_unit"] == "кг"
+    assert data["low_stock_threshold"] == 7
+
+    links = data["supplier_links"]
+    assert [link["id"] for link in links] == [first_link.id, second_link.id]
+
+    first_link_data = links[0]
+    assert_product_supplier_response_shape(first_link_data)
+    assert first_link_data["product_id"] == product.id
+    assert first_link_data["supplier_id"] == first_supplier.id
+    assert first_link_data["product_name"] == product.name
+    assert first_link_data["supplier_name"] == first_supplier.name
+    assert first_link_data["purchase_price"] == 100
+    assert first_link_data["margin_percent"] == 20
+    assert first_link_data["floor_price"] == 120
+    assert first_link_data["sale_price"] == 125
+    assert first_link_data["quantity"] == 10
+    assert first_link_data["stock_status"] == "available"
+
+    second_link_data = links[1]
+    assert_product_supplier_response_shape(second_link_data)
+    assert second_link_data["supplier_id"] == second_supplier.id
+    assert second_link_data["quantity"] == 0
+    assert second_link_data["stock_status"] == "out"
+
+
+def test_get_product_by_id_returns_empty_supplier_links_for_unlinked_product(
+    db_session,
+):
+    suffix = unique_suffix()
+    product = create_product_model(db_session, suffix)
+
+    response = client.get(f"/products/{product.id}")
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert_product_response_shape(data)
+    assert data["id"] == product.id
+    assert data["supplier_links"] == []
+
+
+def test_get_product_by_id_returns_404_for_missing_product():
+    response = client.get("/products/999999")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "product with such id does not exist."
 
 
 def test_post_product_link_calculates_prices_and_persists_inventory(db_session):
     suffix = unique_suffix()
     supplier = create_supplier(db_session, suffix)
-    product = create_product(
-        {
-            "name": f"Linked product {suffix}",
-            "tags": [],
-        }
-    )
+    product = create_product_model(db_session, suffix)
 
     response = client.post(
-        f"/products/{product['id']}/links",
-        json={
-            "supplier_id": supplier.id,
-            "purchase_price": 101,
-            "margin_percent": 25,
-            "quantity": 4,
-            "quantity_unit": "шт",
-            "low_stock_threshold": 5,
-        },
+        f"/products/{product.id}/links",
+        json=[
+            {
+                "supplier_id": supplier.id,
+                "purchase_price": 101,
+                "margin_percent": 25,
+                "quantity": 4,
+            }
+        ],
     )
 
     assert response.status_code == 201
 
-    link = response.json()
+    links = response.json()
+    assert len(links) == 1
+
+    link = links[0]
     assert_product_supplier_response_shape(link)
-    assert link["product_id"] == product["id"]
+    assert link["product_id"] == product.id
     assert link["supplier_id"] == supplier.id
-    assert link["product_name"] == product["name"]
+    assert link["product_name"] == product.name
     assert link["supplier_name"] == supplier.name
     assert link["purchase_price"] == 101
     assert link["margin_percent"] == 25
     assert link["floor_price"] == 127
     assert link["sale_price"] == 127
     assert link["quantity"] == 4
-    assert link["quantity_unit"] == "шт"
-    assert link["low_stock_threshold"] == 5
     assert link["stock_status"] == "low"
 
     stored_link = db_session.get(ProductSupplier, link["id"])
     assert stored_link is not None
-    assert stored_link.product_id == product["id"]
+    assert stored_link.product_id == product.id
     assert stored_link.supplier_id == supplier.id
 
 
 def test_post_product_link_rejects_missing_product_and_supplier(db_session):
     suffix = unique_suffix()
     supplier = create_supplier(db_session, suffix)
-    product = create_product(
-        {
-            "name": f"Error product {suffix}",
-            "tags": [],
-        }
-    )
+    product = create_product_model(db_session, suffix)
     link_payload = {
         "supplier_id": supplier.id,
         "purchase_price": 100,
@@ -276,54 +460,53 @@ def test_post_product_link_rejects_missing_product_and_supplier(db_session):
 
     missing_product_response = client.post(
         "/products/999999/links",
-        json=link_payload,
+        json=[link_payload],
     )
 
     assert missing_product_response.status_code == 404
-    assert missing_product_response.json()["detail"] == "Product was not found."
+    assert (
+        missing_product_response.json()["detail"]
+        == "No product with such id in the database."
+    )
 
     missing_supplier_response = client.post(
-        f"/products/{product['id']}/links",
-        json={**link_payload, "supplier_id": 999999},
+        f"/products/{product.id}/links",
+        json=[{**link_payload, "supplier_id": 999999}],
     )
 
     assert missing_supplier_response.status_code == 404
-    assert missing_supplier_response.json()["detail"] == "Supplier was not found."
+    assert missing_supplier_response.json()["detail"] == {
+        "message": "One or more suppliers were not found.",
+        "supplier_ids": [999999],
+    }
 
 
 def test_post_product_link_rejects_invalid_price_and_duplicate_link(db_session):
     suffix = unique_suffix()
     supplier = create_supplier(db_session, suffix)
-    product = create_product(
-        {
-            "name": f"Duplicate product {suffix}",
-            "tags": [],
-        }
-    )
+    product = create_product_model(db_session, suffix)
     link_payload = {
         "supplier_id": supplier.id,
         "purchase_price": 100,
         "margin_percent": 20,
         "sale_price": 130,
         "quantity": 0,
-        "quantity_unit": "шт",
-        "low_stock_threshold": 5,
     }
 
     invalid_price_response = client.post(
-        f"/products/{product['id']}/links",
-        json={**link_payload, "sale_price": 119},
+        f"/products/{product.id}/links",
+        json=[{**link_payload, "sale_price": 119}],
     )
 
     assert invalid_price_response.status_code == 422
 
     first_response = client.post(
-        f"/products/{product['id']}/links",
-        json=link_payload,
+        f"/products/{product.id}/links",
+        json=[link_payload],
     )
     duplicate_response = client.post(
-        f"/products/{product['id']}/links",
-        json=link_payload,
+        f"/products/{product.id}/links",
+        json=[link_payload],
     )
 
     assert first_response.status_code == 201

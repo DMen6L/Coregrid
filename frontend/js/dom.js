@@ -10,30 +10,20 @@ export const elements = {
     restocks: getElement("#restocks"),
     sales: getElement("#sales"),
   },
-  parked: {
-    dashboardControls: Array.from(
-      document.querySelectorAll(
-        "#dashboard-sales-period-input, #dashboard-best-sales-mode-select, #dashboard-sales-period-button",
-      ),
-    ),
-    restockControls: Array.from(
-      document.querySelectorAll(
-        "#restocks input, #restocks button, #open-restock-create-modal-button",
-      ),
-    ),
-    saleControls: Array.from(
-      document.querySelectorAll(
-        "#sales input, #sales button, #open-sale-create-modal-button",
-      ),
-    ),
-  },
   dashboard: {
+    form: getElement("#dashboard-sales-period-form"),
+    daysInput: getElement("#dashboard-sales-period-input"),
+    bestSalesModeSelect: getElement("#dashboard-best-sales-mode-select"),
     salesValue: getElement("#dashboard-sales-value-card"),
     salesCount: getElement("#dashboard-sales-count-card"),
     lowStock: getElement("#dashboard-low-stock"),
     outOfStock: getElement("#dashboard-out-of-stock"),
-    salesButton: getElement("#dashboard-sales-period-button"),
+    refreshButton: getElement("#dashboard-sales-period-button"),
+    trendSummary: getElement("#dashboard-sales-trend-summary"),
+    salesChart: getElement("#dashboard-sales-chart"),
     salesTrendEmpty: getElement("#dashboard-sales-trend-empty"),
+    bestSalesSummary: getElement("#dashboard-best-sales-summary"),
+    bestSalesMetricHeading: getElement("#dashboard-best-sales-metric-heading"),
     bestSalesEmpty: getElement("#dashboard-best-sales-empty"),
     salesDailyTableBody: getElement("#dashboard-sales-daily-table-body"),
     bestSalesTableBody: getElement("#dashboard-best-sales-table-body"),
@@ -83,6 +73,8 @@ export const elements = {
   },
   companies: getListElements("companies", "company"),
   suppliers: getListElements("suppliers", "supplier"),
+  restocks: getOperationElements("restocks", "restock"),
+  sales: getOperationElements("sales", "sale"),
 };
 
 function getListElements(key, singular) {
@@ -104,6 +96,31 @@ function getListElements(key, singular) {
     form: getElement(`#${singular}-create-form`),
     submitButton: getElement(`#${singular}-create-submit-button`),
     createError: getElement(`#${singular}-create-error`),
+  };
+}
+
+function getOperationElements(key, singular) {
+  return {
+    filterForm: getElement(`#${key}-filter-form`),
+    dateFromInput: getElement(`#${key}-date-from-input`),
+    dateToInput: getElement(`#${key}-date-to-input`),
+    resetButton: getElement(`#${key}-reset-button`),
+    count: getElement(`#${key}-count`),
+    loading: getElement(`#${key}-loading`),
+    error: getElement(`#${key}-error`),
+    empty: getElement(`#${key}-empty`),
+    table: getElement(`#${key}-table`),
+    tableBody: getElement(`#${key}-table-body`),
+    pagination: getElement(`#${key}-pagination`),
+    previousPageButton: getElement(`#${key}-previous-page-button`),
+    nextPageButton: getElement(`#${key}-next-page-button`),
+    pageSummary: getElement(`#${key}-page-summary`),
+    modal: getElement(`#${singular}-create-modal`),
+    form: getElement(`#${singular}-create-form`),
+    submitButton: getElement(`#${singular}-create-submit-button`),
+    createError: getElement(`#${singular}-create-error`),
+    addLineButton: getElement(`#${singular}-create-add-line-button`),
+    linesContainer: getElement(`#${singular}-create-lines`),
   };
 }
 

@@ -2,7 +2,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Literal, TypeVar
 
 from pydantic import BaseModel
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, outerjoin, select
 from sqlalchemy.orm import Session
 
 from app.models import Product, ProductSupplier, Sale, SaleLine
@@ -66,17 +66,39 @@ def build_summaries(
         .where(Sale.created_at >= start_of_today, Sale.created_at < start_of_tomorrow)
         .scalar_subquery()
     )
+
+    product_stock_summary = (
+        select(
+            ProductSupplier.product_id.label("product_id"),
+            func.coalesce(func.sum(ProductSupplier.quantity), 0).label(
+                "total_quantity"
+            ),
+        )
+        .group_by(ProductSupplier.product_id)
+        .subquery()
+    )
+    total_quantity = func.coalesce(product_stock_summary.c.total_quantity, 0)
     low_stock_subquery = (
-        select(func.count(func.distinct(ProductSupplier.id)))
+        select(func.count(ProductSupplier.id))
+        .select_from(Product)
+        .outerjoin(
+            product_stock_summary,
+            product_stock_summary.c.product_id == Product.id,
+        )
         .where(
-            ProductSupplier.quantity > 0,
-            ProductSupplier.quantity <= ProductSupplier.low_stock_threshold,
+            total_quantity > 0,
+            total_quantity <= Product.low_stock_threshold,
         )
         .scalar_subquery()
     )
     out_of_stock_subquery = (
-        select(func.count(func.distinct(ProductSupplier.id)))
-        .where(ProductSupplier.quantity == 0)
+        select(func.count(ProductSupplier.id))
+        .select_from(Product)
+        .outerjoin(
+            product_stock_summary,
+            product_stock_summary.c.product_id == Product.id,
+        )
+        .where(total_quantity == 0)
         .scalar_subquery()
     )
 

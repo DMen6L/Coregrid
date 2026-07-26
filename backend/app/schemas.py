@@ -163,10 +163,10 @@ class ProductResponse(BaseModel):
     created_at: datetime
 
     company_id: int
-    company_name: str | None = None
+    company_name: str
     quantity_unit: str
     low_stock_threshold: int
-    tags: list[TagResponse] = Field(default_factory=list)
+    # tags: list[TagResponse] = Field(default_factory=list)
     supplier_links: list[ProductSupplierResponse] = Field(default_factory=list)
 
 
@@ -228,11 +228,6 @@ class RestockLineCreate(BaseModel):
         default=None,
         ge=0,
     )
-    quantity_unit_snapshot: QuantityUnit | None = Field(
-        default=None,
-        min_length=1,
-        max_length=QUANTITY_UNIT_MAX_LENGTH,
-    )
 
 
 class RestockCreate(BaseModel):
@@ -259,11 +254,11 @@ class RestockLineResponse(BaseModel):
     id: int
     product_supplier_id: int
     product_id: int
-    product_name: str | None = None
+    product_name: str
     supplier_id: int
     supplier_name: str | None = None
     restock_quantity: int
-    unit_cost_snapshot: int | None
+    unit_cost_snapshot: int
     quantity_unit_snapshot: str
 
 
@@ -309,7 +304,7 @@ class SaleLineResponse(BaseModel):
     supplier_id: int
     supplier_name: str | None = None
     sale_quantity: int
-    unit_cost_snapshot: int | None
+    unit_cost_snapshot: int
     unit_sale_price_snapshot: int | None
     quantity_unit_snapshot: str
 
