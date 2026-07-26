@@ -700,21 +700,34 @@ function createRestockRow(restock) {
 
 function createSaleRow(sale) {
   const row = document.createElement("tr");
-  const lines = normalizeLines(sale.lines);
-  const revenue = lines.reduce(
-    (total, line) => total + Number(line.sale_quantity || 0) * Number(line.unit_sale_price_snapshot || 0),
-    0,
-  );
 
   row.append(
-    createOperationSummaryCell(sale, lines, "Продажа"),
+    createSaleSummaryCell(sale),
     createDateCell(sale.created_at),
-    createOperationLinesCell(lines, "sale"),
-    createMoneyCell(revenue),
+    createLineCountCell(sale.lines_count),
+    createMoneyCell(sale.revenue),
     createNoteCell(sale.note),
   );
 
   return row;
+}
+
+function createSaleSummaryCell(sale) {
+  const cell = document.createElement("td");
+  const title = document.createElement("div");
+
+  cell.className = "sale-summary-cell";
+  title.className = "fw-semibold";
+  title.textContent = `Продажа #${formatCount(sale.id)}`;
+  cell.append(title);
+  return cell;
+}
+
+function createLineCountCell(value) {
+  const cell = document.createElement("td");
+
+  cell.textContent = `${formatCount(value)} позиций`;
+  return cell;
 }
 
 function createOperationSummaryCell(operation, lines, label) {
@@ -760,7 +773,6 @@ function createOperationLinesCell(lines, kind) {
     meta.className = kind === "sale" ? "sale-meta" : "restock-meta";
     meta.textContent = [
       line.supplier_name || `Поставщик #${formatCount(line.supplier_id)}`,
-      `Связь #${formatCount(line.product_supplier_id)}`,
       formatQuantity(quantity, line.quantity_unit_snapshot),
     ].join(" | ");
     lineElement.append(title, meta);

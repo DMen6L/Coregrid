@@ -132,8 +132,10 @@ class Company(Base):
     __tablename__ = "companies"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    iin: Mapped[str] = mapped_column(
+    iin: Mapped[str | None] = mapped_column(
         String(12),
+        default=None,
+        nullable=True,
     )
     name: Mapped[str] = mapped_column(
         String(255),

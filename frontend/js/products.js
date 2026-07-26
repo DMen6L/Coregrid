@@ -300,7 +300,7 @@ function getInlineCompanyPayload() {
 
   return {
     name: getText(formData, "new_company_name"),
-    iin: getText(formData, "new_company_iin"),
+    iin: getOptionalText(formData, "new_company_iin"),
   };
 }
 
@@ -474,6 +474,10 @@ function getCheckedValue(inputs) {
 
 function getText(formData, key) {
   return String(formData.get(key) || "").trim();
+}
+
+function getOptionalText(formData, key) {
+  return getText(formData, key) || null;
 }
 
 function getNumber(formData, key) {

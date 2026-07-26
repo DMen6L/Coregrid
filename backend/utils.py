@@ -2,7 +2,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Literal, TypeVar
 
 from pydantic import BaseModel
-from sqlalchemy import Select, func, outerjoin, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.models import Product, ProductSupplier, Sale, SaleLine, Supplier
@@ -17,6 +17,7 @@ from devs import DbSession
 
 
 OrmT = TypeVar("OrmT")
+AggregateRowT = TypeVar("AggregateRowT", bound=tuple[object, ...])
 ResponseT = TypeVar("ResponseT", bound=BaseModel)
 
 BestSalesMode = Literal[
@@ -232,7 +233,7 @@ def paginate(
 
 def aggr_paginate(
     db: Session,
-    statement: Select[tuple[OrmT]],
+    statement: Select[AggregateRowT],
     count_statement: Select[tuple[int]],
     page: int,
     page_size: int,

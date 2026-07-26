@@ -6,16 +6,16 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.models import ProductSupplier, Sale, SaleLine
-from app.schemas import PaginatedResponse, SaleCreate, SaleResponse
+from app.schemas import PaginatedResponse, SaleCreate, SaleResponse, SaleSummaryResponse
 from devs import DbSession
 from errors import commit_or_raise
-from utils import paginate
+from utils import aggr_paginate, paginate
 
 
 router = APIRouter(prefix="/sales", tags=["sales"])
 
 
-@router.get("", response_model=PaginatedResponse[SaleResponse], status_code=200)
+@router.get("", response_model=PaginatedResponse[SaleSummaryResponse], status_code=200)
 def get_sales(
     db: DbSession,
     date_from: Annotated[date | None, Query(alias="from")] = None,
@@ -24,15 +24,19 @@ def get_sales(
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
     statement = (
-        select(Sale)
-        .options(
-            selectinload(Sale.lines)
-            .selectinload(SaleLine.product_supplier)
-            .selectinload(ProductSupplier.product),
-            selectinload(Sale.lines)
-            .selectinload(SaleLine.product_supplier)
-            .selectinload(ProductSupplier.supplier),
+        select(
+            Sale.id.label("id"),
+            Sale.note.label("note"),
+            Sale.created_at.label("created_at"),
+            func.coalesce(
+                func.sum(SaleLine.sale_quantity * SaleLine.unit_sale_price_snapshot),
+                0,
+            ).label("revenue"),
+            func.count(SaleLine.id).label("lines_count"),
         )
+        .select_from(Sale)
+        .join(Sale.lines)
+        .group_by(Sale.id, Sale.note, Sale.created_at)
         .order_by(Sale.created_at.desc(), Sale.id.desc())
     )
     count_statement = select(func.count(Sale.id)).select_from(Sale)
@@ -55,13 +59,13 @@ def get_sales(
             Sale.created_at < end_datetime,
         )
 
-    return paginate(
+    return aggr_paginate(
         db=db,
         statement=statement,
         count_statement=count_statement,
         page=page,
         page_size=page_size,
-        response_schema=SaleResponse,
+        response_schema=SaleSummaryResponse,
     )
 
 

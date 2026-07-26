@@ -84,7 +84,7 @@ export function getCompanyCreatePayload(form = elements.companies.form) {
 
   return {
     name: getText(formData, "name"),
-    iin: getText(formData, "iin"),
+    iin: getOptionalText(formData, "iin"),
   };
 }
 
@@ -95,6 +95,10 @@ function resetCompanyCreateForm() {
 
 function getText(formData, key) {
   return String(formData.get(key) || "").trim();
+}
+
+function getOptionalText(formData, key) {
+  return getText(formData, key) || null;
 }
 
 function hideModal(modalElement) {

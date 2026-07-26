@@ -64,14 +64,14 @@ class UpdateValidator(BaseModel):
 
 class CompanyCreate(BaseModel):
     name: Name
-    iin: IIN
+    iin: IIN | None = None
 
 
 class CompanyResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     name: str
-    iin: str
+    iin: str | None = None
 
 
 class CompanyUpdate(UpdateValidator):
@@ -316,6 +316,16 @@ class SaleResponse(BaseModel):
     note: str | None
     created_at: datetime
     lines: list[SaleLineResponse]
+
+
+class SaleSummaryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    note: str | None
+    created_at: datetime
+    revenue: int
+    lines_count: int
 
 
 class DailySalesResponse(BaseModel):
