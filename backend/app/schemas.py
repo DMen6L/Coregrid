@@ -271,6 +271,16 @@ class RestockResponse(BaseModel):
     lines: list[RestockLineResponse]
 
 
+class RestockSummaryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    note: str | None
+    created_at: datetime
+    costs: int
+    lines_count: int
+
+
 class SaleLineCreate(BaseModel):
     product_supplier_id: int = Field(gt=0)
     sale_quantity: int = Field(gt=0)
@@ -300,12 +310,12 @@ class SaleLineResponse(BaseModel):
     id: int
     product_supplier_id: int
     product_id: int
-    product_name: str | None = None
+    product_name: str
     supplier_id: int
-    supplier_name: str | None = None
+    supplier_name: str
     sale_quantity: int
     unit_cost_snapshot: int
-    unit_sale_price_snapshot: int | None
+    unit_sale_price_snapshot: int
     quantity_unit_snapshot: str
 
 

@@ -1,4 +1,4 @@
-import { FIRST_PAGE, createRestock, getRestocks } from "./api.js";
+import { FIRST_PAGE, createRestock, getRestock, getRestocks } from "./api.js";
 import { elements } from "./dom.js";
 import { getCreateErrorMessage, getRequestErrorMessage } from "./format.js";
 import {
@@ -6,7 +6,7 @@ import {
   createOperationLineElement,
   validateOperationLines,
 } from "./operationLinePicker.js";
-import { renderRestocks, setCreateError, setSubmitting } from "./render.js";
+import { renderRestockDetail, renderRestocks, setCreateError, setSubmitting } from "./render.js";
 import { applyPage, resetPage, state } from "./state.js";
 import { loadDashboard } from "./dashboard.js";
 import { loadProducts } from "./products.js";
@@ -38,6 +38,27 @@ export function bindRestocksFeature() {
   elements.restocks.nextPageButton.addEventListener("click", () => {
     if (!elements.restocks.nextPageButton.disabled) {
       loadRestocks({ page: state.restocks.page + 1 });
+    }
+  });
+
+  elements.restocks.tableBody.addEventListener("click", (event) => {
+    const restockId = getRestockIdFromEvent(event);
+
+    if (restockId !== null) {
+      openRestockDetail(restockId);
+    }
+  });
+
+  elements.restocks.tableBody.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    const restockId = getRestockIdFromEvent(event);
+
+    if (restockId !== null) {
+      event.preventDefault();
+      openRestockDetail(restockId);
     }
   });
 
@@ -77,6 +98,10 @@ export function bindRestocksFeature() {
       resetRestockCreateForm();
     }
   });
+
+  elements.restocks.detailModal.addEventListener("hidden.bs.modal", () => {
+    resetRestockDetail();
+  });
 }
 
 export async function loadRestocks({
@@ -106,6 +131,37 @@ export async function loadRestocks({
 
 function addRestockLine() {
   elements.restocks.linesContainer.append(createRestockLineElement());
+}
+
+async function openRestockDetail(restockId) {
+  state.restockDetail.id = restockId;
+  state.restockDetail.data = null;
+  state.restockDetail.error = "";
+  state.restockDetail.isLoading = true;
+  renderRestockDetail();
+  showModal(elements.restocks.detailModal);
+
+  try {
+    const restock = await getRestock(restockId);
+
+    if (state.restockDetail.id !== restockId) {
+      return;
+    }
+
+    state.restockDetail.data = restock;
+  } catch (error) {
+    if (state.restockDetail.id !== restockId) {
+      return;
+    }
+
+    console.error("Could not load restock detail:", error);
+    state.restockDetail.error = getRequestErrorMessage(error, "детали пополнения");
+  } finally {
+    if (state.restockDetail.id === restockId) {
+      state.restockDetail.isLoading = false;
+      renderRestockDetail();
+    }
+  }
 }
 
 function createRestockLineElement() {
@@ -204,6 +260,23 @@ function resetRestockCreateForm() {
   setCreateError(elements.restocks.createError);
 }
 
+function resetRestockDetail() {
+  state.restockDetail.data = null;
+  state.restockDetail.id = null;
+  state.restockDetail.error = "";
+  state.restockDetail.isLoading = false;
+  renderRestockDetail();
+}
+
+function getRestockIdFromEvent(event) {
+  const row = event.target instanceof Element
+    ? event.target.closest("[data-restock-id]")
+    : null;
+  const restockId = Number(row?.dataset.restockId || 0);
+
+  return Number.isInteger(restockId) && restockId > 0 ? restockId : null;
+}
+
 function getText(formData, key) {
   return String(formData.get(key) || "").trim();
 }
@@ -219,4 +292,8 @@ function getOptionalNumber(formData, key) {
 
 function hideModal(modalElement) {
   window.bootstrap?.Modal.getOrCreateInstance(modalElement).hide();
+}
+
+function showModal(modalElement) {
+  window.bootstrap?.Modal.getOrCreateInstance(modalElement).show();
 }

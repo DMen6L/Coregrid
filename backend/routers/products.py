@@ -5,6 +5,7 @@ from sqlalchemy import String, case, func, select
 from sqlalchemy.dialects.postgresql import aggregate_order_by, array
 from sqlalchemy.orm import selectinload
 
+from app import tags
 from app.models import Company, Product, ProductSupplier, Supplier, Tag
 from app.pricing import calculate_floor_price
 from app.schemas import (
@@ -14,6 +15,7 @@ from app.schemas import (
     ProductSummaryResponse,
     ProductSupplierCreate,
     ProductSupplierResponse,
+    ProductUpdate,
 )
 from app.tags import get_or_create_tags
 from devs import DbSession
@@ -271,3 +273,43 @@ def add_supplier_links(
     ).all()
 
     return created_supplier_links
+
+
+@router.patch(
+    "/{product_id}",
+    response_model=ProductResponse,
+    status_code=status.HTTP_200_OK,
+)
+def patch_product(
+    db: DbSession, product_id: Annotated[int, Path(gt=0)], patch_data: ProductUpdate
+):
+    statement = (
+        select(Product)
+        .options(
+            selectinload(Product.company),
+            selectinload(Product.supplier_links).selectinload(ProductSupplier.supplier),
+        )
+        .where(Product.id == product_id)
+    )
+
+    product = db.scalars(statement).one_or_none()
+
+    if product is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No product with such id exists.",
+        )
+
+    update_data = patch_data.model_dump(exclude_unset=True)
+    tag_names = update_data.pop("tags", None)
+
+    for field, value in update_data.items():
+        setattr(product, field, value)
+
+    if tag_names is not None:
+        product.tags = get_or_create_tags(db, tag_names)
+
+    commit_or_raise(db)
+    db.refresh(product)
+
+    return product

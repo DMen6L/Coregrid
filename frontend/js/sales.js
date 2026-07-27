@@ -1,4 +1,4 @@
-import { FIRST_PAGE, createSale, getSales } from "./api.js";
+import { FIRST_PAGE, createSale, getSale, getSales } from "./api.js";
 import { elements } from "./dom.js";
 import { getCreateErrorMessage, getRequestErrorMessage } from "./format.js";
 import {
@@ -6,7 +6,7 @@ import {
   createOperationLineElement,
   validateOperationLines,
 } from "./operationLinePicker.js";
-import { renderSales, setCreateError, setSubmitting } from "./render.js";
+import { renderSaleDetail, renderSales, setCreateError, setSubmitting } from "./render.js";
 import { applyPage, resetPage, state } from "./state.js";
 import { loadDashboard } from "./dashboard.js";
 import { loadProducts } from "./products.js";
@@ -38,6 +38,27 @@ export function bindSalesFeature() {
   elements.sales.nextPageButton.addEventListener("click", () => {
     if (!elements.sales.nextPageButton.disabled) {
       loadSales({ page: state.sales.page + 1 });
+    }
+  });
+
+  elements.sales.tableBody.addEventListener("click", (event) => {
+    const saleId = getSaleIdFromEvent(event);
+
+    if (saleId !== null) {
+      openSaleDetail(saleId);
+    }
+  });
+
+  elements.sales.tableBody.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    const saleId = getSaleIdFromEvent(event);
+
+    if (saleId !== null) {
+      event.preventDefault();
+      openSaleDetail(saleId);
     }
   });
 
@@ -77,6 +98,10 @@ export function bindSalesFeature() {
       resetSaleCreateForm();
     }
   });
+
+  elements.sales.detailModal.addEventListener("hidden.bs.modal", () => {
+    resetSaleDetail();
+  });
 }
 
 export async function loadSales({
@@ -106,6 +131,37 @@ export async function loadSales({
 
 function addSaleLine() {
   elements.sales.linesContainer.append(createSaleLineElement());
+}
+
+async function openSaleDetail(saleId) {
+  state.saleDetail.id = saleId;
+  state.saleDetail.data = null;
+  state.saleDetail.error = "";
+  state.saleDetail.isLoading = true;
+  renderSaleDetail();
+  showModal(elements.sales.detailModal);
+
+  try {
+    const sale = await getSale(saleId);
+
+    if (state.saleDetail.id !== saleId) {
+      return;
+    }
+
+    state.saleDetail.data = sale;
+  } catch (error) {
+    if (state.saleDetail.id !== saleId) {
+      return;
+    }
+
+    console.error("Could not load sale detail:", error);
+    state.saleDetail.error = getRequestErrorMessage(error, "детали продажи");
+  } finally {
+    if (state.saleDetail.id === saleId) {
+      state.saleDetail.isLoading = false;
+      renderSaleDetail();
+    }
+  }
 }
 
 function createSaleLineElement() {
@@ -196,6 +252,23 @@ function resetSaleCreateForm() {
   setCreateError(elements.sales.createError);
 }
 
+function resetSaleDetail() {
+  state.saleDetail.data = null;
+  state.saleDetail.id = null;
+  state.saleDetail.error = "";
+  state.saleDetail.isLoading = false;
+  renderSaleDetail();
+}
+
+function getSaleIdFromEvent(event) {
+  const row = event.target instanceof Element
+    ? event.target.closest("[data-sale-id]")
+    : null;
+  const saleId = Number(row?.dataset.saleId || 0);
+
+  return Number.isInteger(saleId) && saleId > 0 ? saleId : null;
+}
+
 function getText(formData, key) {
   return String(formData.get(key) || "").trim();
 }
@@ -206,4 +279,8 @@ function getNumber(formData, key) {
 
 function hideModal(modalElement) {
   window.bootstrap?.Modal.getOrCreateInstance(modalElement).hide();
+}
+
+function showModal(modalElement) {
+  window.bootstrap?.Modal.getOrCreateInstance(modalElement).show();
 }

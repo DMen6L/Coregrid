@@ -5,7 +5,9 @@ import {
   createProduct,
   createProductSupplierLinks,
   createSupplier,
+  getProduct,
   getProducts,
+  patchProduct,
 } from "./api.js";
 import { elements } from "./dom.js";
 import {
@@ -15,6 +17,7 @@ import {
 } from "./format.js";
 import {
   renderLookup,
+  renderProductDetail,
   renderProductCreateMode,
   renderProducts,
   setAppMessage,
@@ -53,6 +56,54 @@ export function bindProductsFeature() {
     }
   });
 
+  elements.products.tableBody.addEventListener("click", (event) => {
+    const productId = getProductIdFromEvent(event);
+
+    if (productId !== null) {
+      openProductDetail(productId);
+    }
+  });
+
+  elements.products.tableBody.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    const productId = getProductIdFromEvent(event);
+
+    if (productId !== null) {
+      event.preventDefault();
+      openProductDetail(productId);
+    }
+  });
+
+  elements.products.detailEditButton.addEventListener("click", () => {
+    state.productDetail.isEditing = true;
+    state.productDetail.editError = "";
+    renderProductDetail();
+    elements.products.detailEditNameInput.focus();
+  });
+
+  elements.products.detailCancelEditButton.addEventListener("click", () => {
+    state.productDetail.isEditing = false;
+    state.productDetail.editError = "";
+    renderProductDetail();
+  });
+
+  elements.products.detailEditForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    if (!elements.products.detailEditForm.reportValidity() || state.productDetail.isSubmitting) {
+      return;
+    }
+
+    submitProductDetailEdit();
+  });
+
+  elements.products.detailModal.addEventListener("hidden.bs.modal", () => {
+    resetProductDetail();
+  });
+
   bindProductCreateForm();
   bindCompanyLookup();
   bindSupplierLookup();
@@ -75,6 +126,92 @@ export async function loadProducts(searchTerm = "", page = FIRST_PAGE) {
   } finally {
     state.products.isLoading = false;
     renderProducts();
+  }
+}
+
+async function openProductDetail(productId) {
+  state.productDetail.id = productId;
+  state.productDetail.summary = getProductSummary(productId);
+  state.productDetail.data = null;
+  state.productDetail.error = "";
+  state.productDetail.editError = "";
+  state.productDetail.isEditing = false;
+  state.productDetail.isSubmitting = false;
+  state.productDetail.isLoading = true;
+  renderProductDetail();
+  showModal(elements.products.detailModal);
+
+  try {
+    const product = await getProduct(productId);
+
+    if (state.productDetail.id !== productId) {
+      return;
+    }
+
+    state.productDetail.data = product;
+  } catch (error) {
+    if (state.productDetail.id !== productId) {
+      return;
+    }
+
+    console.error("Could not load product detail:", error);
+    state.productDetail.error = getRequestErrorMessage(error, "детали товара");
+  } finally {
+    if (state.productDetail.id === productId) {
+      state.productDetail.isLoading = false;
+      renderProductDetail();
+    }
+  }
+}
+
+async function submitProductDetailEdit() {
+  const productId = state.productDetail.id;
+
+  if (!productId) {
+    return;
+  }
+
+  const payload = getProductDetailEditPayload();
+
+  state.productDetail.isSubmitting = true;
+  state.productDetail.editError = "";
+  renderProductDetail();
+
+  try {
+    const product = await patchProduct(productId, payload);
+
+    if (state.productDetail.id !== productId) {
+      return;
+    }
+
+    state.productDetail.data = product;
+    state.productDetail.isEditing = false;
+
+    try {
+      await Promise.all([
+        loadDashboard(),
+        loadProducts(state.products.searchTerm, state.products.page),
+      ]);
+      state.productDetail.summary = getProductSummary(productId);
+    } catch (refreshError) {
+      console.error("Could not refresh products after product update:", refreshError);
+      setAppMessage(
+        "Товар обновлен, но список не удалось обновить автоматически.",
+        "warning",
+      );
+    }
+  } catch (error) {
+    if (state.productDetail.id !== productId) {
+      return;
+    }
+
+    console.error("Could not update product:", error);
+    state.productDetail.editError = getCreateErrorMessage(error, "товар");
+  } finally {
+    if (state.productDetail.id === productId) {
+      state.productDetail.isSubmitting = false;
+      renderProductDetail();
+    }
   }
 }
 
@@ -432,6 +569,41 @@ function resetProductCreateForm() {
   renderLookup({ kind: "supplier" });
 }
 
+function resetProductDetail() {
+  state.productDetail.data = null;
+  state.productDetail.summary = null;
+  state.productDetail.id = null;
+  state.productDetail.error = "";
+  state.productDetail.editError = "";
+  state.productDetail.isEditing = false;
+  state.productDetail.isSubmitting = false;
+  state.productDetail.isLoading = false;
+  renderProductDetail();
+}
+
+function getProductDetailEditPayload() {
+  const formData = new FormData(elements.products.detailEditForm);
+
+  return {
+    name: getText(formData, "name"),
+    quantity_unit: getText(formData, "quantity_unit") || DEFAULT_QUANTITY_UNIT,
+    low_stock_threshold: getNumber(formData, "low_stock_threshold"),
+  };
+}
+
+function getProductIdFromEvent(event) {
+  const row = event.target instanceof Element
+    ? event.target.closest("[data-product-id]")
+    : null;
+  const productId = Number(row?.dataset.productId || 0);
+
+  return Number.isInteger(productId) && productId > 0 ? productId : null;
+}
+
+function getProductSummary(productId) {
+  return state.products.items.find((product) => Number(product.id) === productId) || null;
+}
+
 function syncProductCreateMode() {
   state.productCreate.companyMode = getCheckedValue(elements.products.companyModeInputs);
   state.productCreate.supplierMode = getCheckedValue(elements.products.supplierModeInputs);
@@ -507,4 +679,8 @@ function createLocalValidationError(message) {
 
 function hideModal(modalElement) {
   window.bootstrap?.Modal.getOrCreateInstance(modalElement).hide();
+}
+
+function showModal(modalElement) {
+  window.bootstrap?.Modal.getOrCreateInstance(modalElement).show();
 }

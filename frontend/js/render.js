@@ -137,6 +137,78 @@ export function renderProducts() {
   elements.products.tableBody.append(fragment);
 }
 
+export function renderProductDetail() {
+  const detail = state.productDetail;
+  const product = detail.data;
+  const summary = detail.summary;
+  const supplierLinks = normalizeProductSupplierLinks(product?.supplier_links);
+  const tags = getProductDetailTags(product, summary);
+  const shouldShowContent = Boolean(product) && !detail.isLoading && !detail.error;
+  const isEditing = shouldShowContent && detail.isEditing;
+  const totalQuantity = supplierLinks.length
+    ? getProductDetailTotalQuantity(supplierLinks)
+    : Number(summary?.total_quantity || 0);
+  const unit = getProductUnit(product || summary || {});
+
+  elements.products.detailTitle.textContent = product
+    ? product.name || `Товар #${formatCount(product.id)}`
+    : "Товар";
+  elements.products.detailLoading.classList.toggle("d-none", !detail.isLoading);
+  elements.products.detailError.textContent = detail.error;
+  elements.products.detailError.classList.toggle("d-none", !detail.error);
+  elements.products.detailContent.classList.toggle("d-none", !shouldShowContent);
+  elements.products.detailEditError.textContent = detail.editError;
+  elements.products.detailEditError.classList.toggle("d-none", !detail.editError);
+  elements.products.detailEditButton.classList.toggle("d-none", !shouldShowContent || isEditing);
+  elements.products.detailView.classList.toggle("d-none", isEditing);
+  elements.products.detailEditForm.classList.toggle("d-none", !isEditing);
+  elements.products.detailCancelEditButton.classList.toggle("d-none", !isEditing);
+  elements.products.detailSaveButton.classList.toggle("d-none", !isEditing);
+  elements.products.detailSaveButton.disabled = detail.isSubmitting;
+  elements.products.detailCancelEditButton.disabled = detail.isSubmitting;
+  elements.products.detailCloseButton.disabled = detail.isSubmitting;
+  elements.products.detailSuppliersEmpty.classList.toggle(
+    "d-none",
+    !shouldShowContent || supplierLinks.length > 0,
+  );
+  elements.products.detailSuppliersTable.classList.toggle(
+    "d-none",
+    !shouldShowContent || supplierLinks.length === 0,
+  );
+  elements.products.detailSuppliersBody.replaceChildren();
+
+  for (const control of elements.products.detailEditForm.elements) {
+    if ("disabled" in control) {
+      control.disabled = detail.isSubmitting;
+    }
+  }
+
+  if (!shouldShowContent) {
+    return;
+  }
+
+  elements.products.detailId.textContent = formatCount(product.id);
+  elements.products.detailCreatedAt.textContent = formatDateTime(product.created_at);
+  elements.products.detailCompany.textContent = product.company_name || "Компания не указана";
+  elements.products.detailUnit.textContent = unit;
+  elements.products.detailThreshold.textContent = formatQuantity(product.low_stock_threshold, unit);
+  elements.products.detailTotalQuantity.textContent = formatQuantity(totalQuantity, unit);
+  elements.products.detailSupplierCount.textContent = `${formatCount(supplierLinks.length)} поставщиков`;
+  renderProductDetailTags(tags);
+
+  elements.products.detailEditNameInput.value = product.name || "";
+  elements.products.detailEditUnitInput.value = unit;
+  elements.products.detailEditThresholdInput.value = String(product.low_stock_threshold ?? 0);
+
+  const fragment = document.createDocumentFragment();
+
+  for (const supplierLink of supplierLinks) {
+    fragment.append(createProductSupplierDetailRow(supplierLink, unit));
+  }
+
+  elements.products.detailSuppliersBody.append(fragment);
+}
+
 export function renderCompanies() {
   renderSimpleList({
     elementsGroup: elements.companies,
@@ -170,6 +242,44 @@ export function renderRestocks() {
   });
 }
 
+export function renderRestockDetail() {
+  const detail = state.restockDetail;
+  const restock = detail.data;
+  const lines = normalizeRestockLines(restock?.lines);
+  const shouldShowContent = Boolean(restock) && !detail.isLoading && !detail.error;
+  const shouldShowLines = shouldShowContent && lines.length > 0;
+
+  elements.restocks.detailTitle.textContent = restock
+    ? `Пополнение #${formatCount(restock.id)}`
+    : "Пополнение";
+  elements.restocks.detailLoading.classList.toggle("d-none", !detail.isLoading);
+  elements.restocks.detailError.textContent = detail.error;
+  elements.restocks.detailError.classList.toggle("d-none", !detail.error);
+  elements.restocks.detailContent.classList.toggle("d-none", !shouldShowContent);
+  elements.restocks.detailLinesEmpty.classList.toggle("d-none", !shouldShowContent || shouldShowLines);
+  elements.restocks.detailLinesTable.classList.toggle("d-none", !shouldShowLines);
+  elements.restocks.detailLinesBody.replaceChildren();
+
+  if (!shouldShowContent) {
+    return;
+  }
+
+  elements.restocks.detailId.textContent = formatCount(restock.id);
+  elements.restocks.detailCreatedAt.textContent = formatDateTime(restock.created_at);
+  elements.restocks.detailLinesCount.textContent = `${formatCount(lines.length)} позиций`;
+  elements.restocks.detailCosts.textContent = formatCurrency(getRestockLinesCost(lines));
+  elements.restocks.detailNote.textContent = String(restock.note || "").trim() || "Без комментария";
+  elements.restocks.detailNote.classList.toggle("text-secondary", !String(restock.note || "").trim());
+
+  const fragment = document.createDocumentFragment();
+
+  for (const line of lines) {
+    fragment.append(createRestockDetailLineRow(line));
+  }
+
+  elements.restocks.detailLinesBody.append(fragment);
+}
+
 export function renderSales() {
   renderOperationList({
     elementsGroup: elements.sales,
@@ -179,6 +289,49 @@ export function renderSales() {
     emptyFiltered: "За выбранный период продажи не найдены.",
     createRow: createSaleRow,
   });
+}
+
+export function renderSaleDetail() {
+  const detail = state.saleDetail;
+  const sale = detail.data;
+  const lines = normalizeSaleLines(sale?.lines);
+  const shouldShowContent = Boolean(sale) && !detail.isLoading && !detail.error;
+  const shouldShowLines = shouldShowContent && lines.length > 0;
+  const note = String(sale?.note || "").trim();
+  const costs = getSaleLinesCost(lines);
+  const revenue = getSaleLinesRevenue(lines);
+
+  elements.sales.detailTitle.textContent = sale
+    ? `Продажа #${formatCount(sale.id)}`
+    : "Продажа";
+  elements.sales.detailLoading.classList.toggle("d-none", !detail.isLoading);
+  elements.sales.detailError.textContent = detail.error;
+  elements.sales.detailError.classList.toggle("d-none", !detail.error);
+  elements.sales.detailContent.classList.toggle("d-none", !shouldShowContent);
+  elements.sales.detailLinesEmpty.classList.toggle("d-none", !shouldShowContent || shouldShowLines);
+  elements.sales.detailLinesTable.classList.toggle("d-none", !shouldShowLines);
+  elements.sales.detailLinesBody.replaceChildren();
+
+  if (!shouldShowContent) {
+    return;
+  }
+
+  elements.sales.detailId.textContent = formatCount(sale.id);
+  elements.sales.detailCreatedAt.textContent = formatDateTime(sale.created_at);
+  elements.sales.detailLinesCount.textContent = `${formatCount(lines.length)} позиций`;
+  elements.sales.detailRevenue.textContent = formatCurrency(revenue);
+  elements.sales.detailCosts.textContent = formatCurrency(costs);
+  elements.sales.detailProfit.textContent = formatCurrency(revenue - costs);
+  elements.sales.detailNote.textContent = note || "Без комментария";
+  elements.sales.detailNote.classList.toggle("text-secondary", !note);
+
+  const fragment = document.createDocumentFragment();
+
+  for (const line of lines) {
+    fragment.append(createSaleDetailLineRow(line));
+  }
+
+  elements.sales.detailLinesBody.append(fragment);
 }
 
 export function renderLookup({ kind }) {
@@ -533,6 +686,11 @@ function renderListChrome(elementsGroup, listState, shouldShowTable, messages) {
 function createProductRow(product) {
   const row = document.createElement("tr");
 
+  row.className = "product-summary-row";
+  row.dataset.productId = String(product.id || "");
+  row.tabIndex = 0;
+  row.setAttribute("role", "button");
+  row.setAttribute("aria-label", `Открыть товар ${product.name || `#${formatCount(product.id)}`}`);
   row.append(
     createProductNameCell(product),
     createStatusCell(product),
@@ -543,6 +701,36 @@ function createProductRow(product) {
   );
 
   return row;
+}
+
+function createProductSupplierDetailRow(supplierLink, unit) {
+  const row = document.createElement("tr");
+
+  row.append(
+    createDetailEntityCell(
+      supplierLink.supplier_name || `Поставщик #${formatCount(supplierLink.supplier_id)}`,
+      `ID ${formatCount(supplierLink.supplier_id)}`,
+      "product-meta",
+    ),
+    createPlainCell(formatQuantity(supplierLink.quantity, unit)),
+    createMoneyCell(supplierLink.purchase_price),
+    createPlainCell(`${formatCount(supplierLink.margin_percent)}%`),
+    createMoneyCell(supplierLink.sale_price),
+    createProductSupplierStatusCell(supplierLink.stock_status),
+  );
+
+  return row;
+}
+
+function createProductSupplierStatusCell(status) {
+  const cell = document.createElement("td");
+  const badge = document.createElement("span");
+  const config = STOCK_STATUS[status] || STOCK_STATUS.none;
+
+  badge.className = `badge status-badge ${config.className}`;
+  badge.textContent = config.label;
+  cell.append(badge);
+  return cell;
 }
 
 function createProductNameCell(product) {
@@ -681,26 +869,108 @@ function createSupplierRow(supplier) {
 
 function createRestockRow(restock) {
   const row = document.createElement("tr");
-  const lines = normalizeLines(restock.lines);
-  const totalCost = lines.reduce(
-    (total, line) => total + Number(line.restock_quantity || 0) * Number(line.unit_cost_snapshot || 0),
-    0,
-  );
 
+  row.className = "restock-summary-row";
+  row.dataset.restockId = String(restock.id || "");
+  row.tabIndex = 0;
+  row.setAttribute("role", "button");
+  row.setAttribute("aria-label", `Открыть пополнение #${formatCount(restock.id)}`);
   row.append(
-    createOperationSummaryCell(restock, lines, "Пополнение"),
+    createRestockSummaryCell(restock),
     createDateCell(restock.created_at),
-    createOperationLinesCell(lines, "restock"),
-    createMoneyCell(totalCost),
+    createLineCountCell(restock.lines_count),
+    createMoneyCell(restock.costs),
     createNoteCell(restock.note),
   );
 
   return row;
 }
 
+function createRestockDetailLineRow(line) {
+  const row = document.createElement("tr");
+  const quantity = Number(line.restock_quantity || 0);
+  const unitCost = Number(line.unit_cost_snapshot || 0);
+
+  row.append(
+    createDetailEntityCell(
+      line.product_name || `Товар #${formatCount(line.product_id)}`,
+      `ID ${formatCount(line.product_id)}`,
+      "restock-meta",
+    ),
+    createDetailEntityCell(
+      line.supplier_name || `Поставщик #${formatCount(line.supplier_id)}`,
+      `ID ${formatCount(line.supplier_id)}`,
+      "restock-meta",
+    ),
+    createPlainCell(formatQuantity(quantity, line.quantity_unit_snapshot)),
+    createMoneyCell(unitCost),
+    createMoneyCell(quantity * unitCost),
+  );
+
+  return row;
+}
+
+function createSaleDetailLineRow(line) {
+  const row = document.createElement("tr");
+  const quantity = Number(line.sale_quantity || 0);
+  const unitCost = Number(line.unit_cost_snapshot || 0);
+  const unitPrice = Number(line.unit_sale_price_snapshot || 0);
+  const revenue = quantity * unitPrice;
+  const cost = quantity * unitCost;
+
+  row.append(
+    createDetailEntityCell(
+      line.product_name || `Товар #${formatCount(line.product_id)}`,
+      `ID ${formatCount(line.product_id)}`,
+      "sale-meta",
+    ),
+    createDetailEntityCell(
+      line.supplier_name || `Поставщик #${formatCount(line.supplier_id)}`,
+      `ID ${formatCount(line.supplier_id)}`,
+      "sale-meta",
+    ),
+    createPlainCell(formatQuantity(quantity, line.quantity_unit_snapshot)),
+    createMoneyCell(unitCost),
+    createMoneyCell(unitPrice),
+    createMoneyCell(revenue),
+    createMoneyCell(revenue - cost),
+  );
+
+  return row;
+}
+
+function createDetailEntityCell(titleText, metaText, metaClassName) {
+  const cell = document.createElement("td");
+  const title = document.createElement("div");
+  const meta = document.createElement("div");
+
+  title.className = "fw-semibold";
+  title.textContent = titleText;
+  meta.className = metaClassName;
+  meta.textContent = metaText;
+  cell.append(title, meta);
+  return cell;
+}
+
+function createRestockSummaryCell(restock) {
+  const cell = document.createElement("td");
+  const title = document.createElement("div");
+
+  cell.className = "restock-summary-cell";
+  title.className = "fw-semibold";
+  title.textContent = `Пополнение #${formatCount(restock.id)}`;
+  cell.append(title);
+  return cell;
+}
+
 function createSaleRow(sale) {
   const row = document.createElement("tr");
 
+  row.className = "sale-summary-row";
+  row.dataset.saleId = String(sale.id || "");
+  row.tabIndex = 0;
+  row.setAttribute("role", "button");
+  row.setAttribute("aria-label", `Открыть продажу #${formatCount(sale.id)}`);
   row.append(
     createSaleSummaryCell(sale),
     createDateCell(sale.created_at),
@@ -730,56 +1000,9 @@ function createLineCountCell(value) {
   return cell;
 }
 
-function createOperationSummaryCell(operation, lines, label) {
-  const cell = document.createElement("td");
-  const title = document.createElement("div");
-  const meta = document.createElement("div");
-
-  cell.className = label === "Продажа" ? "sale-summary-cell" : "restock-summary-cell";
-  title.className = "fw-semibold";
-  title.textContent = `${label} #${formatCount(operation.id)}`;
-  meta.className = label === "Продажа" ? "sale-meta" : "restock-meta";
-  meta.textContent = `${formatCount(lines.length)} позиций`;
-  cell.append(title, meta);
-  return cell;
-}
-
 function createDateCell(value) {
   const cell = document.createElement("td");
   cell.textContent = formatDateTime(value);
-  return cell;
-}
-
-function createOperationLinesCell(lines, kind) {
-  const cell = document.createElement("td");
-
-  if (!lines.length) {
-    cell.textContent = "Нет позиций";
-    cell.className = "text-secondary";
-    return cell;
-  }
-
-  const wrapper = document.createElement("div");
-  wrapper.className = kind === "sale" ? "sale-lines" : "restock-lines";
-
-  for (const line of lines) {
-    const lineElement = document.createElement("div");
-    const title = document.createElement("div");
-    const meta = document.createElement("div");
-    const quantity = kind === "sale" ? line.sale_quantity : line.restock_quantity;
-
-    title.className = "fw-semibold";
-    title.textContent = line.product_name || `Товар #${formatCount(line.product_id)}`;
-    meta.className = kind === "sale" ? "sale-meta" : "restock-meta";
-    meta.textContent = [
-      line.supplier_name || `Поставщик #${formatCount(line.supplier_id)}`,
-      formatQuantity(quantity, line.quantity_unit_snapshot),
-    ].join(" | ");
-    lineElement.append(title, meta);
-    wrapper.append(lineElement);
-  }
-
-  cell.append(wrapper);
   return cell;
 }
 
@@ -787,6 +1010,12 @@ function createMoneyCell(value) {
   const cell = document.createElement("td");
   cell.className = "fw-semibold";
   cell.textContent = formatCurrency(value);
+  return cell;
+}
+
+function createPlainCell(value) {
+  const cell = document.createElement("td");
+  cell.textContent = value;
   return cell;
 }
 
@@ -953,6 +1182,67 @@ function normalizeTags(tags) {
     .filter(Boolean);
 }
 
-function normalizeLines(lines) {
+function normalizeProductSupplierLinks(supplierLinks) {
+  return Array.isArray(supplierLinks) ? supplierLinks : [];
+}
+
+function getProductDetailTags(product, summary) {
+  return normalizeTags(product?.tags || summary?.tags);
+}
+
+function renderProductDetailTags(tags) {
+  elements.products.detailTags.replaceChildren();
+  elements.products.detailTags.classList.toggle("text-secondary", tags.length === 0);
+
+  if (!tags.length) {
+    elements.products.detailTags.textContent = "Без тегов";
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const tag of tags) {
+    const badge = document.createElement("span");
+    badge.className = "badge rounded-pill text-bg-light border";
+    badge.textContent = tag;
+    fragment.append(badge);
+  }
+
+  elements.products.detailTags.append(fragment);
+}
+
+function getProductDetailTotalQuantity(supplierLinks) {
+  return supplierLinks.reduce(
+    (total, supplierLink) => total + Number(supplierLink.quantity || 0),
+    0,
+  );
+}
+
+function normalizeRestockLines(lines) {
   return Array.isArray(lines) ? lines : [];
+}
+
+function normalizeSaleLines(lines) {
+  return Array.isArray(lines) ? lines : [];
+}
+
+function getRestockLinesCost(lines) {
+  return lines.reduce(
+    (total, line) => total + Number(line.restock_quantity || 0) * Number(line.unit_cost_snapshot || 0),
+    0,
+  );
+}
+
+function getSaleLinesCost(lines) {
+  return lines.reduce(
+    (total, line) => total + Number(line.sale_quantity || 0) * Number(line.unit_cost_snapshot || 0),
+    0,
+  );
+}
+
+function getSaleLinesRevenue(lines) {
+  return lines.reduce(
+    (total, line) => total + Number(line.sale_quantity || 0) * Number(line.unit_sale_price_snapshot || 0),
+    0,
+  );
 }

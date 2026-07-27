@@ -1,7 +1,7 @@
 from datetime import date, datetime, time, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Path, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
@@ -15,7 +15,11 @@ from utils import aggr_paginate, paginate
 router = APIRouter(prefix="/sales", tags=["sales"])
 
 
-@router.get("", response_model=PaginatedResponse[SaleSummaryResponse], status_code=200)
+@router.get(
+    "",
+    response_model=PaginatedResponse[SaleSummaryResponse],
+    status_code=status.HTTP_200_OK,
+)
 def get_sales(
     db: DbSession,
     date_from: Annotated[date | None, Query(alias="from")] = None,
@@ -69,6 +73,36 @@ def get_sales(
     )
 
 
+@router.get(
+    "/{sale_id}",
+    response_model=SaleResponse,
+    status_code=status.HTTP_200_OK,
+)
+def get_sale_by_id(db: DbSession, sale_id: Annotated[int, Path(gt=0)]):
+    statement = (
+        select(Sale)
+        .options(
+            selectinload(Sale.lines)
+            .selectinload(SaleLine.product_supplier)
+            .selectinload(ProductSupplier.product),
+            selectinload(Sale.lines)
+            .selectinload(SaleLine.product_supplier)
+            .selectinload(ProductSupplier.supplier),
+        )
+        .where(Sale.id == sale_id)
+    )
+
+    sale = db.scalars(statement).one_or_none()
+
+    if sale is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sale with such id doesn't exist.",
+        )
+
+    return sale
+
+
 @router.post("", response_model=SaleResponse, status_code=201)
 def add_sale(db: DbSession, sale_data: SaleCreate):
     product_supplier_ids = {line.product_supplier_id for line in sale_data.lines}
@@ -76,6 +110,7 @@ def add_sale(db: DbSession, sale_data: SaleCreate):
     product_suppliers = list(
         db.scalars(
             select(ProductSupplier)
+            .options(selectinload(ProductSupplier.product))
             .where(ProductSupplier.id.in_(product_supplier_ids))
             .with_for_update()
         ).all()

@@ -818,6 +818,82 @@
 
     <div
       class="modal fade"
+      id="restock-detail-modal"
+      tabindex="-1"
+      aria-labelledby="restock-detail-modal-title"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title fs-5" id="restock-detail-modal-title">Пополнение</h2>
+            <button
+              class="btn-close"
+              type="button"
+              data-bs-dismiss="modal"
+              aria-label="Закрыть"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <div class="text-secondary py-4" id="restock-detail-loading" aria-live="polite">
+              Загрузка пополнения...
+            </div>
+            <div class="alert alert-danger d-none" id="restock-detail-error" role="alert"></div>
+            <div class="restock-detail-content d-none" id="restock-detail-content">
+              <div class="restock-detail-summary mb-4">
+                <div>
+                  <div class="restock-detail-label">ID</div>
+                  <div class="fw-semibold" id="restock-detail-id">0</div>
+                </div>
+                <div>
+                  <div class="restock-detail-label">Дата</div>
+                  <div class="fw-semibold" id="restock-detail-created-at">Не указано</div>
+                </div>
+                <div>
+                  <div class="restock-detail-label">Позиции</div>
+                  <div class="fw-semibold" id="restock-detail-lines-count">0</div>
+                </div>
+                <div>
+                  <div class="restock-detail-label">Сумма закупки</div>
+                  <div class="fw-semibold" id="restock-detail-costs">0 тг</div>
+                </div>
+              </div>
+
+              <div class="mb-4">
+                <div class="restock-detail-label">Комментарий</div>
+                <div id="restock-detail-note">Без комментария</div>
+              </div>
+
+              <div class="alert alert-light border d-none" id="restock-detail-lines-empty" role="status">
+                В пополнении нет позиций.
+              </div>
+              <div class="table-responsive restock-detail-lines-table" id="restock-detail-lines-table">
+                <table class="table table-hover align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th scope="col">Товар</th>
+                      <th scope="col">Поставщик</th>
+                      <th scope="col">Количество</th>
+                      <th scope="col">Цена закупки</th>
+                      <th scope="col">Сумма</th>
+                    </tr>
+                  </thead>
+                  <tbody id="restock-detail-lines-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">
+              Закрыть
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade"
       id="sale-create-modal"
       tabindex="-1"
       aria-labelledby="sale-create-modal-title"
@@ -871,6 +947,253 @@
               </button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade"
+      id="sale-detail-modal"
+      tabindex="-1"
+      aria-labelledby="sale-detail-modal-title"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title fs-5" id="sale-detail-modal-title">Продажа</h2>
+            <button
+              class="btn-close"
+              type="button"
+              data-bs-dismiss="modal"
+              aria-label="Закрыть"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <div class="text-secondary py-4" id="sale-detail-loading" aria-live="polite">
+              Загрузка продажи...
+            </div>
+            <div class="alert alert-danger d-none" id="sale-detail-error" role="alert"></div>
+            <div class="sale-detail-content d-none" id="sale-detail-content">
+              <div class="sale-detail-summary mb-4">
+                <div>
+                  <div class="sale-detail-label">ID</div>
+                  <div class="fw-semibold" id="sale-detail-id">0</div>
+                </div>
+                <div>
+                  <div class="sale-detail-label">Дата</div>
+                  <div class="fw-semibold" id="sale-detail-created-at">Не указано</div>
+                </div>
+                <div>
+                  <div class="sale-detail-label">Позиции</div>
+                  <div class="fw-semibold" id="sale-detail-lines-count">0</div>
+                </div>
+                <div>
+                  <div class="sale-detail-label">Выручка</div>
+                  <div class="fw-semibold" id="sale-detail-revenue">0 тг</div>
+                </div>
+                <div>
+                  <div class="sale-detail-label">Себестоимость</div>
+                  <div class="fw-semibold" id="sale-detail-costs">0 тг</div>
+                </div>
+                <div>
+                  <div class="sale-detail-label">Валовая прибыль</div>
+                  <div class="fw-semibold" id="sale-detail-profit">0 тг</div>
+                </div>
+              </div>
+
+              <div class="mb-4">
+                <div class="sale-detail-label">Комментарий</div>
+                <div id="sale-detail-note">Без комментария</div>
+              </div>
+
+              <div class="alert alert-light border d-none" id="sale-detail-lines-empty" role="status">
+                В продаже нет позиций.
+              </div>
+              <div class="table-responsive sale-detail-lines-table" id="sale-detail-lines-table">
+                <table class="table table-hover align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th scope="col">Товар</th>
+                      <th scope="col">Поставщик</th>
+                      <th scope="col">Количество</th>
+                      <th scope="col">Закупка</th>
+                      <th scope="col">Продажа</th>
+                      <th scope="col">Выручка</th>
+                      <th scope="col">Прибыль</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sale-detail-lines-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">
+              Закрыть
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade"
+      id="product-detail-modal"
+      tabindex="-1"
+      aria-labelledby="product-detail-modal-title"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title fs-5" id="product-detail-modal-title">Товар</h2>
+            <div class="ms-auto d-flex align-items-center gap-2">
+              <button
+                class="btn btn-sm btn-outline-primary d-none"
+                id="product-detail-edit-button"
+                type="button"
+              >
+                Редактировать
+              </button>
+              <button
+                class="btn-close"
+                type="button"
+                data-bs-dismiss="modal"
+                aria-label="Закрыть"
+              ></button>
+            </div>
+          </div>
+          <div class="modal-body">
+            <div class="text-secondary py-4" id="product-detail-loading" aria-live="polite">
+              Загрузка товара...
+            </div>
+            <div class="alert alert-danger d-none" id="product-detail-error" role="alert"></div>
+            <div class="product-detail-content d-none" id="product-detail-content">
+              <div class="alert alert-danger d-none" id="product-detail-edit-error" role="alert"></div>
+
+              <div id="product-detail-view">
+                <div class="product-detail-summary mb-4">
+                  <div>
+                    <div class="product-detail-label">ID</div>
+                    <div class="fw-semibold" id="product-detail-id">0</div>
+                  </div>
+                  <div>
+                    <div class="product-detail-label">Создан</div>
+                    <div class="fw-semibold" id="product-detail-created-at">Не указано</div>
+                  </div>
+                  <div>
+                    <div class="product-detail-label">Компания</div>
+                    <div class="fw-semibold" id="product-detail-company">Не указана</div>
+                  </div>
+                  <div>
+                    <div class="product-detail-label">Единица</div>
+                    <div class="fw-semibold" id="product-detail-unit">шт</div>
+                  </div>
+                  <div>
+                    <div class="product-detail-label">Порог</div>
+                    <div class="fw-semibold" id="product-detail-threshold">0</div>
+                  </div>
+                  <div>
+                    <div class="product-detail-label">Всего</div>
+                    <div class="fw-semibold" id="product-detail-total-quantity">0</div>
+                  </div>
+                </div>
+
+                <div class="mb-4">
+                  <div class="product-detail-label mb-2">Теги</div>
+                  <div class="product-detail-tags" id="product-detail-tags">Без тегов</div>
+                </div>
+
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                  <h3 class="fs-6 mb-0">Поставщики</h3>
+                  <span class="badge text-bg-secondary" id="product-detail-supplier-count">0 поставщиков</span>
+                </div>
+                <div class="alert alert-light border d-none" id="product-detail-suppliers-empty" role="status">
+                  У товара пока нет поставщиков.
+                </div>
+                <div class="table-responsive product-detail-suppliers-table" id="product-detail-suppliers-table">
+                  <table class="table table-hover align-middle mb-0">
+                    <thead>
+                      <tr>
+                        <th scope="col">Поставщик</th>
+                        <th scope="col">Остаток</th>
+                        <th scope="col">Закупка</th>
+                        <th scope="col">Маржа</th>
+                        <th scope="col">Продажа</th>
+                        <th scope="col">Статус</th>
+                      </tr>
+                    </thead>
+                    <tbody id="product-detail-suppliers-body"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <form class="product-detail-edit-form d-none" id="product-detail-edit-form">
+                <div class="row g-3">
+                  <div class="col-12 col-lg-6">
+                    <label class="form-label" for="product-detail-edit-name">Название</label>
+                    <input
+                      class="form-control"
+                      id="product-detail-edit-name"
+                      name="name"
+                      type="text"
+                      maxlength="255"
+                      required
+                    >
+                  </div>
+                  <div class="col-12 col-sm-6 col-lg-3">
+                    <label class="form-label" for="product-detail-edit-unit">Единица</label>
+                    <input
+                      class="form-control"
+                      id="product-detail-edit-unit"
+                      name="quantity_unit"
+                      type="text"
+                      maxlength="20"
+                      required
+                    >
+                  </div>
+                  <div class="col-12 col-sm-6 col-lg-3">
+                    <label class="form-label" for="product-detail-edit-threshold">Порог остатков</label>
+                    <input
+                      class="form-control"
+                      id="product-detail-edit-threshold"
+                      name="low_stock_threshold"
+                      type="number"
+                      min="0"
+                      step="1"
+                      required
+                    >
+                  </div>
+                  <div class="col-12">
+                    <div class="product-detail-readonly-note">
+                      Компания, теги, поставщики, цены и остатки пока доступны только для просмотра.
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button
+              class="btn btn-outline-secondary d-none"
+              id="product-detail-cancel-edit-button"
+              type="button"
+            >
+              Отмена
+            </button>
+            <button
+              class="btn btn-primary d-none"
+              id="product-detail-save-button"
+              type="submit"
+              form="product-detail-edit-form"
+            >
+              Сохранить
+            </button>
+            <button class="btn btn-outline-secondary" id="product-detail-close-button" type="button" data-bs-dismiss="modal">
+              Закрыть
+            </button>
+          </div>
         </div>
       </div>
     </div>

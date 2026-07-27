@@ -31,6 +31,13 @@ export function getProduct(productId) {
   return request(`/products/${productId}`);
 }
 
+export function patchProduct(productId, payload) {
+  return request(`/products/${productId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function createProductSupplierLinks(productId, payload) {
   return request(`/products/${productId}/links`, {
     method: "POST",
@@ -73,6 +80,10 @@ export function getRestocks({
   return request(buildDatedListPath("/restocks", dateFrom, dateTo, page, pageSize));
 }
 
+export function getRestock(restockId) {
+  return request(`/restocks/${restockId}`);
+}
+
 export function createRestock(payload) {
   return request("/restocks", {
     method: "POST",
@@ -87,6 +98,10 @@ export function getSales({
   pageSize = DEFAULT_PAGE_SIZE,
 } = {}) {
   return request(buildDatedListPath("/sales", dateFrom, dateTo, page, pageSize));
+}
+
+export function getSale(saleId) {
+  return request(`/sales/${saleId}`);
 }
 
 export function createSale(payload) {

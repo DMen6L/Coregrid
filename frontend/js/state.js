@@ -16,6 +16,7 @@ export const state = {
     supplierMode: "existing",
     linkEnabled: false,
   },
+  productDetail: createProductDetailState(),
   companyCreate: {
     isSubmitting: false,
   },
@@ -25,9 +26,11 @@ export const state = {
   restockCreate: {
     isSubmitting: false,
   },
+  restockDetail: createDetailState(),
   saleCreate: {
     isSubmitting: false,
   },
+  saleDetail: createDetailState(),
 };
 
 export function createDashboardState() {
@@ -69,6 +72,25 @@ export function createDatedListState() {
     ...createListState(),
     dateFrom: "",
     dateTo: "",
+  };
+}
+
+export function createDetailState() {
+  return {
+    data: null,
+    id: null,
+    isLoading: false,
+    error: "",
+  };
+}
+
+export function createProductDetailState() {
+  return {
+    ...createDetailState(),
+    summary: null,
+    isEditing: false,
+    isSubmitting: false,
+    editError: "",
   };
 }
 

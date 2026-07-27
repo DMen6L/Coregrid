@@ -1,21 +1,30 @@
 from datetime import datetime, date, time, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Path, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.models import ProductSupplier, Restock, RestockLine
-from app.schemas import PaginatedResponse, RestockCreate, RestockResponse
+from app.schemas import (
+    PaginatedResponse,
+    RestockCreate,
+    RestockResponse,
+    RestockSummaryResponse,
+)
 from devs import DbSession
 from errors import commit_or_raise
-from utils import paginate
+from utils import aggr_paginate, paginate
 
 
 router = APIRouter(prefix="/restocks", tags=["restocks"])
 
 
-@router.get("", response_model=PaginatedResponse[RestockResponse], status_code=200)
+@router.get(
+    "",
+    response_model=PaginatedResponse[RestockSummaryResponse],
+    status_code=status.HTTP_200_OK,
+)
 def get_restocks(
     db: DbSession,
     date_from: Annotated[
@@ -30,15 +39,19 @@ def get_restocks(
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
     statement = (
-        select(Restock)
-        .options(
-            selectinload(Restock.lines)
-            .selectinload(RestockLine.product_supplier)
-            .selectinload(ProductSupplier.product),
-            selectinload(Restock.lines)
-            .selectinload(RestockLine.product_supplier)
-            .selectinload(ProductSupplier.supplier),
+        select(
+            Restock.id.label("id"),
+            Restock.note.label("note"),
+            Restock.created_at.label("created_at"),
+            func.coalesce(
+                func.sum(RestockLine.restock_quantity * RestockLine.unit_cost_snapshot),
+                0,
+            ).label("costs"),
+            func.count(RestockLine.id).label("lines_count"),
         )
+        .select_from(Restock)
+        .join(Restock.lines)
+        .group_by(Restock.id, Restock.note, Restock.created_at)
         .order_by(Restock.created_at.desc(), Restock.id.desc())
     )
     count_statement = select(func.count(Restock.id)).select_from(Restock)
@@ -64,20 +77,49 @@ def get_restocks(
             Restock.created_at < end_datetime,
         )
 
-    return paginate(
+    return aggr_paginate(
         db=db,
         statement=statement,
         count_statement=count_statement,
         page=page,
         page_size=page_size,
-        response_schema=RestockResponse,
+        response_schema=RestockSummaryResponse,
     )
+
+
+@router.get(
+    "/{restock_id}",
+    response_model=RestockResponse,
+    status_code=status.HTTP_200_OK,
+)
+def get_restock_by_id(db: DbSession, restock_id: Annotated[int, Path(gt=0)]):
+    statement = (
+        select(Restock)
+        .options(
+            selectinload(Restock.lines)
+            .selectinload(RestockLine.product_supplier)
+            .selectinload(ProductSupplier.product),
+            selectinload(Restock.lines)
+            .selectinload(RestockLine.product_supplier)
+            .selectinload(ProductSupplier.supplier),
+        )
+        .where(Restock.id == restock_id)
+    )
+    restock = db.scalars(statement).one_or_none()
+
+    if restock is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Restock with such id doesn't exist.",
+        )
+
+    return restock
 
 
 @router.post(
     "",
     response_model=RestockResponse,
-    status_code=201,
+    status_code=status.HTTP_201_CREATED,
 )
 def add_restock(
     db: DbSession,
@@ -88,6 +130,7 @@ def add_restock(
     product_suppliers = list(
         db.scalars(
             select(ProductSupplier)
+            .options(selectinload(ProductSupplier.product))
             .where(ProductSupplier.id.in_(product_supplier_ids))
             .with_for_update()
         ).all()
