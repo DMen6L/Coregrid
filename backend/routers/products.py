@@ -14,6 +14,7 @@ from app.schemas import (
     ProductSummaryResponse,
     ProductSupplierCreate,
     ProductSupplierResponse,
+    ProductSupplierUpdate,
     ProductUpdate,
 )
 from app.tags import get_or_create_tags
@@ -352,3 +353,124 @@ def patch_product(
     db.refresh(product)
 
     return product
+
+
+@router.patch(
+    "/{product_id}/links/{link_id}",
+    response_model=ProductSupplierResponse,
+    status_code=status.HTTP_200_OK,
+)
+def patch_product_links(
+    db: DbSession,
+    patch_data: ProductSupplierUpdate,
+    product_id: Annotated[int, Path(gt=0)],
+    link_id: Annotated[int, Path(gt=0)],
+):
+    if db.get(Product, product_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="product with this id is not found.",
+        )
+
+    statement = (
+        select(ProductSupplier)
+        .options(
+            selectinload(ProductSupplier.product),
+            selectinload(ProductSupplier.supplier),
+        )
+        .where(ProductSupplier.id == link_id)
+    )
+    product_supplier = db.scalars(statement).one_or_none()
+    if product_supplier is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="link with this id is not found.",
+        )
+    if product_supplier.product_id != product_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product with supplier link providing is not found.",
+        )
+
+    update_data = cast(
+        dict[str, object],
+        patch_data.model_dump(exclude_unset=True),
+    )
+
+    if "supplier_id" in update_data:
+        supplier_id = cast(int, update_data["supplier_id"])
+        supplier = db.get(Supplier, supplier_id)
+
+        if supplier is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Supplier with such id does not exist.",
+            )
+
+    # sale price check
+    candidate_purchase_price = cast(
+        int,
+        update_data.get(
+            "purchase_price",
+            product_supplier.purchase_price,
+        ),
+    )
+    candidate_margin_percent = cast(
+        int,
+        update_data.get(
+            "margin_percent",
+            product_supplier.margin_percent,
+        ),
+    )
+    candidate_sale_price = cast(
+        int,
+        update_data.get(
+            "sale_price",
+            product_supplier.sale_price,
+        ),
+    )
+    floor_price = calculate_floor_price(
+        candidate_purchase_price,
+        candidate_margin_percent,
+    )
+
+    if candidate_sale_price < floor_price:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="sale_price cannot be lower than calculated floor price.",
+        )
+
+    # Unique constraints check
+    unique_values, identity_changed = build_unique_values_candidates(
+        (
+            "product_id",
+            "supplier_id",
+        ),
+        update_data,
+        product_supplier,
+    )
+    if identity_changed:
+        candidate_product_id = cast(int, unique_values["product_id"])
+        candidate_supplier_id = cast(int, unique_values["supplier_id"])
+
+        duplicate_id = db.scalar(
+            select(ProductSupplier.id).where(
+                ProductSupplier.id != link_id,
+                ProductSupplier.product_id == candidate_product_id,
+                ProductSupplier.supplier_id == candidate_supplier_id,
+            )
+        )
+
+        if duplicate_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Product link with such product id and supplier id already exists.",
+            )
+
+    for field, value in update_data.items():
+        setattr(product_supplier, field, value)
+
+    commit_or_raise(db)
+    db.refresh(product_supplier)
+
+    return product_supplier

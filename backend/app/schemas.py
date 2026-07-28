@@ -1,9 +1,10 @@
 from datetime import date, datetime
-from typing import Annotated, Any, Generic, Literal, TypeVar
+from typing import Annotated, Any, ClassVar, Generic, Literal, TypeVar
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    ValidationInfo,
     field_validator,
     model_validator,
     StringConstraints,
@@ -50,6 +51,19 @@ ItemT = TypeVar("ItemT")
 
 
 class UpdateValidator(BaseModel):
+    nullable_update_fields: ClassVar[set[str]] = set()
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def reject_null_fields(
+        cls,
+        value,
+        info: ValidationInfo,
+    ):
+        if value is None and info.field_name not in cls.nullable_update_fields:
+            raise ValueError("field cannot be null")
+        return value
+
     @model_validator(mode="after")
     def non_empty_fields(self):
         if not self.model_fields_set:
@@ -75,6 +89,8 @@ class CompanyResponse(BaseModel):
 
 
 class CompanyUpdate(UpdateValidator):
+    nullable_update_fields: ClassVar[set[str]] = {"iin"}
+
     name: Name | None = None
     iin: IIN | None = None
 
@@ -183,7 +199,7 @@ class ProductResponse(BaseModel):
 
 class ProductUpdate(UpdateValidator):
     name: Name | None = None
-    company_id: int | None = None
+    company_id: int | None = Field(default=None, gt=0)
     tags: list[TagName] | None = None
     quantity_unit: QuantityUnit | None = None
     low_stock_threshold: int | None = Field(default=None, ge=0)

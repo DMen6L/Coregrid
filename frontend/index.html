@@ -1216,6 +1216,45 @@
                     >
                   </div>
                 </div>
+
+                <section class="product-detail-edit-links mt-4">
+                  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                    <h3 class="fs-6 mb-0">Поставщики</h3>
+                    <button
+                      class="btn btn-sm btn-outline-primary"
+                      id="product-detail-add-link-button"
+                      type="button"
+                    >
+                      Добавить поставщика
+                    </button>
+                  </div>
+
+                  <div class="alert alert-light border d-none" id="product-detail-edit-links-empty" role="status">
+                    У товара пока нет поставщиков.
+                  </div>
+                  <div
+                    class="table-responsive product-detail-edit-links-table"
+                    id="product-detail-edit-links-table"
+                  >
+                    <table class="table table-sm align-middle mb-0">
+                      <thead>
+                        <tr>
+                          <th scope="col">Поставщик</th>
+                          <th scope="col">Остаток</th>
+                          <th scope="col">Закупка</th>
+                          <th scope="col">Маржа</th>
+                          <th scope="col">Продажа</th>
+                        </tr>
+                      </thead>
+                      <tbody id="product-detail-edit-links-body"></tbody>
+                    </table>
+                  </div>
+
+                  <div
+                    class="product-detail-new-links mt-3"
+                    id="product-detail-new-links"
+                  ></div>
+                </section>
               </form>
             </div>
           </div>

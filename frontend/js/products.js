@@ -7,6 +7,7 @@ import {
   createSupplier,
   getProduct,
   getProducts,
+  patchProductSupplierLink,
   patchProduct,
 } from "./api.js";
 import { elements } from "./dom.js";
@@ -18,6 +19,7 @@ import {
 import {
   renderLookup,
   renderProductDetail,
+  renderProductDetailNewLinkLookup,
   renderProductCreateMode,
   renderProducts,
   setAppMessage,
@@ -38,6 +40,7 @@ const lookupRequests = {
   detailCompany: { controller: null, debounceId: null },
   supplier: { controller: null, debounceId: null },
 };
+const detailSupplierLookupRequests = new Map();
 
 export function bindProductsFeature() {
   elements.products.searchForm.addEventListener("submit", (event) => {
@@ -105,6 +108,7 @@ export function bindProductsFeature() {
 
   bindProductCreateForm();
   bindProductDetailCompanyLookup();
+  bindProductDetailLinkEditing();
   bindCompanyLookup();
   bindSupplierLookup();
   syncProductCreateMode();
@@ -171,10 +175,10 @@ async function submitProductDetailEdit() {
     return;
   }
 
-  let payload;
+  let editData;
 
   try {
-    payload = getProductDetailEditPayload();
+    editData = getProductDetailEditData();
   } catch (error) {
     state.productDetail.editError = getCreateErrorMessage(error, "товар");
     renderProductDetail();
@@ -186,7 +190,21 @@ async function submitProductDetailEdit() {
   renderProductDetail();
 
   try {
-    const product = await patchProduct(productId, payload);
+    await patchProduct(productId, editData.productPayload);
+
+    const linkRequests = editData.existingLinkUpdates.map((linkUpdate) => (
+      patchProductSupplierLink(productId, linkUpdate.linkId, linkUpdate.payload)
+    ));
+
+    if (editData.newLinkPayloads.length > 0) {
+      linkRequests.push(createProductSupplierLinks(productId, editData.newLinkPayloads));
+    }
+
+    if (linkRequests.length > 0) {
+      await Promise.all(linkRequests);
+    }
+
+    const product = await getProduct(productId);
 
     if (state.productDetail.id !== productId) {
       return;
@@ -194,17 +212,22 @@ async function submitProductDetailEdit() {
 
     state.productDetail.data = product;
     state.productDetail.isEditing = false;
+    state.productDetail.linkEditValues = {};
+    state.productDetail.linkDrafts = [];
+    state.productDetail.nextLinkDraftId = 1;
+    cancelAllDetailSupplierLookups();
 
     try {
       await Promise.all([
         loadDashboard(),
         loadProducts(state.products.searchTerm, state.products.page),
+        loadSuppliers(state.suppliers.searchTerm, state.suppliers.page),
       ]);
       state.productDetail.summary = getProductSummary(productId);
     } catch (refreshError) {
       console.error("Could not refresh products after product update:", refreshError);
       setAppMessage(
-        "Товар обновлен, но список не удалось обновить автоматически.",
+        "Товар обновлен, но списки не удалось обновить автоматически.",
         "warning",
       );
     }
@@ -255,6 +278,103 @@ function bindProductDetailCompanyLookup() {
       state.productDetail.editError = "";
       renderLookup({ kind: "detailCompany" });
       renderProductDetail();
+    }
+  });
+}
+
+function bindProductDetailLinkEditing() {
+  elements.products.detailAddLinkButton.addEventListener("click", () => {
+    addProductDetailLinkDraft();
+  });
+
+  elements.products.detailEditLinksBody.addEventListener("input", (event) => {
+    const target = event.target instanceof HTMLInputElement ? event.target : null;
+
+    if (!target || !target.matches("[data-link-field]")) {
+      return;
+    }
+
+    const row = target.closest("[data-product-link-id]");
+    const linkId = Number(row?.dataset.productLinkId || 0);
+
+    if (!Number.isInteger(linkId) || linkId <= 0) {
+      return;
+    }
+
+    state.productDetail.linkEditValues[linkId] ||= {};
+    state.productDetail.linkEditValues[linkId][target.dataset.linkField] = target.value;
+  });
+
+  elements.products.detailNewLinks.addEventListener("keydown", (event) => {
+    if (
+      event.target instanceof Element
+      && event.target.matches("[data-new-link-supplier-search]")
+    ) {
+      preventEnter(event);
+    }
+  });
+
+  elements.products.detailNewLinks.addEventListener("input", (event) => {
+    const target = event.target instanceof HTMLInputElement ? event.target : null;
+
+    if (!target) {
+      return;
+    }
+
+    const draft = getProductDetailLinkDraftFromElement(target);
+
+    if (!draft) {
+      return;
+    }
+
+    if (target.matches("[data-new-link-supplier-search]")) {
+      draft.searchTerm = target.value;
+      scheduleDetailSupplierLookup(draft.id, target.value.trim());
+      return;
+    }
+
+    if (target.matches("[data-new-link-field]")) {
+      draft.values[target.dataset.newLinkField] = target.value;
+    }
+  });
+
+  elements.products.detailNewLinks.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+
+    if (!target) {
+      return;
+    }
+
+    const removeButton = target.closest("[data-remove-new-link]");
+    if (removeButton) {
+      const draft = getProductDetailLinkDraftFromElement(removeButton);
+
+      if (draft) {
+        removeProductDetailLinkDraft(draft.id);
+      }
+      return;
+    }
+
+    const clearButton = target.closest("[data-clear-new-link-supplier]");
+    if (clearButton) {
+      const draft = getProductDetailLinkDraftFromElement(clearButton);
+
+      if (draft) {
+        clearSelectedDetailLinkSupplier(draft.id);
+      }
+      return;
+    }
+
+    const supplierButton = target.closest("[data-supplier-id]");
+    if (supplierButton) {
+      const draft = getProductDetailLinkDraftFromElement(supplierButton);
+      const supplier = draft?.lookup.results.find(
+        (item) => String(item.id) === supplierButton.dataset.supplierId,
+      );
+
+      if (draft && supplier) {
+        selectDetailLinkSupplier(draft.id, supplier);
+      }
     }
   });
 }
@@ -546,6 +666,74 @@ async function fetchLookup(kind, searchTerm, controller) {
   return request(buildLookupPath(kind, searchTerm), { signal: controller.signal });
 }
 
+function scheduleDetailSupplierLookup(draftId, searchTerm) {
+  const draft = getProductDetailLinkDraft(draftId);
+
+  if (!draft) {
+    return;
+  }
+
+  cancelDetailSupplierLookup(draftId);
+  draft.lookup.isLoading = false;
+  draft.lookup.results = [];
+  draft.lookup.error = "";
+  draft.lookup.hasSearched = false;
+  renderProductDetailNewLinkLookup(draftId);
+
+  if (searchTerm.length < LOOKUP_MIN_LENGTH) {
+    return;
+  }
+
+  const requestState = getDetailSupplierLookupRequest(draftId);
+  requestState.debounceId = window.setTimeout(() => {
+    requestState.debounceId = null;
+    runDetailSupplierLookup(draftId, searchTerm);
+  }, LOOKUP_DEBOUNCE_MS);
+}
+
+async function runDetailSupplierLookup(draftId, searchTerm) {
+  const draft = getProductDetailLinkDraft(draftId);
+
+  if (!draft) {
+    return;
+  }
+
+  const requestState = getDetailSupplierLookupRequest(draftId);
+  const controller = new AbortController();
+
+  requestState.controller = controller;
+  draft.lookup.isLoading = true;
+  draft.lookup.error = "";
+  draft.lookup.hasSearched = true;
+  renderProductDetailNewLinkLookup(draftId);
+
+  try {
+    const response = await fetchLookup("supplier", searchTerm, controller);
+    const currentDraft = getProductDetailLinkDraft(draftId);
+
+    if (
+      requestState.controller !== controller
+      || !currentDraft
+      || currentDraft.searchTerm.trim() !== searchTerm
+    ) {
+      return;
+    }
+
+    currentDraft.lookup.results = Array.isArray(response?.items) ? response.items : [];
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      console.error("Could not search detail supplier:", error);
+      draft.lookup.error = getRequestErrorMessage(error, "поставщиков");
+    }
+  } finally {
+    if (requestState.controller === controller) {
+      requestState.controller = null;
+      draft.lookup.isLoading = false;
+      renderProductDetailNewLinkLookup(draftId);
+    }
+  }
+}
+
 function cancelLookup(kind) {
   const requestState = lookupRequests[kind];
 
@@ -558,6 +746,43 @@ function cancelLookup(kind) {
     requestState.controller.abort();
     requestState.controller = null;
   }
+}
+
+function getDetailSupplierLookupRequest(draftId) {
+  const key = Number(draftId);
+
+  if (!detailSupplierLookupRequests.has(key)) {
+    detailSupplierLookupRequests.set(key, { controller: null, debounceId: null });
+  }
+
+  return detailSupplierLookupRequests.get(key);
+}
+
+function cancelDetailSupplierLookup(draftId) {
+  const key = Number(draftId);
+  const requestState = detailSupplierLookupRequests.get(key);
+
+  if (!requestState) {
+    return;
+  }
+
+  if (requestState.debounceId !== null) {
+    window.clearTimeout(requestState.debounceId);
+    requestState.debounceId = null;
+  }
+
+  if (requestState.controller) {
+    requestState.controller.abort();
+    requestState.controller = null;
+  }
+}
+
+function cancelAllDetailSupplierLookups() {
+  for (const draftId of detailSupplierLookupRequests.keys()) {
+    cancelDetailSupplierLookup(draftId);
+  }
+
+  detailSupplierLookupRequests.clear();
 }
 
 function clearSelectedCompany() {
@@ -585,6 +810,69 @@ function clearSelectedSupplier() {
   elements.products.supplierIdInput.value = "";
   elements.products.supplierSearchInput.value = "";
   renderLookup({ kind: "supplier" });
+}
+
+function addProductDetailLinkDraft() {
+  const draft = {
+    id: state.productDetail.nextLinkDraftId,
+    selectedSupplier: null,
+    searchTerm: "",
+    lookup: createLookupState(),
+    values: {
+      purchase_price: "1",
+      margin_percent: "0",
+      sale_price: "",
+      quantity: "0",
+    },
+  };
+
+  state.productDetail.nextLinkDraftId += 1;
+  state.productDetail.linkDrafts.push(draft);
+  renderProductDetail();
+  elements.products.detailNewLinks
+    .querySelector(`[data-link-draft-id="${draft.id}"] [data-new-link-supplier-search]`)
+    ?.focus();
+}
+
+function removeProductDetailLinkDraft(draftId) {
+  cancelDetailSupplierLookup(draftId);
+  detailSupplierLookupRequests.delete(Number(draftId));
+  state.productDetail.linkDrafts = state.productDetail.linkDrafts.filter(
+    (draft) => Number(draft.id) !== Number(draftId),
+  );
+  renderProductDetail();
+}
+
+function selectDetailLinkSupplier(draftId, supplier) {
+  const draft = getProductDetailLinkDraft(draftId);
+
+  if (!draft) {
+    return;
+  }
+
+  cancelDetailSupplierLookup(draftId);
+  draft.selectedSupplier = supplier;
+  draft.searchTerm = "";
+  draft.lookup = createLookupState();
+  state.productDetail.editError = "";
+  renderProductDetail();
+}
+
+function clearSelectedDetailLinkSupplier(draftId) {
+  const draft = getProductDetailLinkDraft(draftId);
+
+  if (!draft) {
+    return;
+  }
+
+  cancelDetailSupplierLookup(draftId);
+  draft.selectedSupplier = null;
+  draft.searchTerm = "";
+  draft.lookup = createLookupState();
+  renderProductDetail();
+  elements.products.detailNewLinks
+    .querySelector(`[data-link-draft-id="${draftId}"] [data-new-link-supplier-search]`)
+    ?.focus();
 }
 
 function clearLookupState(kind, hasSearched) {
@@ -640,11 +928,15 @@ function resetProductCreateForm() {
 
 function resetProductDetail() {
   cancelLookup("detailCompany");
+  cancelAllDetailSupplierLookups();
   state.productDetail.data = null;
   state.productDetail.summary = null;
   state.productDetail.id = null;
   state.productDetail.selectedCompany = null;
   state.productDetail.companyLookup = createLookupState();
+  state.productDetail.linkEditValues = {};
+  state.productDetail.linkDrafts = [];
+  state.productDetail.nextLinkDraftId = 1;
   state.productDetail.error = "";
   state.productDetail.editError = "";
   state.productDetail.isEditing = false;
@@ -671,8 +963,12 @@ function enterProductDetailEdit() {
     : null;
 
   cancelLookup("detailCompany");
+  cancelAllDetailSupplierLookups();
   state.productDetail.selectedCompany = selectedCompany;
   state.productDetail.companyLookup = createLookupState();
+  state.productDetail.linkEditValues = getProductSupplierLinkEditValues(product);
+  state.productDetail.linkDrafts = [];
+  state.productDetail.nextLinkDraftId = 1;
   state.productDetail.isEditing = true;
   state.productDetail.editError = "";
   elements.products.detailEditNameInput.value = product.name || "";
@@ -687,12 +983,30 @@ function enterProductDetailEdit() {
 
 function exitProductDetailEdit() {
   cancelLookup("detailCompany");
+  cancelAllDetailSupplierLookups();
   state.productDetail.isEditing = false;
   state.productDetail.editError = "";
   state.productDetail.selectedCompany = null;
   state.productDetail.companyLookup = createLookupState();
+  state.productDetail.linkEditValues = {};
+  state.productDetail.linkDrafts = [];
+  state.productDetail.nextLinkDraftId = 1;
   elements.products.detailEditCompanyIdInput.value = "";
   elements.products.detailEditCompanySearchInput.value = "";
+}
+
+function getProductDetailEditData() {
+  const productPayload = getProductDetailEditPayload();
+  const existingLinkUpdates = getProductDetailExistingLinkUpdates();
+  const newLinkPayloads = getProductDetailNewLinkPayloads();
+
+  validateProductDetailNewLinkSuppliers(newLinkPayloads);
+
+  return {
+    productPayload,
+    existingLinkUpdates,
+    newLinkPayloads,
+  };
 }
 
 function getProductDetailEditPayload() {
@@ -714,6 +1028,159 @@ function getProductDetailEditPayload() {
     low_stock_threshold: getNumber(formData, "low_stock_threshold"),
     tags: getTags(formData),
   };
+}
+
+function getProductDetailExistingLinkUpdates() {
+  const supplierLinks = getCurrentProductSupplierLinks();
+  const linksById = new Map(
+    supplierLinks.map((supplierLink) => [Number(supplierLink.id), supplierLink]),
+  );
+  const updates = [];
+
+  for (const row of elements.products.detailEditLinksBody.querySelectorAll("[data-product-link-id]")) {
+    const linkId = Number(row.dataset.productLinkId || 0);
+    const originalLink = linksById.get(linkId);
+
+    if (!Number.isInteger(linkId) || linkId <= 0 || !originalLink) {
+      continue;
+    }
+
+    const payload = {
+      purchase_price: getLinkInputNumber(row, "purchase_price"),
+      margin_percent: getLinkInputNumber(row, "margin_percent"),
+      sale_price: getLinkInputNumber(row, "sale_price"),
+      quantity: getLinkInputNumber(row, "quantity"),
+    };
+
+    if (hasProductSupplierLinkChanged(originalLink, payload)) {
+      updates.push({ linkId, payload });
+    }
+  }
+
+  return updates;
+}
+
+function getProductDetailNewLinkPayloads() {
+  return state.productDetail.linkDrafts.map((draft) => {
+    if (!draft.selectedSupplier) {
+      throw createLocalValidationError("Выберите поставщика для новой связи.");
+    }
+
+    const wrapper = elements.products.detailNewLinks.querySelector(
+      `[data-link-draft-id="${draft.id}"]`,
+    );
+
+    if (!wrapper) {
+      throw createLocalValidationError("Новая связь с поставщиком не найдена в форме.");
+    }
+
+    const payload = {
+      supplier_id: Number(draft.selectedSupplier.id),
+      purchase_price: getDraftInputNumber(wrapper, "purchase_price"),
+      margin_percent: getDraftInputNumber(wrapper, "margin_percent"),
+      quantity: getDraftInputNumber(wrapper, "quantity"),
+    };
+    const salePrice = getDraftInputOptionalNumber(wrapper, "sale_price");
+
+    if (salePrice !== null) {
+      payload.sale_price = salePrice;
+    }
+
+    return payload;
+  });
+}
+
+function validateProductDetailNewLinkSuppliers(newLinkPayloads) {
+  const supplierIds = new Set(
+    getCurrentProductSupplierLinks().map((supplierLink) => Number(supplierLink.supplier_id)),
+  );
+
+  for (const payload of newLinkPayloads) {
+    if (!Number.isInteger(payload.supplier_id) || payload.supplier_id <= 0) {
+      throw createLocalValidationError("Выберите поставщика для новой связи.");
+    }
+
+    if (supplierIds.has(payload.supplier_id)) {
+      throw createLocalValidationError("Поставщик уже связан с этим товаром.");
+    }
+
+    supplierIds.add(payload.supplier_id);
+  }
+}
+
+function getCurrentProductSupplierLinks() {
+  const supplierLinks = state.productDetail.data?.supplier_links;
+
+  return Array.isArray(supplierLinks) ? supplierLinks : [];
+}
+
+function getProductSupplierLinkEditValues(product) {
+  const values = {};
+  const supplierLinks = Array.isArray(product?.supplier_links)
+    ? product.supplier_links
+    : [];
+
+  for (const supplierLink of supplierLinks) {
+    values[supplierLink.id] = {
+      purchase_price: String(supplierLink.purchase_price ?? ""),
+      margin_percent: String(supplierLink.margin_percent ?? ""),
+      sale_price: String(supplierLink.sale_price ?? ""),
+      quantity: String(supplierLink.quantity ?? ""),
+    };
+  }
+
+  return values;
+}
+
+function getLinkInputNumber(row, field) {
+  const input = row.querySelector(`[data-link-field="${field}"]`);
+
+  return getElementNumber(input);
+}
+
+function getDraftInputNumber(wrapper, field) {
+  const input = wrapper.querySelector(`[data-new-link-field="${field}"]`);
+
+  return getElementNumber(input);
+}
+
+function getDraftInputOptionalNumber(wrapper, field) {
+  const input = wrapper.querySelector(`[data-new-link-field="${field}"]`);
+  const value = String(input?.value || "").trim();
+
+  return value ? getElementNumber(input) : null;
+}
+
+function getElementNumber(input) {
+  const value = Number(input?.value || "");
+
+  if (!Number.isInteger(value)) {
+    throw createLocalValidationError("Числовые поля должны быть целыми числами.");
+  }
+
+  return value;
+}
+
+function hasProductSupplierLinkChanged(originalLink, payload) {
+  return (
+    Number(originalLink.purchase_price) !== payload.purchase_price
+    || Number(originalLink.margin_percent) !== payload.margin_percent
+    || Number(originalLink.sale_price) !== payload.sale_price
+    || Number(originalLink.quantity) !== payload.quantity
+  );
+}
+
+function getProductDetailLinkDraftFromElement(element) {
+  const wrapper = element.closest("[data-link-draft-id]");
+  const draftId = Number(wrapper?.dataset.linkDraftId || 0);
+
+  return getProductDetailLinkDraft(draftId);
+}
+
+function getProductDetailLinkDraft(draftId) {
+  return state.productDetail.linkDrafts.find(
+    (draft) => Number(draft.id) === Number(draftId),
+  ) || null;
 }
 
 function getProductIdFromEvent(event) {

@@ -45,6 +45,13 @@ export function createProductSupplierLinks(productId, payload) {
   });
 }
 
+export function patchProductSupplierLink(productId, linkId, payload) {
+  return request(`/products/${productId}/links/${linkId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getCompanies({ search = "", page = FIRST_PAGE, pageSize = DEFAULT_PAGE_SIZE } = {}) {
   return request(buildListPath("/companies", search, page, pageSize));
 }

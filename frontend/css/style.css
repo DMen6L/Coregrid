@@ -332,6 +332,35 @@ body {
   border-radius: 0.5rem;
 }
 
+.product-detail-edit-links {
+  padding-top: 1rem;
+  border-top: 1px solid var(--bs-border-color);
+}
+
+.product-detail-edit-links-table .product-detail-link-number {
+  min-width: 7rem;
+}
+
+.product-detail-new-links {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.product-detail-link-draft {
+  padding: 1rem;
+  background: #fff;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.5rem;
+}
+
+.product-detail-link-draft-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
 .product-detail-suppliers-table,
 .supplier-detail-product-links-table,
 .restock-detail-lines-table,
