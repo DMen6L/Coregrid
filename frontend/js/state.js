@@ -20,9 +20,11 @@ export const state = {
   companyCreate: {
     isSubmitting: false,
   },
+  companyDetail: createEditableDetailState(),
   supplierCreate: {
     isSubmitting: false,
   },
+  supplierDetail: createEditableDetailState(),
   restockCreate: {
     isSubmitting: false,
   },
@@ -84,10 +86,21 @@ export function createDetailState() {
   };
 }
 
+export function createEditableDetailState() {
+  return {
+    ...createDetailState(),
+    isEditing: false,
+    isSubmitting: false,
+    editError: "",
+  };
+}
+
 export function createProductDetailState() {
   return {
     ...createDetailState(),
     summary: null,
+    selectedCompany: null,
+    companyLookup: createLookupState(),
     isEditing: false,
     isSubmitting: false,
     editError: "",

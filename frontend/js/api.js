@@ -49,9 +49,20 @@ export function getCompanies({ search = "", page = FIRST_PAGE, pageSize = DEFAUL
   return request(buildListPath("/companies", search, page, pageSize));
 }
 
+export function getCompany(companyId) {
+  return request(`/companies/${companyId}`);
+}
+
 export function createCompany(payload) {
   return request("/companies", {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function patchCompany(companyId, payload) {
+  return request(`/companies/${companyId}`, {
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 }
@@ -60,9 +71,20 @@ export function getSuppliers({ search = "", page = FIRST_PAGE, pageSize = DEFAUL
   return request(buildListPath("/suppliers", search, page, pageSize));
 }
 
+export function getSupplier(supplierId) {
+  return request(`/suppliers/${supplierId}`);
+}
+
 export function createSupplier(payload) {
   return request("/suppliers", {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function patchSupplier(supplierId, payload) {
+  return request(`/suppliers/${supplierId}`, {
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 }

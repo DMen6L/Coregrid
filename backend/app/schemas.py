@@ -86,14 +86,25 @@ class SupplierCreate(BaseModel):
 
 class SupplierResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
     phone_number: str
+    product_links: list[ProductSupplierResponse]
 
 
 class SupplierUpdate(UpdateValidator):
     name: Name | None = None
     phone_number: PhoneNumber | None = None
+
+
+class SupplierSummaryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    phone_number: str
+    product_links_count: int = Field(default=0, ge=0)
 
 
 class TagCreate(BaseModel):
@@ -166,7 +177,7 @@ class ProductResponse(BaseModel):
     company_name: str
     quantity_unit: str
     low_stock_threshold: int
-    # tags: list[TagResponse] = Field(default_factory=list)
+    tags: list[TagResponse] = Field(default_factory=list)
     supplier_links: list[ProductSupplierResponse] = Field(default_factory=list)
 
 

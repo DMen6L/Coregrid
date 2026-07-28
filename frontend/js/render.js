@@ -166,7 +166,6 @@ export function renderProductDetail() {
   elements.products.detailSaveButton.classList.toggle("d-none", !isEditing);
   elements.products.detailSaveButton.disabled = detail.isSubmitting;
   elements.products.detailCancelEditButton.disabled = detail.isSubmitting;
-  elements.products.detailCloseButton.disabled = detail.isSubmitting;
   elements.products.detailSuppliersEmpty.classList.toggle(
     "d-none",
     !shouldShowContent || supplierLinks.length > 0,
@@ -183,6 +182,9 @@ export function renderProductDetail() {
     }
   }
 
+  elements.products.detailEditCompanySearchInput.disabled =
+    detail.isSubmitting || Boolean(detail.selectedCompany);
+
   if (!shouldShowContent) {
     return;
   }
@@ -195,10 +197,7 @@ export function renderProductDetail() {
   elements.products.detailTotalQuantity.textContent = formatQuantity(totalQuantity, unit);
   elements.products.detailSupplierCount.textContent = `${formatCount(supplierLinks.length)} поставщиков`;
   renderProductDetailTags(tags);
-
-  elements.products.detailEditNameInput.value = product.name || "";
-  elements.products.detailEditUnitInput.value = unit;
-  elements.products.detailEditThresholdInput.value = String(product.low_stock_threshold ?? 0);
+  renderLookup({ kind: "detailCompany" });
 
   const fragment = document.createDocumentFragment();
 
@@ -220,6 +219,44 @@ export function renderCompanies() {
   });
 }
 
+export function renderCompanyDetail() {
+  const detail = state.companyDetail;
+  const company = detail.data;
+  const shouldShowContent = Boolean(company) && !detail.isLoading && !detail.error;
+  const isEditing = shouldShowContent && detail.isEditing;
+
+  elements.companies.detailTitle.textContent = company
+    ? company.name || `Компания #${formatCount(company.id)}`
+    : "Компания";
+  elements.companies.detailLoading.classList.toggle("d-none", !detail.isLoading);
+  elements.companies.detailError.textContent = detail.error;
+  elements.companies.detailError.classList.toggle("d-none", !detail.error);
+  elements.companies.detailContent.classList.toggle("d-none", !shouldShowContent);
+  elements.companies.detailEditError.textContent = detail.editError;
+  elements.companies.detailEditError.classList.toggle("d-none", !detail.editError);
+  elements.companies.detailEditButton.classList.toggle("d-none", !shouldShowContent || isEditing);
+  elements.companies.detailView.classList.toggle("d-none", isEditing);
+  elements.companies.detailEditForm.classList.toggle("d-none", !isEditing);
+  elements.companies.detailCancelEditButton.classList.toggle("d-none", !isEditing);
+  elements.companies.detailSaveButton.classList.toggle("d-none", !isEditing);
+  elements.companies.detailCancelEditButton.disabled = detail.isSubmitting;
+  elements.companies.detailSaveButton.disabled = detail.isSubmitting;
+
+  for (const control of elements.companies.detailEditForm.elements) {
+    if ("disabled" in control) {
+      control.disabled = detail.isSubmitting;
+    }
+  }
+
+  if (!shouldShowContent) {
+    return;
+  }
+
+  elements.companies.detailId.textContent = formatCount(company.id);
+  elements.companies.detailName.textContent = company.name || "Не указано";
+  elements.companies.detailIin.textContent = company.iin || "Не указан";
+}
+
 export function renderSuppliers() {
   renderSimpleList({
     elementsGroup: elements.suppliers,
@@ -229,6 +266,58 @@ export function renderSuppliers() {
     emptySearch: "По запросу ничего не найдено.",
     createRow: createSupplierRow,
   });
+}
+
+export function renderSupplierDetail() {
+  const detail = state.supplierDetail;
+  const supplier = detail.data;
+  const productLinks = normalizeProductSupplierLinks(supplier?.product_links);
+  const shouldShowContent = Boolean(supplier) && !detail.isLoading && !detail.error;
+  const isEditing = shouldShowContent && detail.isEditing;
+  const shouldShowLinks = shouldShowContent && productLinks.length > 0;
+
+  elements.suppliers.detailTitle.textContent = supplier
+    ? supplier.name || `Поставщик #${formatCount(supplier.id)}`
+    : "Поставщик";
+  elements.suppliers.detailLoading.classList.toggle("d-none", !detail.isLoading);
+  elements.suppliers.detailError.textContent = detail.error;
+  elements.suppliers.detailError.classList.toggle("d-none", !detail.error);
+  elements.suppliers.detailContent.classList.toggle("d-none", !shouldShowContent);
+  elements.suppliers.detailEditError.textContent = detail.editError;
+  elements.suppliers.detailEditError.classList.toggle("d-none", !detail.editError);
+  elements.suppliers.detailEditButton.classList.toggle("d-none", !shouldShowContent || isEditing);
+  elements.suppliers.detailView.classList.toggle("d-none", isEditing);
+  elements.suppliers.detailEditForm.classList.toggle("d-none", !isEditing);
+  elements.suppliers.detailCancelEditButton.classList.toggle("d-none", !isEditing);
+  elements.suppliers.detailSaveButton.classList.toggle("d-none", !isEditing);
+  elements.suppliers.detailCancelEditButton.disabled = detail.isSubmitting;
+  elements.suppliers.detailSaveButton.disabled = detail.isSubmitting;
+  elements.suppliers.detailProductLinksEmpty.classList.toggle("d-none", !shouldShowContent || shouldShowLinks);
+  elements.suppliers.detailProductLinksTable.classList.toggle("d-none", !shouldShowLinks);
+  elements.suppliers.detailProductLinksBody.replaceChildren();
+
+  for (const control of elements.suppliers.detailEditForm.elements) {
+    if ("disabled" in control) {
+      control.disabled = detail.isSubmitting;
+    }
+  }
+
+  if (!shouldShowContent) {
+    return;
+  }
+
+  elements.suppliers.detailId.textContent = formatCount(supplier.id);
+  elements.suppliers.detailName.textContent = supplier.name || "Не указано";
+  elements.suppliers.detailPhone.textContent = supplier.phone_number || "Не указан";
+  elements.suppliers.detailProductLinksCount.textContent = formatCount(productLinks.length);
+
+  const fragment = document.createDocumentFragment();
+
+  for (const productLink of productLinks) {
+    fragment.append(createSupplierProductLinkRow(productLink));
+  }
+
+  elements.suppliers.detailProductLinksBody.append(fragment);
 }
 
 export function renderRestocks() {
@@ -335,36 +424,15 @@ export function renderSaleDetail() {
 }
 
 export function renderLookup({ kind }) {
-  const productCreate = state.productCreate;
-  const lookup = kind === "supplier"
-    ? productCreate.supplierLookup
-    : productCreate.companyLookup;
-  const selected = kind === "supplier"
-    ? productCreate.selectedSupplier
-    : productCreate.selectedCompany;
-  const group = kind === "supplier"
-    ? {
-        selected: elements.products.supplierSelected,
-        selectedName: elements.products.supplierSelectedName,
-        selectedMeta: elements.products.supplierSelectedMeta,
-        message: elements.products.supplierLookupMessage,
-        results: elements.products.supplierResults,
-      }
-    : {
-        selected: elements.products.companySelected,
-        selectedName: elements.products.companySelectedName,
-        selectedMeta: elements.products.companySelectedMeta,
-        message: elements.products.companyLookupMessage,
-        results: elements.products.companyResults,
-      };
+  const { lookupKind, lookup, selected, group } = getLookupRenderConfig(kind);
 
   group.selected.classList.toggle("d-none", !selected);
   group.selectedName.textContent = selected?.name || "";
   group.selectedMeta.textContent = selected
-    ? getLookupMeta(kind, selected)
+    ? getLookupMeta(lookupKind, selected)
     : "";
 
-  const message = getLookupMessage(kind, lookup);
+  const message = getLookupMessage(lookupKind, lookup);
   group.message.textContent = message;
   group.message.classList.toggle("d-none", !message);
   group.message.classList.toggle("text-danger", Boolean(lookup.error));
@@ -382,7 +450,7 @@ export function renderLookup({ kind }) {
   const fragment = document.createDocumentFragment();
 
   for (const item of lookup.results) {
-    fragment.append(createLookupResultButton(kind, item));
+    fragment.append(createLookupResultButton(lookupKind, item));
   }
 
   group.results.append(fragment);
@@ -397,6 +465,51 @@ export function renderProductCreateMode() {
   elements.products.supplierSection.classList.toggle("d-none", !state.productCreate.linkEnabled);
   elements.products.supplierExistingPanel.classList.toggle("d-none", isSupplierNew);
   elements.products.supplierNewPanel.classList.toggle("d-none", !isSupplierNew);
+}
+
+function getLookupRenderConfig(kind) {
+  if (kind === "supplier") {
+    return {
+      lookupKind: "supplier",
+      lookup: state.productCreate.supplierLookup,
+      selected: state.productCreate.selectedSupplier,
+      group: {
+        selected: elements.products.supplierSelected,
+        selectedName: elements.products.supplierSelectedName,
+        selectedMeta: elements.products.supplierSelectedMeta,
+        message: elements.products.supplierLookupMessage,
+        results: elements.products.supplierResults,
+      },
+    };
+  }
+
+  if (kind === "detailCompany") {
+    return {
+      lookupKind: "company",
+      lookup: state.productDetail.companyLookup,
+      selected: state.productDetail.selectedCompany,
+      group: {
+        selected: elements.products.detailEditCompanySelected,
+        selectedName: elements.products.detailEditCompanySelectedName,
+        selectedMeta: elements.products.detailEditCompanySelectedMeta,
+        message: elements.products.detailEditCompanyLookupMessage,
+        results: elements.products.detailEditCompanyResults,
+      },
+    };
+  }
+
+  return {
+    lookupKind: "company",
+    lookup: state.productCreate.companyLookup,
+    selected: state.productCreate.selectedCompany,
+    group: {
+      selected: elements.products.companySelected,
+      selectedName: elements.products.companySelectedName,
+      selectedMeta: elements.products.companySelectedMeta,
+      message: elements.products.companyLookupMessage,
+      results: elements.products.companyResults,
+    },
+  };
 }
 
 export function setCreateError(element, message = "") {
@@ -840,6 +953,9 @@ function createCompanyRow(company) {
   const name = document.createElement("div");
   const meta = document.createElement("div");
 
+  row.className = "company-summary-row";
+  row.tabIndex = 0;
+  row.dataset.companyId = String(company.id || "");
   name.className = "fw-semibold";
   name.textContent = company.name || "Без названия";
   meta.className = "company-meta";
@@ -854,16 +970,44 @@ function createSupplierRow(supplier) {
   const row = document.createElement("tr");
   const nameCell = document.createElement("td");
   const phoneCell = document.createElement("td");
+  const productsCell = document.createElement("td");
   const name = document.createElement("div");
   const meta = document.createElement("div");
+  const productsCount = Number(supplier.product_links_count || 0);
 
+  row.className = "supplier-summary-row";
+  row.dataset.supplierId = String(supplier.id || "");
+  row.tabIndex = 0;
+  row.setAttribute("role", "button");
+  row.setAttribute("aria-label", `Открыть поставщика ${supplier.name || `#${formatCount(supplier.id)}`}`);
   name.className = "fw-semibold";
   name.textContent = supplier.name || "Без названия";
   meta.className = "supplier-meta";
   meta.textContent = `ID ${formatCount(supplier.id)}`;
   nameCell.append(name, meta);
   phoneCell.textContent = supplier.phone_number || "Не указан";
-  row.append(nameCell, phoneCell);
+  productsCell.textContent = formatCount(productsCount);
+  productsCell.className = productsCount > 0 ? "fw-semibold" : "text-secondary";
+  row.append(nameCell, phoneCell, productsCell);
+  return row;
+}
+
+function createSupplierProductLinkRow(productLink) {
+  const row = document.createElement("tr");
+
+  row.append(
+    createDetailEntityCell(
+      productLink.product_name || `Товар #${formatCount(productLink.product_id)}`,
+      `ID ${formatCount(productLink.product_id)}`,
+      "supplier-meta",
+    ),
+    createPlainCell(formatCount(productLink.quantity)),
+    createMoneyCell(productLink.purchase_price),
+    createPlainCell(`${formatCount(productLink.margin_percent)}%`),
+    createMoneyCell(productLink.sale_price),
+    createProductSupplierStatusCell(productLink.stock_status),
+  );
+
   return row;
 }
 
@@ -1065,9 +1209,15 @@ function getLookupMessage(kind, lookup) {
 }
 
 function getLookupMeta(kind, item) {
-  return kind === "supplier"
-    ? `ID ${formatCount(item.id)} | ${item.phone_number || "Телефон не указан"}`
-    : `ID ${formatCount(item.id)} | ИИН ${item.iin || "Не указан"}`;
+  if (kind === "supplier") {
+    return `ID ${formatCount(item.id)} | ${item.phone_number || "Телефон не указан"}`;
+  }
+
+  if (item.iin === undefined) {
+    return `ID ${formatCount(item.id)}`;
+  }
+
+  return `ID ${formatCount(item.id)} | ИИН ${item.iin || "Не указан"}`;
 }
 
 function normalizeDateKey(value) {

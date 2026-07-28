@@ -1,11 +1,10 @@
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Body, HTTPException, Path, Query, status
 from sqlalchemy import String, case, func, select
 from sqlalchemy.dialects.postgresql import aggregate_order_by, array
 from sqlalchemy.orm import selectinload
 
-from app import tags
 from app.models import Company, Product, ProductSupplier, Supplier, Tag
 from app.pricing import calculate_floor_price
 from app.schemas import (
@@ -20,7 +19,7 @@ from app.schemas import (
 from app.tags import get_or_create_tags
 from devs import DbSession
 from errors import commit_or_raise
-from utils import aggr_paginate
+from utils import aggr_paginate, build_unique_values_candidates
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -145,13 +144,13 @@ def get_products_by_name(
 
 
 @router.get(
-    "/{product_id}",
+    "/{id}",
     response_model=ProductResponse,
     status_code=status.HTTP_200_OK,
 )
 def get_product_by_id(
     db: DbSession,
-    product_id: Annotated[int, Path(gt=0)],
+    id: Annotated[int, Path(gt=0)],
 ):
     statement = (
         select(Product)
@@ -159,7 +158,7 @@ def get_product_by_id(
             selectinload(Product.company),
             selectinload(Product.supplier_links).selectinload(ProductSupplier.supplier),
         )
-        .where(Product.id == product_id)
+        .where(Product.id == id)
     )
 
     product = db.scalars(statement).one_or_none()
@@ -276,12 +275,14 @@ def add_supplier_links(
 
 
 @router.patch(
-    "/{product_id}",
+    "/{id}",
     response_model=ProductResponse,
     status_code=status.HTTP_200_OK,
 )
 def patch_product(
-    db: DbSession, product_id: Annotated[int, Path(gt=0)], patch_data: ProductUpdate
+    db: DbSession,
+    id: Annotated[int, Path(gt=0)],
+    patch_data: ProductUpdate,
 ):
     statement = (
         select(Product)
@@ -289,7 +290,7 @@ def patch_product(
             selectinload(Product.company),
             selectinload(Product.supplier_links).selectinload(ProductSupplier.supplier),
         )
-        .where(Product.id == product_id)
+        .where(Product.id == id)
     )
 
     product = db.scalars(statement).one_or_none()
@@ -300,8 +301,46 @@ def patch_product(
             detail="No product with such id exists.",
         )
 
-    update_data = patch_data.model_dump(exclude_unset=True)
-    tag_names = update_data.pop("tags", None)
+    update_data = cast(
+        dict[str, object],
+        patch_data.model_dump(exclude_unset=True),
+    )
+    unique_values, identity_changed = build_unique_values_candidates(
+        ["name", "company_id", "quantity_unit"],
+        update_data,
+        product,
+    )
+
+    if identity_changed:
+        candidate_name = cast(str, unique_values["name"])
+        candidate_company_id = cast(int, unique_values["company_id"])
+        candidate_quantity_unit = cast(str, unique_values["quantity_unit"])
+        duplicate_product_id = db.scalar(
+            select(Product.id).where(
+                Product.id != id,
+                Product.name == candidate_name,
+                Product.company_id == candidate_company_id,
+                Product.quantity_unit == candidate_quantity_unit,
+            )
+        )
+        if duplicate_product_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="product with given name, company id and quantity unit already exists.",
+            )
+
+    tag_names = cast(list[str], update_data.pop("tags", None))
+
+    if "company_id" in update_data:
+        company = db.get(
+            Company,
+            update_data["company_id"],
+        )
+        if company is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Company with such id does not exist.",
+            )
 
     for field, value in update_data.items():
         setattr(product, field, value)

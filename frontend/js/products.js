@@ -35,6 +35,7 @@ const LOOKUP_DEBOUNCE_MS = 300;
 
 const lookupRequests = {
   company: { controller: null, debounceId: null },
+  detailCompany: { controller: null, debounceId: null },
   supplier: { controller: null, debounceId: null },
 };
 
@@ -78,15 +79,13 @@ export function bindProductsFeature() {
   });
 
   elements.products.detailEditButton.addEventListener("click", () => {
-    state.productDetail.isEditing = true;
-    state.productDetail.editError = "";
+    enterProductDetailEdit();
     renderProductDetail();
     elements.products.detailEditNameInput.focus();
   });
 
   elements.products.detailCancelEditButton.addEventListener("click", () => {
-    state.productDetail.isEditing = false;
-    state.productDetail.editError = "";
+    exitProductDetailEdit();
     renderProductDetail();
   });
 
@@ -105,6 +104,7 @@ export function bindProductsFeature() {
   });
 
   bindProductCreateForm();
+  bindProductDetailCompanyLookup();
   bindCompanyLookup();
   bindSupplierLookup();
   syncProductCreateMode();
@@ -171,7 +171,15 @@ async function submitProductDetailEdit() {
     return;
   }
 
-  const payload = getProductDetailEditPayload();
+  let payload;
+
+  try {
+    payload = getProductDetailEditPayload();
+  } catch (error) {
+    state.productDetail.editError = getCreateErrorMessage(error, "товар");
+    renderProductDetail();
+    return;
+  }
 
   state.productDetail.isSubmitting = true;
   state.productDetail.editError = "";
@@ -213,6 +221,42 @@ async function submitProductDetailEdit() {
       renderProductDetail();
     }
   }
+}
+
+function bindProductDetailCompanyLookup() {
+  elements.products.detailEditCompanySearchInput.addEventListener("keydown", preventEnter);
+  elements.products.detailEditCompanySearchInput.addEventListener("input", () => {
+    scheduleLookup("detailCompany", elements.products.detailEditCompanySearchInput.value.trim());
+  });
+  elements.products.detailEditCompanyClearButton.addEventListener("click", () => {
+    clearSelectedProductDetailCompany();
+    renderProductDetail();
+    elements.products.detailEditCompanySearchInput.focus();
+  });
+  elements.products.detailEditCompanyResults.addEventListener("click", (event) => {
+    const button = event.target instanceof Element
+      ? event.target.closest("[data-company-id]")
+      : null;
+
+    if (!button) {
+      return;
+    }
+
+    const company = state.productDetail.companyLookup.results.find(
+      (item) => String(item.id) === button.dataset.companyId,
+    );
+
+    if (company) {
+      cancelLookup("detailCompany");
+      state.productDetail.selectedCompany = company;
+      elements.products.detailEditCompanyIdInput.value = String(company.id);
+      elements.products.detailEditCompanySearchInput.value = "";
+      state.productDetail.companyLookup = createLookupState();
+      state.productDetail.editError = "";
+      renderLookup({ kind: "detailCompany" });
+      renderProductDetail();
+    }
+  });
 }
 
 function bindProductCreateForm() {
@@ -468,9 +512,7 @@ async function runLookup(kind, searchTerm) {
   const requestState = lookupRequests[kind];
   const lookup = getLookupState(kind);
   const controller = new AbortController();
-  const input = kind === "supplier"
-    ? elements.products.supplierSearchInput
-    : elements.products.companySearchInput;
+  const input = getLookupInput(kind);
 
   requestState.controller = controller;
   lookup.isLoading = true;
@@ -527,6 +569,15 @@ function clearSelectedCompany() {
   renderLookup({ kind: "company" });
 }
 
+function clearSelectedProductDetailCompany() {
+  cancelLookup("detailCompany");
+  state.productDetail.selectedCompany = null;
+  state.productDetail.companyLookup = createLookupState();
+  elements.products.detailEditCompanyIdInput.value = "";
+  elements.products.detailEditCompanySearchInput.value = "";
+  renderLookup({ kind: "detailCompany" });
+}
+
 function clearSelectedSupplier() {
   cancelLookup("supplier");
   state.productCreate.selectedSupplier = null;
@@ -545,9 +596,27 @@ function clearLookupState(kind, hasSearched) {
 }
 
 function getLookupState(kind) {
-  return kind === "supplier"
-    ? state.productCreate.supplierLookup
-    : state.productCreate.companyLookup;
+  if (kind === "supplier") {
+    return state.productCreate.supplierLookup;
+  }
+
+  if (kind === "detailCompany") {
+    return state.productDetail.companyLookup;
+  }
+
+  return state.productCreate.companyLookup;
+}
+
+function getLookupInput(kind) {
+  if (kind === "supplier") {
+    return elements.products.supplierSearchInput;
+  }
+
+  if (kind === "detailCompany") {
+    return elements.products.detailEditCompanySearchInput;
+  }
+
+  return elements.products.companySearchInput;
 }
 
 function resetProductCreateForm() {
@@ -570,24 +639,80 @@ function resetProductCreateForm() {
 }
 
 function resetProductDetail() {
+  cancelLookup("detailCompany");
   state.productDetail.data = null;
   state.productDetail.summary = null;
   state.productDetail.id = null;
+  state.productDetail.selectedCompany = null;
+  state.productDetail.companyLookup = createLookupState();
   state.productDetail.error = "";
   state.productDetail.editError = "";
   state.productDetail.isEditing = false;
   state.productDetail.isSubmitting = false;
   state.productDetail.isLoading = false;
+  elements.products.detailEditCompanyIdInput.value = "";
+  elements.products.detailEditCompanySearchInput.value = "";
   renderProductDetail();
+}
+
+function enterProductDetailEdit() {
+  const product = state.productDetail.data;
+
+  if (!product) {
+    return;
+  }
+
+  const unit = String(product.quantity_unit || "").trim() || DEFAULT_QUANTITY_UNIT;
+  const selectedCompany = product.company_id
+    ? {
+        id: product.company_id,
+        name: product.company_name || `Компания #${product.company_id}`,
+      }
+    : null;
+
+  cancelLookup("detailCompany");
+  state.productDetail.selectedCompany = selectedCompany;
+  state.productDetail.companyLookup = createLookupState();
+  state.productDetail.isEditing = true;
+  state.productDetail.editError = "";
+  elements.products.detailEditNameInput.value = product.name || "";
+  elements.products.detailEditCompanyIdInput.value = selectedCompany
+    ? String(selectedCompany.id)
+    : "";
+  elements.products.detailEditCompanySearchInput.value = "";
+  elements.products.detailEditUnitInput.value = unit;
+  elements.products.detailEditThresholdInput.value = String(product.low_stock_threshold ?? 0);
+  elements.products.detailEditTagsInput.value = getTagNames(product.tags).join(", ");
+}
+
+function exitProductDetailEdit() {
+  cancelLookup("detailCompany");
+  state.productDetail.isEditing = false;
+  state.productDetail.editError = "";
+  state.productDetail.selectedCompany = null;
+  state.productDetail.companyLookup = createLookupState();
+  elements.products.detailEditCompanyIdInput.value = "";
+  elements.products.detailEditCompanySearchInput.value = "";
 }
 
 function getProductDetailEditPayload() {
   const formData = new FormData(elements.products.detailEditForm);
+  const companyId = Number(
+    state.productDetail.selectedCompany?.id
+      || elements.products.detailEditCompanyIdInput.value
+      || 0,
+  );
+
+  if (!Number.isInteger(companyId) || companyId <= 0) {
+    throw createLocalValidationError("Выберите компанию.");
+  }
 
   return {
     name: getText(formData, "name"),
+    company_id: companyId,
     quantity_unit: getText(formData, "quantity_unit") || DEFAULT_QUANTITY_UNIT,
     low_stock_threshold: getNumber(formData, "low_stock_threshold"),
+    tags: getTags(formData),
   };
 }
 
@@ -669,6 +794,22 @@ function getTags(formData) {
   }
 
   return tags.split(",").map((tag) => tag.trim()).filter(Boolean);
+}
+
+function getTagNames(tags) {
+  if (!Array.isArray(tags)) {
+    return [];
+  }
+
+  return tags
+    .map((tag) => {
+      if (typeof tag === "string") {
+        return tag.trim();
+      }
+
+      return String(tag?.name || "").trim();
+    })
+    .filter(Boolean);
 }
 
 function createLocalValidationError(message) {
