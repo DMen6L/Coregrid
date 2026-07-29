@@ -1,7 +1,10 @@
 export const state = {
   activeView: "dashboard",
   dashboard: createDashboardState(),
-  products: createListState(),
+  products: {
+    ...createListState(),
+    popularTags: createPopularTagsState(),
+  },
   companies: createListState(),
   suppliers: createListState(),
   restocks: createDatedListState(),
@@ -66,6 +69,15 @@ export function createLookupState() {
     error: "",
     hasSearched: false,
     results: [],
+  };
+}
+
+export function createPopularTagsState() {
+  return {
+    items: [],
+    isLoading: false,
+    hasLoaded: false,
+    error: "",
   };
 }
 

@@ -1,7 +1,7 @@
 from typing import Annotated, cast
 
 from fastapi import APIRouter, Body, HTTPException, Path, Query, status
-from sqlalchemy import String, case, func, select
+from sqlalchemy import String, case, func, or_, select
 from sqlalchemy.dialects.postgresql import aggregate_order_by, array
 from sqlalchemy.orm import selectinload
 
@@ -130,7 +130,10 @@ def get_products_by_name(
     count_statement = select(func.count(Product.id)).select_from(Product)
 
     if search and (search := search.strip()):
-        search_condition = Product.name.ilike(f"%{search}%")
+        search_condition = or_(
+            Product.name.ilike(f"%{search}%"),
+            Product.tags.any(Tag.name.ilike(f"%{search}%")),
+        )
         summary_statement = summary_statement.where(search_condition)
         count_statement = count_statement.where(search_condition)
 
@@ -474,3 +477,53 @@ def patch_product_links(
     db.refresh(product_supplier)
 
     return product_supplier
+
+
+@router.delete(
+    "/{product_id}/links/{link_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_product_link(
+    db: DbSession,
+    product_id: Annotated[int, Path(gt=0)],
+    link_id: Annotated[int, Path(gt=0)],
+) -> None:
+    if db.get(Product, product_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product with such id for the link is not found",
+        )
+
+    statement = (
+        select(ProductSupplier)
+        .options(
+            selectinload(ProductSupplier.product),
+            selectinload(ProductSupplier.supplier),
+        )
+        .where(ProductSupplier.id == link_id)
+    )
+    product_supplier = db.scalars(statement).one_or_none()
+
+    if product_supplier is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Link for product and supplier with such id does not exist",
+        )
+    if product_supplier.product_id != product_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Link connects to the wrong product",
+        )
+    if product_supplier.quantity > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete supplier link with stock",
+        )
+    if product_supplier.restock_lines or product_supplier.sale_lines:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete supplier link with stock movements tied",
+        )
+
+    db.delete(product_supplier)
+    commit_or_raise(db)

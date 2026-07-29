@@ -341,6 +341,19 @@
             <span class="badge text-bg-secondary products-count" id="products-count">0 товаров</span>
           </div>
         </div>
+        <div class="products-popular-tags d-none" id="products-popular-tags" aria-live="polite">
+          <div class="products-popular-tags-header">
+            <span class="product-detail-label">Популярные теги</span>
+            <span class="text-secondary small d-none" id="products-popular-tags-loading">
+              Загрузка...
+            </span>
+            <span class="text-danger small d-none" id="products-popular-tags-error"></span>
+            <span class="text-secondary small d-none" id="products-popular-tags-empty">
+              Теги не найдены.
+            </span>
+          </div>
+          <div class="products-popular-tags-list" id="products-popular-tags-list"></div>
+        </div>
         <div class="text-secondary py-4" id="products-loading" aria-live="polite">
           Загрузка товаров...
         </div>

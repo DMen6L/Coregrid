@@ -137,6 +137,36 @@ export function renderProducts() {
   elements.products.tableBody.append(fragment);
 }
 
+export function renderProductPopularTags() {
+  const tagState = state.products.popularTags;
+  const tags = Array.isArray(tagState.items)
+    ? tagState.items.filter((tag) => normalizeTagName(tag))
+    : [];
+  const shouldShowSection =
+    tagState.isLoading || tagState.hasLoaded || Boolean(tagState.error) || tags.length > 0;
+  const shouldShowEmpty =
+    tagState.hasLoaded && !tagState.isLoading && !tagState.error && tags.length === 0;
+
+  elements.products.popularTags.classList.toggle("d-none", !shouldShowSection);
+  elements.products.popularTagsLoading.classList.toggle("d-none", !tagState.isLoading);
+  elements.products.popularTagsError.textContent = tagState.error;
+  elements.products.popularTagsError.classList.toggle("d-none", !tagState.error);
+  elements.products.popularTagsEmpty.classList.toggle("d-none", !shouldShowEmpty);
+  elements.products.popularTagsList.replaceChildren();
+
+  if (!tags.length || tagState.error) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const tag of tags) {
+    fragment.append(createPopularTagButton(tag));
+  }
+
+  elements.products.popularTagsList.append(fragment);
+}
+
 export function renderProductDetail() {
   const detail = state.productDetail;
   const product = detail.data;
@@ -1218,6 +1248,30 @@ function createTagsCell(tags) {
   return cell;
 }
 
+function createPopularTagButton(tag) {
+  const button = document.createElement("button");
+  const name = normalizeTagName(tag);
+  const usageCount = Number(tag?.usage_count);
+  const nameElement = document.createElement("span");
+
+  button.className = "btn btn-sm btn-outline-secondary product-popular-tag";
+  button.type = "button";
+  button.dataset.tagName = name;
+  button.title = `Искать товары с тегом ${name}`;
+  nameElement.textContent = name;
+  button.append(nameElement);
+
+  if (Number.isFinite(usageCount)) {
+    const count = document.createElement("span");
+
+    count.className = "badge text-bg-light border";
+    count.textContent = formatCount(usageCount);
+    button.append(count);
+  }
+
+  return button;
+}
+
 function createCompanyRow(company) {
   const row = document.createElement("tr");
   const nameCell = document.createElement("td");
@@ -1594,14 +1648,16 @@ function normalizeTags(tags) {
   }
 
   return tags
-    .map((tag) => {
-      if (typeof tag === "string") {
-        return tag.trim();
-      }
-
-      return String(tag?.name || "").trim();
-    })
+    .map((tag) => normalizeTagName(tag))
     .filter(Boolean);
+}
+
+function normalizeTagName(tag) {
+  if (typeof tag === "string") {
+    return tag.trim();
+  }
+
+  return String(tag?.name || "").trim();
 }
 
 function normalizeProductSupplierLinks(supplierLinks) {

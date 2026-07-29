@@ -7,6 +7,7 @@ import {
   createSupplier,
   getProduct,
   getProducts,
+  getTags as getTagList,
   patchProductSupplierLink,
   patchProduct,
 } from "./api.js";
@@ -20,6 +21,7 @@ import {
   renderLookup,
   renderProductDetail,
   renderProductDetailNewLinkLookup,
+  renderProductPopularTags,
   renderProductCreateMode,
   renderProducts,
   setAppMessage,
@@ -34,6 +36,7 @@ import { request } from "./utils.js";
 
 const LOOKUP_MIN_LENGTH = 2;
 const LOOKUP_DEBOUNCE_MS = 300;
+const POPULAR_TAGS_LIMIT = 10;
 
 const lookupRequests = {
   company: { controller: null, debounceId: null },
@@ -46,6 +49,16 @@ export function bindProductsFeature() {
   elements.products.searchForm.addEventListener("submit", (event) => {
     event.preventDefault();
     loadProducts(elements.products.searchInput.value.trim(), FIRST_PAGE);
+  });
+
+  elements.products.popularTagsList.addEventListener("click", (event) => {
+    const button = event.target instanceof Element
+      ? event.target.closest("[data-tag-name]")
+      : null;
+
+    if (button) {
+      applyProductTagSearch(button.dataset.tagName || "");
+    }
   });
 
   elements.products.previousPageButton.addEventListener("click", () => {
@@ -112,6 +125,7 @@ export function bindProductsFeature() {
   bindCompanyLookup();
   bindSupplierLookup();
   syncProductCreateMode();
+  loadProductPopularTags();
 }
 
 export async function loadProducts(searchTerm = "", page = FIRST_PAGE) {
@@ -131,6 +145,39 @@ export async function loadProducts(searchTerm = "", page = FIRST_PAGE) {
     state.products.isLoading = false;
     renderProducts();
   }
+}
+
+async function loadProductPopularTags() {
+  state.products.popularTags.isLoading = true;
+  state.products.popularTags.error = "";
+  renderProductPopularTags();
+
+  try {
+    const response = await getTagList({
+      page: FIRST_PAGE,
+      pageSize: POPULAR_TAGS_LIMIT,
+    });
+    state.products.popularTags.items = Array.isArray(response?.items) ? response.items : [];
+  } catch (error) {
+    console.error("Could not load popular product tags:", error);
+    state.products.popularTags.items = [];
+    state.products.popularTags.error = getRequestErrorMessage(error, "популярные теги");
+  } finally {
+    state.products.popularTags.isLoading = false;
+    state.products.popularTags.hasLoaded = true;
+    renderProductPopularTags();
+  }
+}
+
+function applyProductTagSearch(tagName) {
+  const searchTerm = String(tagName || "").trim();
+
+  if (!searchTerm) {
+    return;
+  }
+
+  elements.products.searchInput.value = searchTerm;
+  loadProducts(searchTerm, FIRST_PAGE);
 }
 
 async function openProductDetail(productId) {

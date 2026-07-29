@@ -452,6 +452,32 @@ body {
   gap: 0.25rem;
 }
 
+.products-popular-tags {
+  max-width: 48rem;
+  margin: -0.35rem 0 1rem;
+}
+
+.products-popular-tags-header,
+.products-popular-tags-list,
+.product-popular-tag {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.products-popular-tags-header {
+  gap: 0.5rem;
+}
+
+.products-popular-tags-list {
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.product-popular-tag {
+  gap: 0.35rem;
+}
+
 .product-supplier-links {
   display: grid;
   gap: 0.5rem;

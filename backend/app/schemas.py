@@ -133,6 +133,10 @@ class TagResponse(BaseModel):
     name: str
 
 
+class TagSummaryResponse(TagResponse):
+    usage_count: int
+
+
 class ProductSupplierCreate(BaseModel):
     supplier_id: int = Field(gt=0)
     purchase_price: int = Field(gt=0)

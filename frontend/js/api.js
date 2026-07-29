@@ -96,8 +96,12 @@ export function patchSupplier(supplierId, payload) {
   });
 }
 
-export function getTags({ search = "", page = FIRST_PAGE } = {}) {
-  return request(buildListPath("/tags", search, page));
+export function getTags({
+  search = "",
+  page = FIRST_PAGE,
+  pageSize = DEFAULT_PAGE_SIZE,
+} = {}) {
+  return request(buildListPath("/tags", search, page, pageSize));
 }
 
 export function getRestocks({

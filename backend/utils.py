@@ -1,7 +1,8 @@
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime, time, timedelta
-from typing import Literal, TypeVar, cast
+from typing import Annotated, Literal, TypeVar, cast
 
+from fastapi import Path
 from pydantic import BaseModel
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
