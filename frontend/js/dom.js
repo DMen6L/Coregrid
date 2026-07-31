@@ -2,6 +2,12 @@ export const elements = {
   appMessage: getElement("#app-message"),
   navTabs: Array.from(document.querySelectorAll("[data-view-tab]")),
   navMenuToggles: Array.from(document.querySelectorAll("[data-view-menu-views]")),
+  apiConfig: {
+    form: getElement("#api-config-form"),
+    select: getElement("#api-base-select"),
+    customInput: getElement("#api-base-custom-input"),
+    submitButton: getElement("#api-base-apply-button"),
+  },
   views: {
     dashboard: getElement("#dashboard"),
     products: getElement("#products"),

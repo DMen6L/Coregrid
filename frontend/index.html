@@ -136,6 +136,33 @@
               </ul>
             </div>
           </div>
+          <form class="api-config-form ms-lg-auto mt-3 mt-lg-0" id="api-config-form">
+            <label class="visually-hidden" for="api-base-select">API backend</label>
+            <div class="input-group input-group-sm api-config-controls">
+              <span class="input-group-text">API</span>
+              <select
+                class="form-select api-config-select"
+                id="api-base-select"
+                name="api_base"
+                aria-label="API backend"
+              ></select>
+              <input
+                class="form-control api-config-custom-input d-none"
+                id="api-base-custom-input"
+                name="api_base_custom"
+                type="url"
+                placeholder="http://127.0.0.1:8000"
+                autocomplete="off"
+              >
+              <button
+                class="btn btn-outline-primary"
+                id="api-base-apply-button"
+                type="submit"
+              >
+                OK
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </nav>

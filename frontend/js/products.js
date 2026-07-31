@@ -125,7 +125,6 @@ export function bindProductsFeature() {
   bindCompanyLookup();
   bindSupplierLookup();
   syncProductCreateMode();
-  loadProductPopularTags();
 }
 
 export async function loadProducts(searchTerm = "", page = FIRST_PAGE) {
@@ -147,7 +146,7 @@ export async function loadProducts(searchTerm = "", page = FIRST_PAGE) {
   }
 }
 
-async function loadProductPopularTags() {
+export async function loadProductPopularTags() {
   state.products.popularTags.isLoading = true;
   state.products.popularTags.error = "";
   renderProductPopularTags();

@@ -100,7 +100,14 @@ Start the static frontend:
 python3 -m http.server 5173
 ```
 
-Open `http://127.0.0.1:5173` and keep the API base set to `http://127.0.0.1:8000`.
+Open `http://127.0.0.1:5173`. The navbar API selector defaults to
+`http://127.0.0.1:8000`; choose `127.0.0.1:8001` or `Другой` if the backend is
+published on a different host port. You can also preselect an API base with a
+query parameter, for example:
+
+```text
+http://127.0.0.1:5173/?api_base=http://127.0.0.1:8001
+```
 
 
 ## Project structure

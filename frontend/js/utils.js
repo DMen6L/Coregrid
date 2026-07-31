@@ -1,7 +1,7 @@
-import { BASE_API } from './config.js'
+import { getBaseApi } from "./config.js";
 
 export async function request(path, options = {}) {
-  const response = await fetch(`${BASE_API}${path}`, {
+  const response = await fetch(`${getBaseApi()}${path}`, {
     ...options,
     headers: {
       "Content-type": "application/json",
