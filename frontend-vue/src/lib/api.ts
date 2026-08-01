@@ -6,7 +6,11 @@ import type {
   PaginatedResponse,
   ProductCreatePayload,
   ProductResponse,
+  ProductSupplierCreatePayload,
+  ProductSupplierResponse,
   ProductSummaryResponse,
+  SupplierCreatePayload,
+  SupplierResponse,
   SupplierSummaryResponse,
   SummariesResponse,
   TagSummaryResponse,
@@ -83,6 +87,16 @@ export function createProduct(payload: ProductCreatePayload) {
   });
 }
 
+export function createProductSupplierLinks(
+  productId: number,
+  payload: ProductSupplierCreatePayload[],
+) {
+  return request<ProductSupplierResponse[]>(`/products/${productId}/links`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getTags({
   search = "",
   page = FIRST_PAGE,
@@ -130,6 +144,13 @@ export function getSuppliers({
   return request<PaginatedResponse<SupplierSummaryResponse>>(
     buildListPath("/suppliers", search, page, pageSize),
   );
+}
+
+export function createSupplier(payload: SupplierCreatePayload) {
+  return request<SupplierResponse>("/suppliers", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 function buildListPath(basePath: string, search: string, page: number, pageSize: number) {

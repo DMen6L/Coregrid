@@ -83,6 +83,40 @@ export interface SupplierSummaryResponse {
   product_links_count: number;
 }
 
+export interface SupplierCreatePayload {
+  name: string;
+  phone_number: string;
+}
+
+export interface ProductSupplierCreatePayload {
+  supplier_id: number;
+  purchase_price: number;
+  margin_percent: number;
+  sale_price?: number | null;
+  quantity: number;
+}
+
+export interface ProductSupplierResponse {
+  id: number;
+  product_id: number;
+  supplier_id: number;
+  product_name: string | null;
+  supplier_name: string | null;
+  purchase_price: number;
+  margin_percent: number;
+  floor_price: number;
+  sale_price: number;
+  quantity: number;
+  stock_status: StockStatus;
+}
+
+export interface SupplierResponse {
+  id: number;
+  name: string;
+  phone_number: string;
+  product_links: ProductSupplierResponse[];
+}
+
 export interface ProductCreatePayload {
   name: string;
   company_id: number;
@@ -100,4 +134,5 @@ export interface ProductResponse {
   quantity_unit: string;
   low_stock_threshold: number;
   tags: TagResponse[];
+  supplier_links: ProductSupplierResponse[];
 }

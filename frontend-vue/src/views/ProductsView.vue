@@ -6,10 +6,13 @@ import { useRoute, useRouter } from "vue-router";
 import {
   createCompany,
   createProduct,
+  createProductSupplierLinks,
+  createSupplier,
   DEFAULT_PAGE_SIZE,
   FIRST_PAGE,
   getCompanies,
   getProducts,
+  getSuppliers,
   getTags,
 } from "../lib/api";
 import {
@@ -26,16 +29,26 @@ import type {
   PaginatedResponse,
   ProductCreatePayload,
   ProductResponse,
+  ProductSupplierCreatePayload,
   ProductSummaryResponse,
   StockStatus,
+  SupplierCreatePayload,
+  SupplierSummaryResponse,
   TagSummaryResponse,
 } from "../types/api";
 
 type ProductStockStatus = StockStatus | "none";
 type CompanyMode = "existing" | "new";
+type SupplierMode = "existing" | "new";
+type ProductCreateResult = {
+  product: ProductResponse;
+  supplierLinkCreated: boolean;
+  supplierLinkError: unknown | null;
+};
 
 const POPULAR_TAGS_LIMIT = 10;
 const COMPANY_LOOKUP_PAGE_SIZE = 10;
+const SUPPLIER_LOOKUP_PAGE_SIZE = 10;
 const STOCK_STATUS: Record<ProductStockStatus, { label: string; className: string }> = {
   available: { label: "В наличии", className: "text-bg-success" },
   low: { label: "Мало", className: "text-bg-warning" },
@@ -70,7 +83,9 @@ const searchDraft = ref(currentSearchFromRoute());
 const isCreateModalOpen = ref(false);
 const createError = ref("");
 const createSuccess = ref("");
+const createSuccessVariant = ref<"success" | "warning">("success");
 const companyLookupTerm = ref("");
+const supplierLookupTerm = ref("");
 const productCreateForm = reactive({
   name: "",
   tags: "",
@@ -81,6 +96,16 @@ const productCreateForm = reactive({
   selectedCompany: null as CompanyResponse | null,
   newCompanyName: "",
   newCompanyIin: "",
+  linkEnabled: false,
+  supplierMode: "existing" as SupplierMode,
+  supplierSearch: "",
+  selectedSupplier: null as SupplierSummaryResponse | null,
+  newSupplierName: "",
+  newSupplierPhoneNumber: "",
+  purchasePrice: 1,
+  marginPercent: 0,
+  salePrice: "",
+  quantity: 0,
 });
 
 const currentSearch = computed(() => currentSearchFromRoute());
@@ -123,6 +148,25 @@ const companyLookupQuery = useQuery({
       && companyLookupTerm.value.length >= 2
   )),
 });
+const supplierLookupQuery = useQuery({
+  queryKey: computed(() => [
+    "suppliers",
+    "lookup",
+    supplierLookupTerm.value,
+    SUPPLIER_LOOKUP_PAGE_SIZE,
+  ]),
+  queryFn: () => getSuppliers({
+    search: supplierLookupTerm.value,
+    page: FIRST_PAGE,
+    pageSize: SUPPLIER_LOOKUP_PAGE_SIZE,
+  }),
+  enabled: computed(() => (
+    isCreateModalOpen.value
+      && productCreateForm.linkEnabled
+      && productCreateForm.supplierMode === "existing"
+      && supplierLookupTerm.value.length >= 2
+  )),
+});
 const createProductMutation = useMutation({
   mutationFn: createProductFromForm,
   onSuccess: handleProductCreateSuccess,
@@ -134,6 +178,7 @@ const createProductMutation = useMutation({
 const productsPage = computed(() => productsQuery.data.value || EMPTY_PRODUCTS_PAGE);
 const popularTagsPage = computed(() => popularTagsQuery.data.value || EMPTY_TAGS_PAGE);
 const companyLookupResults = computed(() => companyLookupQuery.data.value?.items || []);
+const supplierLookupResults = computed(() => supplierLookupQuery.data.value?.items || []);
 const productsError = computed(() => (
   productsQuery.error.value
     ? getRequestErrorMessage(productsQuery.error.value, "товары")
@@ -147,6 +192,11 @@ const popularTagsError = computed(() => (
 const companyLookupError = computed(() => (
   companyLookupQuery.error.value
     ? getRequestErrorMessage(companyLookupQuery.error.value, "компании")
+    : ""
+));
+const supplierLookupError = computed(() => (
+  supplierLookupQuery.error.value
+    ? getRequestErrorMessage(supplierLookupQuery.error.value, "поставщиков")
     : ""
 ));
 const hasProducts = computed(() => productsPage.value.items.length > 0);
@@ -189,6 +239,19 @@ watch(currentSearch, (nextSearch) => {
 watch(() => productCreateForm.companyMode, () => {
   createError.value = "";
   companyLookupTerm.value = "";
+});
+
+watch(() => productCreateForm.supplierMode, () => {
+  createError.value = "";
+  supplierLookupTerm.value = "";
+});
+
+watch(() => productCreateForm.linkEnabled, (isEnabled) => {
+  createError.value = "";
+
+  if (!isEnabled) {
+    supplierLookupTerm.value = "";
+  }
 });
 
 function submitSearch() {
@@ -265,6 +328,34 @@ function clearSelectedCompany() {
   companyLookupTerm.value = "";
 }
 
+function runSupplierLookup() {
+  const search = normalizeTagName(productCreateForm.supplierSearch);
+
+  productCreateForm.supplierSearch = search;
+  productCreateForm.selectedSupplier = null;
+  createError.value = "";
+
+  if (search.length < 2) {
+    supplierLookupTerm.value = "";
+    return;
+  }
+
+  supplierLookupTerm.value = search;
+}
+
+function selectSupplier(supplier: SupplierSummaryResponse) {
+  productCreateForm.selectedSupplier = supplier;
+  productCreateForm.supplierSearch = supplier.name;
+  supplierLookupTerm.value = "";
+  createError.value = "";
+}
+
+function clearSelectedSupplier() {
+  productCreateForm.selectedSupplier = null;
+  productCreateForm.supplierSearch = "";
+  supplierLookupTerm.value = "";
+}
+
 function submitProductCreate() {
   createError.value = "";
   createSuccess.value = "";
@@ -277,6 +368,8 @@ function submitProductCreate() {
 }
 
 async function createProductFromForm() {
+  validateProductSupplierSelection();
+
   const companyId = await resolveProductCompanyId();
   const payload: ProductCreatePayload = {
     name: normalizeTagName(productCreateForm.name),
@@ -286,7 +379,32 @@ async function createProductFromForm() {
     low_stock_threshold: Math.max(Number(productCreateForm.lowStockThreshold) || 0, 0),
   };
 
-  return createProduct(payload);
+  const product = await createProduct(payload);
+  const result: ProductCreateResult = {
+    product,
+    supplierLinkCreated: false,
+    supplierLinkError: null,
+  };
+
+  if (!productCreateForm.linkEnabled) {
+    return result;
+  }
+
+  try {
+    const supplierId = await resolveProductSupplierId();
+
+    await createProductSupplierLinks(product.id, [
+      {
+        ...getSupplierLinkPayload(),
+        supplier_id: supplierId,
+      },
+    ]);
+    result.supplierLinkCreated = true;
+  } catch (error) {
+    result.supplierLinkError = error;
+  }
+
+  return result;
 }
 
 async function resolveProductCompanyId() {
@@ -306,12 +424,66 @@ async function resolveProductCompanyId() {
   return Number(productCreateForm.selectedCompany.id);
 }
 
-async function handleProductCreateSuccess(product: ProductResponse) {
+async function resolveProductSupplierId() {
+  if (productCreateForm.supplierMode === "new") {
+    const supplier = await createSupplier(getInlineSupplierPayload());
+
+    return Number(supplier.id);
+  }
+
+  if (!productCreateForm.selectedSupplier) {
+    throw createLocalValidationError("Выберите поставщика или создайте нового.");
+  }
+
+  return Number(productCreateForm.selectedSupplier.id);
+}
+
+function validateProductSupplierSelection() {
+  if (
+    productCreateForm.linkEnabled
+    && productCreateForm.supplierMode === "existing"
+    && !productCreateForm.selectedSupplier
+  ) {
+    throw createLocalValidationError("Выберите поставщика или создайте нового.");
+  }
+}
+
+function getInlineSupplierPayload(): SupplierCreatePayload {
+  return {
+    name: normalizeTagName(productCreateForm.newSupplierName),
+    phone_number: normalizeTagName(productCreateForm.newSupplierPhoneNumber),
+  };
+}
+
+function getSupplierLinkPayload(): Omit<ProductSupplierCreatePayload, "supplier_id"> {
+  return {
+    purchase_price: normalizeRequiredNumber(productCreateForm.purchasePrice, 1),
+    margin_percent: normalizeRequiredNumber(productCreateForm.marginPercent, 0),
+    sale_price: normalizeOptionalNumber(productCreateForm.salePrice),
+    quantity: normalizeRequiredNumber(productCreateForm.quantity, 0),
+  };
+}
+
+async function handleProductCreateSuccess(result: ProductCreateResult) {
+  const { product, supplierLinkCreated, supplierLinkError } = result;
   const productName = product.name || normalizeTagName(productCreateForm.name);
 
   isCreateModalOpen.value = false;
   resetProductCreateForm();
-  createSuccess.value = `Товар ${productName || `#${formatCount(product.id)}`} создан.`;
+
+  if (supplierLinkError) {
+    createSuccessVariant.value = "warning";
+    createSuccess.value = [
+      `Товар ${productName || `#${formatCount(product.id)}`} создан,`,
+      `но связь с поставщиком не создана: ${getCreateErrorMessage(supplierLinkError, "связь с поставщиком")}`,
+    ].join(" ");
+  } else {
+    createSuccessVariant.value = "success";
+    createSuccess.value = supplierLinkCreated
+      ? `Товар ${productName || `#${formatCount(product.id)}`} создан и связан с поставщиком.`
+      : `Товар ${productName || `#${formatCount(product.id)}`} создан.`;
+  }
+
   navigateProducts({
     search: productName,
     page: FIRST_PAGE,
@@ -322,6 +494,7 @@ async function handleProductCreateSuccess(product: ProductResponse) {
     queryClient.invalidateQueries({ queryKey: ["tags"] }),
     queryClient.invalidateQueries({ queryKey: ["summaries"] }),
     queryClient.invalidateQueries({ queryKey: ["companies"] }),
+    queryClient.invalidateQueries({ queryKey: ["suppliers"] }),
   ]);
 }
 
@@ -335,7 +508,18 @@ function resetProductCreateForm() {
   productCreateForm.selectedCompany = null;
   productCreateForm.newCompanyName = "";
   productCreateForm.newCompanyIin = "";
+  productCreateForm.linkEnabled = false;
+  productCreateForm.supplierMode = "existing";
+  productCreateForm.supplierSearch = "";
+  productCreateForm.selectedSupplier = null;
+  productCreateForm.newSupplierName = "";
+  productCreateForm.newSupplierPhoneNumber = "";
+  productCreateForm.purchasePrice = 1;
+  productCreateForm.marginPercent = 0;
+  productCreateForm.salePrice = "";
+  productCreateForm.quantity = 0;
   companyLookupTerm.value = "";
+  supplierLookupTerm.value = "";
 }
 
 function navigateProducts({ search, page }: { search: string; page: number }) {
@@ -379,6 +563,22 @@ function normalizeTagName(value: string) {
 
 function normalizeOptionalText(value: string) {
   return normalizeTagName(value) || null;
+}
+
+function normalizeRequiredNumber(value: number | string, fallback: number) {
+  const numberValue = Number(value);
+
+  return Number.isFinite(numberValue) ? numberValue : fallback;
+}
+
+function normalizeOptionalNumber(value: number | string) {
+  if (value === "" || value === null || value === undefined) {
+    return null;
+  }
+
+  const numberValue = Number(value);
+
+  return Number.isFinite(numberValue) ? numberValue : null;
 }
 
 function parseTags(value: string) {
@@ -472,7 +672,12 @@ function getSupplierCountText(value: number) {
       </div>
     </div>
 
-    <div v-if="createSuccess" class="alert alert-success" role="status">
+    <div
+      v-if="createSuccess"
+      class="alert"
+      :class="createSuccessVariant === 'warning' ? 'alert-warning' : 'alert-success'"
+      role="status"
+    >
       {{ createSuccess }}
     </div>
 
@@ -829,11 +1034,252 @@ function getSupplierCountText(value: number) {
                       class="form-control"
                       name="new_company_iin"
                       type="text"
-                      pattern="\\d{12}"
+                      pattern="[0-9]{12}"
                       maxlength="12"
                       inputmode="numeric"
                       :disabled="createProductMutation.isPending.value"
                     >
+                  </div>
+                </div>
+              </section>
+
+              <section class="product-create-section">
+                <div class="form-check form-switch product-create-link-toggle">
+                  <input
+                    id="product-create-link-enabled"
+                    v-model="productCreateForm.linkEnabled"
+                    class="form-check-input"
+                    type="checkbox"
+                    role="switch"
+                    :disabled="createProductMutation.isPending.value"
+                  >
+                  <label class="form-check-label fw-semibold" for="product-create-link-enabled">
+                    Добавить поставщика сразу
+                  </label>
+                </div>
+
+                <div v-if="productCreateForm.linkEnabled" class="product-create-supplier-section">
+                  <div class="product-create-section-header">
+                    <h3 class="product-create-section-title">Поставщик</h3>
+                    <div class="product-create-mode" role="radiogroup" aria-label="Способ выбора поставщика">
+                      <div class="form-check form-check-inline">
+                        <input
+                          id="product-create-supplier-existing"
+                          v-model="productCreateForm.supplierMode"
+                          class="form-check-input"
+                          type="radio"
+                          name="product_supplier_mode"
+                          value="existing"
+                          :disabled="createProductMutation.isPending.value"
+                        >
+                        <label class="form-check-label" for="product-create-supplier-existing">
+                          Существующий
+                        </label>
+                      </div>
+                      <div class="form-check form-check-inline">
+                        <input
+                          id="product-create-supplier-new"
+                          v-model="productCreateForm.supplierMode"
+                          class="form-check-input"
+                          type="radio"
+                          name="product_supplier_mode"
+                          value="new"
+                          :disabled="createProductMutation.isPending.value"
+                        >
+                        <label class="form-check-label" for="product-create-supplier-new">
+                          Новый
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div v-if="productCreateForm.supplierMode === 'existing'">
+                    <div
+                      v-if="productCreateForm.selectedSupplier"
+                      class="product-supplier-selected mb-3"
+                    >
+                      <div>
+                        <div class="fw-semibold">{{ productCreateForm.selectedSupplier.name }}</div>
+                        <div class="supplier-meta">
+                          ID {{ formatCount(productCreateForm.selectedSupplier.id) }}
+                          <span v-if="productCreateForm.selectedSupplier.phone_number">
+                            | {{ productCreateForm.selectedSupplier.phone_number }}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        class="btn btn-sm btn-outline-secondary"
+                        type="button"
+                        :disabled="createProductMutation.isPending.value"
+                        @click="clearSelectedSupplier"
+                      >
+                        Сменить
+                      </button>
+                    </div>
+
+                    <div v-else>
+                      <label class="form-label" for="product-create-supplier-search">
+                        Поиск поставщика
+                      </label>
+                      <div class="input-group">
+                        <input
+                          id="product-create-supplier-search"
+                          v-model="productCreateForm.supplierSearch"
+                          class="form-control"
+                          name="supplier_search"
+                          type="search"
+                          minlength="2"
+                          maxlength="100"
+                          autocomplete="off"
+                          :disabled="createProductMutation.isPending.value"
+                          @keydown.enter.prevent="runSupplierLookup"
+                        >
+                        <button
+                          class="btn btn-outline-primary"
+                          type="button"
+                          :disabled="createProductMutation.isPending.value || productCreateForm.supplierSearch.trim().length < 2"
+                          @click="runSupplierLookup"
+                        >
+                          Найти
+                        </button>
+                      </div>
+
+                      <div v-if="supplierLookupQuery.isLoading.value" class="text-secondary small mt-2">
+                        Поиск поставщиков...
+                      </div>
+                      <div v-else-if="supplierLookupError" class="text-danger small mt-2">
+                        {{ supplierLookupError }}
+                      </div>
+                      <div
+                        v-else-if="supplierLookupTerm && supplierLookupResults.length === 0"
+                        class="text-secondary small mt-2"
+                      >
+                        Поставщики не найдены.
+                      </div>
+
+                      <div v-if="supplierLookupResults.length > 0" class="list-group product-supplier-results mt-2">
+                        <button
+                          v-for="supplier in supplierLookupResults"
+                          :key="supplier.id"
+                          class="list-group-item list-group-item-action product-supplier-result"
+                          type="button"
+                          :disabled="createProductMutation.isPending.value"
+                          @click="selectSupplier(supplier)"
+                        >
+                          <span class="fw-semibold d-block">{{ supplier.name }}</span>
+                          <span class="supplier-meta d-block">
+                            ID {{ formatCount(supplier.id) }}
+                            <span v-if="supplier.phone_number">| {{ supplier.phone_number }}</span>
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div v-else class="row g-3">
+                    <div class="col-12 col-lg-7">
+                      <label class="form-label" for="product-create-new-supplier-name">
+                        Название поставщика
+                      </label>
+                      <input
+                        id="product-create-new-supplier-name"
+                        v-model="productCreateForm.newSupplierName"
+                        class="form-control"
+                        name="new_supplier_name"
+                        type="text"
+                        maxlength="255"
+                        autocomplete="organization"
+                        required
+                        :disabled="createProductMutation.isPending.value"
+                      >
+                    </div>
+                    <div class="col-12 col-lg-5">
+                      <label class="form-label" for="product-create-new-supplier-phone-number">
+                        Телефон
+                      </label>
+                      <input
+                        id="product-create-new-supplier-phone-number"
+                        v-model="productCreateForm.newSupplierPhoneNumber"
+                        class="form-control"
+                        name="new_supplier_phone_number"
+                        type="tel"
+                        inputmode="tel"
+                        pattern="(8[0-9]{10}|[+]7[0-9]{10})"
+                        maxlength="12"
+                        autocomplete="tel"
+                        placeholder="+77001234567"
+                        required
+                        :disabled="createProductMutation.isPending.value"
+                      >
+                      <div class="form-text">Формат: +7XXXXXXXXXX или 8XXXXXXXXXX.</div>
+                    </div>
+                  </div>
+
+                  <div class="row g-3 mt-1">
+                    <div class="col-12 col-md-6 col-xl-4">
+                      <label class="form-label" for="product-create-purchase-price">
+                        Цена закупки
+                      </label>
+                      <input
+                        id="product-create-purchase-price"
+                        v-model.number="productCreateForm.purchasePrice"
+                        class="form-control"
+                        name="purchase_price"
+                        type="number"
+                        min="1"
+                        step="1"
+                        required
+                        :disabled="createProductMutation.isPending.value"
+                      >
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-4">
+                      <label class="form-label" for="product-create-margin-percent">
+                        Маржа, %
+                      </label>
+                      <input
+                        id="product-create-margin-percent"
+                        v-model.number="productCreateForm.marginPercent"
+                        class="form-control"
+                        name="margin_percent"
+                        type="number"
+                        min="0"
+                        step="1"
+                        required
+                        :disabled="createProductMutation.isPending.value"
+                      >
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-4">
+                      <label class="form-label" for="product-create-sale-price">
+                        Цена продажи
+                      </label>
+                      <input
+                        id="product-create-sale-price"
+                        v-model="productCreateForm.salePrice"
+                        class="form-control"
+                        name="sale_price"
+                        type="number"
+                        min="1"
+                        step="1"
+                        placeholder="Авто"
+                        :disabled="createProductMutation.isPending.value"
+                      >
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-4">
+                      <label class="form-label" for="product-create-quantity">
+                        Количество
+                      </label>
+                      <input
+                        id="product-create-quantity"
+                        v-model.number="productCreateForm.quantity"
+                        class="form-control"
+                        name="quantity"
+                        type="number"
+                        min="0"
+                        step="1"
+                        required
+                        :disabled="createProductMutation.isPending.value"
+                      >
+                    </div>
                   </div>
                 </div>
               </section>

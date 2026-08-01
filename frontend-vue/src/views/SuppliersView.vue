@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { useQuery } from "@tanstack/vue-query";
+import { computed, reactive, ref, watch } from "vue";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { useRoute, useRouter } from "vue-router";
 
-import { DEFAULT_PAGE_SIZE, FIRST_PAGE, getSuppliers } from "../lib/api";
-import { formatCount, getRequestErrorMessage } from "../lib/format";
-import type { PaginatedResponse, SupplierSummaryResponse } from "../types/api";
+import { createSupplier, DEFAULT_PAGE_SIZE, FIRST_PAGE, getSuppliers } from "../lib/api";
+import { formatCount, getCreateErrorMessage, getRequestErrorMessage } from "../lib/format";
+import type {
+  PaginatedResponse,
+  SupplierCreatePayload,
+  SupplierResponse,
+  SupplierSummaryResponse,
+} from "../types/api";
 
 const EMPTY_SUPPLIERS_PAGE: PaginatedResponse<SupplierSummaryResponse> = {
   items: [],
@@ -19,8 +24,17 @@ const EMPTY_SUPPLIERS_PAGE: PaginatedResponse<SupplierSummaryResponse> = {
 
 const route = useRoute();
 const router = useRouter();
+const queryClient = useQueryClient();
 const searchForm = ref<HTMLFormElement | null>(null);
+const createFormElement = ref<HTMLFormElement | null>(null);
 const searchDraft = ref(currentSearchFromRoute());
+const isCreateModalOpen = ref(false);
+const createError = ref("");
+const createSuccess = ref("");
+const supplierCreateForm = reactive({
+  name: "",
+  phoneNumber: "",
+});
 
 const currentSearch = computed(() => currentSearchFromRoute());
 const currentPage = computed(() => currentPageFromRoute());
@@ -37,6 +51,13 @@ const suppliersQuery = useQuery({
     page: currentPage.value,
     pageSize: DEFAULT_PAGE_SIZE,
   }),
+});
+const createSupplierMutation = useMutation({
+  mutationFn: createSupplierFromForm,
+  onSuccess: handleSupplierCreateSuccess,
+  onError: (error) => {
+    createError.value = getCreateErrorMessage(error, "поставщика");
+  },
 });
 
 const suppliersPage = computed(() => suppliersQuery.data.value || EMPTY_SUPPLIERS_PAGE);
@@ -85,6 +106,62 @@ function goToPage(page: number) {
   });
 }
 
+function openCreateModal() {
+  resetSupplierCreateForm();
+  createError.value = "";
+  isCreateModalOpen.value = true;
+}
+
+function closeCreateModal() {
+  if (createSupplierMutation.isPending.value) {
+    return;
+  }
+
+  isCreateModalOpen.value = false;
+}
+
+function submitSupplierCreate() {
+  createError.value = "";
+  createSuccess.value = "";
+
+  if (!createFormElement.value?.reportValidity()) {
+    return;
+  }
+
+  createSupplierMutation.mutate();
+}
+
+function createSupplierFromForm() {
+  const payload: SupplierCreatePayload = {
+    name: normalizeText(supplierCreateForm.name),
+    phone_number: normalizeText(supplierCreateForm.phoneNumber),
+  };
+
+  return createSupplier(payload);
+}
+
+async function handleSupplierCreateSuccess(supplier: SupplierResponse) {
+  const supplierName = supplier.name || normalizeText(supplierCreateForm.name);
+
+  isCreateModalOpen.value = false;
+  resetSupplierCreateForm();
+  createSuccess.value = `Поставщик ${supplierName || `#${formatCount(supplier.id)}`} создан.`;
+  navigateSuppliers({
+    search: supplierName,
+    page: FIRST_PAGE,
+  });
+
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["suppliers"] }),
+    queryClient.invalidateQueries({ queryKey: ["summaries"] }),
+  ]);
+}
+
+function resetSupplierCreateForm() {
+  supplierCreateForm.name = "";
+  supplierCreateForm.phoneNumber = "";
+}
+
 function navigateSuppliers({ search, page }: { search: string; page: number }) {
   const trimmedSearch = String(search || "").trim();
   const nextPage = Math.max(Number(page) || FIRST_PAGE, FIRST_PAGE);
@@ -119,6 +196,10 @@ function normalizeRouteString(value: unknown) {
 
   return typeof rawValue === "string" ? rawValue.trim() : "";
 }
+
+function normalizeText(value: string) {
+  return String(value || "").trim();
+}
 </script>
 
 <template>
@@ -143,10 +224,17 @@ function normalizeRouteString(value: unknown) {
         </div>
       </form>
       <div class="suppliers-actions">
+        <button class="btn btn-success" type="button" @click="openCreateModal">
+          Добавить поставщика
+        </button>
         <span class="badge text-bg-secondary suppliers-count">
           {{ formatCount(suppliersPage.total) }} поставщиков
         </span>
       </div>
+    </div>
+
+    <div v-if="createSuccess" class="alert alert-success" role="status">
+      {{ createSuccess }}
     </div>
 
     <div v-if="suppliersQuery.isLoading.value" class="text-secondary py-4" aria-live="polite">
@@ -210,5 +298,88 @@ function normalizeRouteString(value: unknown) {
         Вперед
       </button>
     </nav>
+
+    <Teleport to="body">
+      <div
+        v-if="isCreateModalOpen"
+        class="modal fade show d-block"
+        tabindex="-1"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="supplier-create-modal-title"
+        @click.self="closeCreateModal"
+      >
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+          <form ref="createFormElement" class="modal-content supplier-create-form" @submit.prevent="submitSupplierCreate">
+            <div class="modal-header">
+              <h2 id="supplier-create-modal-title" class="modal-title fs-5">Добавить поставщика</h2>
+              <button
+                class="btn-close"
+                type="button"
+                aria-label="Закрыть"
+                :disabled="createSupplierMutation.isPending.value"
+                @click="closeCreateModal"
+              ></button>
+            </div>
+
+            <div class="modal-body">
+              <div v-if="createError" class="alert alert-danger" role="alert">
+                {{ createError }}
+              </div>
+
+              <div class="row g-3">
+                <div class="col-12 col-lg-7">
+                  <label class="form-label" for="supplier-create-name">Название</label>
+                  <input
+                    id="supplier-create-name"
+                    v-model="supplierCreateForm.name"
+                    class="form-control"
+                    name="name"
+                    type="text"
+                    maxlength="255"
+                    autocomplete="organization"
+                    required
+                    :disabled="createSupplierMutation.isPending.value"
+                  >
+                </div>
+                <div class="col-12 col-lg-5">
+                  <label class="form-label" for="supplier-create-phone-number">Телефон</label>
+                  <input
+                    id="supplier-create-phone-number"
+                    v-model="supplierCreateForm.phoneNumber"
+                    class="form-control"
+                    name="phone_number"
+                    type="tel"
+                    inputmode="tel"
+                    pattern="(8[0-9]{10}|[+]7[0-9]{10})"
+                    maxlength="12"
+                    autocomplete="tel"
+                    placeholder="+77001234567"
+                    required
+                    :disabled="createSupplierMutation.isPending.value"
+                  >
+                  <div class="form-text">Формат: +7XXXXXXXXXX или 8XXXXXXXXXX.</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-footer supplier-create-footer">
+              <button
+                class="btn btn-outline-secondary"
+                type="button"
+                :disabled="createSupplierMutation.isPending.value"
+                @click="closeCreateModal"
+              >
+                Отмена
+              </button>
+              <button class="btn btn-primary" type="submit" :disabled="createSupplierMutation.isPending.value">
+                {{ createSupplierMutation.isPending.value ? "Сохранение..." : "Создать поставщика" }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div v-if="isCreateModalOpen" class="modal-backdrop fade show"></div>
+    </Teleport>
   </section>
 </template>
