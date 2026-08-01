@@ -23,6 +23,11 @@ App meant for automation of core operations inside businesses.
 - HTML
 - CSS
 - JavaScript
+- Vue
+- Vite
+- TypeScript
+- Vue Router
+- TanStack Query
 
 ---
 
@@ -93,7 +98,7 @@ Start the backend API:
 uv run fastapi dev main.py
 ```
 
-Start the static frontend:
+Start the current static frontend:
 
 ```bash
 # from frontend/
@@ -107,6 +112,27 @@ query parameter, for example:
 
 ```text
 http://127.0.0.1:5173/?api_base=http://127.0.0.1:8001
+```
+
+Start the new Vue frontend:
+
+```bash
+# from frontend-vue/
+npm install
+npm run dev
+```
+
+The Vue frontend also defaults to `http://127.0.0.1:8000` and supports
+`?api_base=...`. For now it contains the shared app shell, dashboard route, and
+products list/create route; the static frontend remains the full workflow UI
+while the Vue migration continues.
+
+Build/check the Vue frontend:
+
+```bash
+# from frontend-vue/
+npm run type-check
+npm run build
 ```
 
 
@@ -143,5 +169,10 @@ http://127.0.0.1:5173/?api_base=http://127.0.0.1:8001
 │   ├── css
 │   ├── js
 │   └── index.html
+├── frontend-vue
+│   ├── src
+│   ├── index.html
+│   ├── package.json
+│   └── vite.config.ts
 └── README.md
 ```

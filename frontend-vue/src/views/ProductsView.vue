@@ -1,0 +1,861 @@
+<script setup lang="ts">
+import { computed, reactive, ref, watch } from "vue";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
+import { useRoute, useRouter } from "vue-router";
+
+import {
+  createCompany,
+  createProduct,
+  DEFAULT_PAGE_SIZE,
+  FIRST_PAGE,
+  getCompanies,
+  getProducts,
+  getTags,
+} from "../lib/api";
+import {
+  DEFAULT_QUANTITY_UNIT,
+  formatCount,
+  formatCurrency,
+  formatDateTime,
+  formatQuantity,
+  getCreateErrorMessage,
+  getRequestErrorMessage,
+} from "../lib/format";
+import type {
+  CompanyResponse,
+  PaginatedResponse,
+  ProductCreatePayload,
+  ProductResponse,
+  ProductSummaryResponse,
+  StockStatus,
+  TagSummaryResponse,
+} from "../types/api";
+
+type ProductStockStatus = StockStatus | "none";
+type CompanyMode = "existing" | "new";
+
+const POPULAR_TAGS_LIMIT = 10;
+const COMPANY_LOOKUP_PAGE_SIZE = 10;
+const STOCK_STATUS: Record<ProductStockStatus, { label: string; className: string }> = {
+  available: { label: "В наличии", className: "text-bg-success" },
+  low: { label: "Мало", className: "text-bg-warning" },
+  out: { label: "Нет", className: "text-bg-danger" },
+  none: { label: "Без данных", className: "text-bg-secondary" },
+};
+const EMPTY_PRODUCTS_PAGE: PaginatedResponse<ProductSummaryResponse> = {
+  items: [],
+  page: FIRST_PAGE,
+  page_size: DEFAULT_PAGE_SIZE,
+  total: 0,
+  total_pages: 0,
+  has_next: false,
+  has_previous: false,
+};
+const EMPTY_TAGS_PAGE: PaginatedResponse<TagSummaryResponse> = {
+  items: [],
+  page: FIRST_PAGE,
+  page_size: POPULAR_TAGS_LIMIT,
+  total: 0,
+  total_pages: 0,
+  has_next: false,
+  has_previous: false,
+};
+
+const route = useRoute();
+const router = useRouter();
+const queryClient = useQueryClient();
+const searchForm = ref<HTMLFormElement | null>(null);
+const createFormElement = ref<HTMLFormElement | null>(null);
+const searchDraft = ref(currentSearchFromRoute());
+const isCreateModalOpen = ref(false);
+const createError = ref("");
+const createSuccess = ref("");
+const companyLookupTerm = ref("");
+const productCreateForm = reactive({
+  name: "",
+  tags: "",
+  quantityUnit: DEFAULT_QUANTITY_UNIT,
+  lowStockThreshold: 5,
+  companyMode: "existing" as CompanyMode,
+  companySearch: "",
+  selectedCompany: null as CompanyResponse | null,
+  newCompanyName: "",
+  newCompanyIin: "",
+});
+
+const currentSearch = computed(() => currentSearchFromRoute());
+const currentPage = computed(() => currentPageFromRoute());
+const productsQuery = useQuery({
+  queryKey: computed(() => [
+    "products",
+    currentSearch.value,
+    currentPage.value,
+    DEFAULT_PAGE_SIZE,
+  ]),
+  queryFn: () => getProducts({
+    search: currentSearch.value,
+    page: currentPage.value,
+    pageSize: DEFAULT_PAGE_SIZE,
+  }),
+});
+const popularTagsQuery = useQuery({
+  queryKey: ["tags", "popular", POPULAR_TAGS_LIMIT],
+  queryFn: () => getTags({
+    page: FIRST_PAGE,
+    pageSize: POPULAR_TAGS_LIMIT,
+  }),
+});
+const companyLookupQuery = useQuery({
+  queryKey: computed(() => [
+    "companies",
+    "lookup",
+    companyLookupTerm.value,
+    COMPANY_LOOKUP_PAGE_SIZE,
+  ]),
+  queryFn: () => getCompanies({
+    search: companyLookupTerm.value,
+    page: FIRST_PAGE,
+    pageSize: COMPANY_LOOKUP_PAGE_SIZE,
+  }),
+  enabled: computed(() => (
+    isCreateModalOpen.value
+      && productCreateForm.companyMode === "existing"
+      && companyLookupTerm.value.length >= 2
+  )),
+});
+const createProductMutation = useMutation({
+  mutationFn: createProductFromForm,
+  onSuccess: handleProductCreateSuccess,
+  onError: (error) => {
+    createError.value = getCreateErrorMessage(error, "товар");
+  },
+});
+
+const productsPage = computed(() => productsQuery.data.value || EMPTY_PRODUCTS_PAGE);
+const popularTagsPage = computed(() => popularTagsQuery.data.value || EMPTY_TAGS_PAGE);
+const companyLookupResults = computed(() => companyLookupQuery.data.value?.items || []);
+const productsError = computed(() => (
+  productsQuery.error.value
+    ? getRequestErrorMessage(productsQuery.error.value, "товары")
+    : ""
+));
+const popularTagsError = computed(() => (
+  popularTagsQuery.error.value
+    ? getRequestErrorMessage(popularTagsQuery.error.value, "популярные теги")
+    : ""
+));
+const companyLookupError = computed(() => (
+  companyLookupQuery.error.value
+    ? getRequestErrorMessage(companyLookupQuery.error.value, "компании")
+    : ""
+));
+const hasProducts = computed(() => productsPage.value.items.length > 0);
+const shouldShowProductsTable = computed(() => (
+  hasProducts.value
+    && !productsQuery.isLoading.value
+    && !productsError.value
+));
+const shouldShowProductsEmpty = computed(() => (
+  !productsQuery.isLoading.value
+    && !productsError.value
+    && productsPage.value.items.length === 0
+));
+const shouldShowProductsPagination = computed(() => (
+  productsPage.value.total > 0
+    && !productsQuery.isLoading.value
+    && !productsError.value
+));
+const totalProductPages = computed(() => Math.max(productsPage.value.total_pages, 1));
+const popularTags = computed(() => (
+  popularTagsPage.value.items.filter((tag) => normalizeTagName(tag.name))
+));
+const shouldShowPopularTags = computed(() => (
+  popularTagsQuery.isLoading.value
+    || Boolean(popularTagsError.value)
+    || popularTagsQuery.isSuccess.value
+    || popularTags.value.length > 0
+));
+const shouldShowPopularTagsEmpty = computed(() => (
+  popularTagsQuery.isSuccess.value
+    && !popularTagsQuery.isLoading.value
+    && !popularTagsError.value
+    && popularTags.value.length === 0
+));
+
+watch(currentSearch, (nextSearch) => {
+  searchDraft.value = nextSearch;
+});
+
+watch(() => productCreateForm.companyMode, () => {
+  createError.value = "";
+  companyLookupTerm.value = "";
+});
+
+function submitSearch() {
+  if (!searchForm.value?.reportValidity()) {
+    return;
+  }
+
+  navigateProducts({
+    search: searchDraft.value,
+    page: FIRST_PAGE,
+  });
+}
+
+function goToPage(page: number) {
+  navigateProducts({
+    search: currentSearch.value,
+    page,
+  });
+}
+
+function applyTagSearch(tagName: string) {
+  const search = normalizeTagName(tagName);
+
+  if (!search) {
+    return;
+  }
+
+  searchDraft.value = search;
+  navigateProducts({
+    search,
+    page: FIRST_PAGE,
+  });
+}
+
+function openCreateModal() {
+  resetProductCreateForm();
+  createError.value = "";
+  isCreateModalOpen.value = true;
+}
+
+function closeCreateModal() {
+  if (createProductMutation.isPending.value) {
+    return;
+  }
+
+  isCreateModalOpen.value = false;
+}
+
+function runCompanyLookup() {
+  const search = normalizeTagName(productCreateForm.companySearch);
+
+  productCreateForm.companySearch = search;
+  productCreateForm.selectedCompany = null;
+  createError.value = "";
+
+  if (search.length < 2) {
+    companyLookupTerm.value = "";
+    return;
+  }
+
+  companyLookupTerm.value = search;
+}
+
+function selectCompany(company: CompanyResponse) {
+  productCreateForm.selectedCompany = company;
+  productCreateForm.companySearch = company.name;
+  companyLookupTerm.value = "";
+  createError.value = "";
+}
+
+function clearSelectedCompany() {
+  productCreateForm.selectedCompany = null;
+  productCreateForm.companySearch = "";
+  companyLookupTerm.value = "";
+}
+
+function submitProductCreate() {
+  createError.value = "";
+  createSuccess.value = "";
+
+  if (!createFormElement.value?.reportValidity()) {
+    return;
+  }
+
+  createProductMutation.mutate();
+}
+
+async function createProductFromForm() {
+  const companyId = await resolveProductCompanyId();
+  const payload: ProductCreatePayload = {
+    name: normalizeTagName(productCreateForm.name),
+    company_id: companyId,
+    tags: parseTags(productCreateForm.tags),
+    quantity_unit: normalizeTagName(productCreateForm.quantityUnit) || DEFAULT_QUANTITY_UNIT,
+    low_stock_threshold: Math.max(Number(productCreateForm.lowStockThreshold) || 0, 0),
+  };
+
+  return createProduct(payload);
+}
+
+async function resolveProductCompanyId() {
+  if (productCreateForm.companyMode === "new") {
+    const company = await createCompany({
+      name: normalizeTagName(productCreateForm.newCompanyName),
+      iin: normalizeOptionalText(productCreateForm.newCompanyIin),
+    });
+
+    return Number(company.id);
+  }
+
+  if (!productCreateForm.selectedCompany) {
+    throw createLocalValidationError("Выберите компанию или создайте новую.");
+  }
+
+  return Number(productCreateForm.selectedCompany.id);
+}
+
+async function handleProductCreateSuccess(product: ProductResponse) {
+  const productName = product.name || normalizeTagName(productCreateForm.name);
+
+  isCreateModalOpen.value = false;
+  resetProductCreateForm();
+  createSuccess.value = `Товар ${productName || `#${formatCount(product.id)}`} создан.`;
+  navigateProducts({
+    search: productName,
+    page: FIRST_PAGE,
+  });
+
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["products"] }),
+    queryClient.invalidateQueries({ queryKey: ["tags"] }),
+    queryClient.invalidateQueries({ queryKey: ["summaries"] }),
+    queryClient.invalidateQueries({ queryKey: ["companies"] }),
+  ]);
+}
+
+function resetProductCreateForm() {
+  productCreateForm.name = "";
+  productCreateForm.tags = "";
+  productCreateForm.quantityUnit = DEFAULT_QUANTITY_UNIT;
+  productCreateForm.lowStockThreshold = 5;
+  productCreateForm.companyMode = "existing";
+  productCreateForm.companySearch = "";
+  productCreateForm.selectedCompany = null;
+  productCreateForm.newCompanyName = "";
+  productCreateForm.newCompanyIin = "";
+  companyLookupTerm.value = "";
+}
+
+function navigateProducts({ search, page }: { search: string; page: number }) {
+  const trimmedSearch = String(search || "").trim();
+  const nextPage = Math.max(Number(page) || FIRST_PAGE, FIRST_PAGE);
+  const query: Record<string, string> = {};
+
+  if (trimmedSearch) {
+    query.search = trimmedSearch;
+  }
+
+  if (nextPage > FIRST_PAGE) {
+    query.page = String(nextPage);
+  }
+
+  void router.push({ name: "products", query });
+}
+
+function currentSearchFromRoute() {
+  return normalizeRouteString(route.query.search);
+}
+
+function currentPageFromRoute() {
+  const routePage = Array.isArray(route.query.page)
+    ? route.query.page[0]
+    : route.query.page;
+  const page = Number(routePage || FIRST_PAGE);
+
+  return Number.isFinite(page) && page >= FIRST_PAGE ? Math.trunc(page) : FIRST_PAGE;
+}
+
+function normalizeRouteString(value: unknown) {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+
+  return typeof rawValue === "string" ? rawValue.trim() : "";
+}
+
+function normalizeTagName(value: string) {
+  return String(value || "").trim();
+}
+
+function normalizeOptionalText(value: string) {
+  return normalizeTagName(value) || null;
+}
+
+function parseTags(value: string) {
+  return Array.from(
+    new Set(
+      String(value || "")
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function createLocalValidationError(message: string) {
+  const error = new Error(message) as Error & { data: { detail: string } };
+
+  error.data = { detail: message };
+  return error;
+}
+
+function getProductUnit(product: ProductSummaryResponse) {
+  return normalizeTagName(product.quantity_unit) || DEFAULT_QUANTITY_UNIT;
+}
+
+function getStatusConfig(status: StockStatus | undefined) {
+  return STOCK_STATUS[status || "none"] || STOCK_STATUS.none;
+}
+
+function getSummaryStockMeta(product: ProductSummaryResponse) {
+  if (product.low_stock_threshold === null || product.low_stock_threshold === undefined) {
+    return "";
+  }
+
+  return `Порог: ${formatQuantity(product.low_stock_threshold, getProductUnit(product))}`;
+}
+
+function getSummaryPriceMeta(product: ProductSummaryResponse) {
+  const parts: string[] = [];
+
+  if (product.min_purchase_price !== null && product.min_purchase_price !== undefined) {
+    parts.push(`Закупка: ${formatCurrency(product.min_purchase_price)}`);
+  }
+
+  if (product.margin_percent !== null && product.margin_percent !== undefined) {
+    parts.push(`Маржа: ${formatCount(product.margin_percent)}%`);
+  }
+
+  return parts.length ? parts.join(" | ") : "Детали цены не заданы";
+}
+
+function getSupplierCountText(value: number) {
+  const count = Number(value || 0);
+
+  if (!Number.isFinite(count) || count <= 0) {
+    return "Нет поставщиков";
+  }
+
+  return `Поставщиков: ${formatCount(count)}`;
+}
+</script>
+
+<template>
+  <section class="container-fluid p-4">
+    <div class="products-toolbar d-flex align-items-end justify-content-between flex-wrap gap-3 mb-3">
+      <form ref="searchForm" class="products-search" role="search" @submit.prevent="submitSearch">
+        <label class="form-label" for="products-search-input">Поиск товара</label>
+        <div class="input-group">
+          <input
+            id="products-search-input"
+            v-model="searchDraft"
+            class="form-control"
+            name="search"
+            type="search"
+            minlength="2"
+            maxlength="100"
+            placeholder="Введите название товара или тег"
+            autocomplete="off"
+          >
+          <button class="btn btn-primary" type="submit" :disabled="productsQuery.isFetching.value">
+            Поиск
+          </button>
+        </div>
+      </form>
+      <div class="products-actions">
+        <button class="btn btn-success" type="button" @click="openCreateModal">
+          Добавить товар
+        </button>
+        <span class="badge text-bg-secondary products-count">
+          {{ formatCount(productsPage.total) }} товаров
+        </span>
+      </div>
+    </div>
+
+    <div v-if="createSuccess" class="alert alert-success" role="status">
+      {{ createSuccess }}
+    </div>
+
+    <div v-if="shouldShowPopularTags" class="products-popular-tags" aria-live="polite">
+      <div class="products-popular-tags-header">
+        <span class="product-detail-label">Популярные теги</span>
+        <span v-if="popularTagsQuery.isLoading.value" class="text-secondary small">
+          Загрузка...
+        </span>
+        <span v-if="popularTagsError" class="text-danger small">
+          {{ popularTagsError }}
+        </span>
+        <span v-if="shouldShowPopularTagsEmpty" class="text-secondary small">
+          Теги не найдены.
+        </span>
+      </div>
+      <div v-if="popularTags.length > 0 && !popularTagsError" class="products-popular-tags-list">
+        <button
+          v-for="tag in popularTags"
+          :key="tag.id"
+          class="btn btn-sm btn-outline-secondary product-popular-tag"
+          type="button"
+          :title="`Искать товары с тегом ${tag.name}`"
+          @click="applyTagSearch(tag.name)"
+        >
+          <span>{{ tag.name }}</span>
+          <span class="badge text-bg-light border">{{ formatCount(tag.usage_count) }}</span>
+        </button>
+      </div>
+    </div>
+
+    <div v-if="productsQuery.isLoading.value" class="text-secondary py-4" aria-live="polite">
+      Загрузка товаров...
+    </div>
+    <div v-else-if="productsError" class="alert alert-danger" role="alert">
+      {{ productsError }}
+    </div>
+    <div v-else-if="shouldShowProductsEmpty" class="alert alert-light border" role="status">
+      {{ currentSearch ? "По запросу ничего не найдено." : "Товары пока не добавлены." }}
+    </div>
+
+    <div v-if="shouldShowProductsTable" class="table-responsive products-table">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th scope="col">Товар</th>
+            <th scope="col">Статус</th>
+            <th scope="col">Всего на складе</th>
+            <th scope="col">Мин. цена</th>
+            <th scope="col">Компания</th>
+            <th scope="col">Теги</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="product in productsPage.items" :key="product.id">
+            <td class="product-name-cell">
+              <div class="fw-semibold">{{ product.name || "Без названия" }}</div>
+              <div class="product-meta">
+                ID {{ formatCount(product.id) }} | Создан: {{ formatDateTime(product.created_at) }}
+              </div>
+            </td>
+            <td>
+              <span class="badge status-badge" :class="getStatusConfig(product.stock_status).className">
+                {{ getStatusConfig(product.stock_status).label }}
+              </span>
+            </td>
+            <td>
+              <div class="fw-semibold">
+                {{ formatQuantity(product.total_quantity, getProductUnit(product)) }}
+              </div>
+              <div class="product-meta">{{ getSummaryStockMeta(product) }}</div>
+            </td>
+            <td v-if="product.min_sale_price === null || product.min_sale_price === undefined" class="text-secondary">
+              Нет доступной цены
+            </td>
+            <td v-else>
+              <div class="fw-semibold">{{ formatCurrency(product.min_sale_price) }}</div>
+              <div class="product-meta">{{ getSummaryPriceMeta(product) }}</div>
+            </td>
+            <td>
+              <div class="fw-semibold">{{ product.company_name || "Компания не указана" }}</div>
+              <div class="product-meta">{{ getSupplierCountText(product.suppliers_count) }}</div>
+            </td>
+            <td v-if="!product.tags.length" class="text-secondary">Без тегов</td>
+            <td v-else>
+              <div class="product-tags">
+                <span
+                  v-for="tag in product.tags"
+                  :key="tag"
+                  class="badge rounded-pill text-bg-light border"
+                >
+                  {{ tag }}
+                </span>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <nav
+      v-if="shouldShowProductsPagination"
+      class="products-pagination mt-3"
+      aria-label="Пагинация товаров"
+    >
+      <button
+        class="btn btn-outline-primary"
+        type="button"
+        :disabled="!productsPage.has_previous || productsQuery.isFetching.value"
+        @click="goToPage(productsPage.page - 1)"
+      >
+        Назад
+      </button>
+      <span class="products-page-summary">
+        Страница {{ formatCount(productsPage.page) }} из {{ formatCount(totalProductPages) }}
+      </span>
+      <button
+        class="btn btn-outline-primary"
+        type="button"
+        :disabled="!productsPage.has_next || productsQuery.isFetching.value"
+        @click="goToPage(productsPage.page + 1)"
+      >
+        Вперед
+      </button>
+    </nav>
+
+    <Teleport to="body">
+      <div
+        v-if="isCreateModalOpen"
+        class="modal fade show d-block"
+        tabindex="-1"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="product-create-modal-title"
+        @click.self="closeCreateModal"
+      >
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+          <form ref="createFormElement" class="modal-content product-create-form" @submit.prevent="submitProductCreate">
+            <div class="modal-header">
+              <h2 id="product-create-modal-title" class="modal-title fs-5">Добавить товар</h2>
+              <button
+                class="btn-close"
+                type="button"
+                aria-label="Закрыть"
+                :disabled="createProductMutation.isPending.value"
+                @click="closeCreateModal"
+              ></button>
+            </div>
+
+            <div class="modal-body">
+              <div v-if="createError" class="alert alert-danger" role="alert">
+                {{ createError }}
+              </div>
+
+              <section class="product-create-section">
+                <h3 class="product-create-section-title">Товар</h3>
+                <div class="row g-3">
+                  <div class="col-12 col-md-6">
+                    <label class="form-label" for="product-create-name">Название</label>
+                    <input
+                      id="product-create-name"
+                      v-model="productCreateForm.name"
+                      class="form-control"
+                      name="name"
+                      type="text"
+                      maxlength="255"
+                      required
+                      :disabled="createProductMutation.isPending.value"
+                    >
+                  </div>
+                  <div class="col-12 col-md-3">
+                    <label class="form-label" for="product-create-unit">Единица</label>
+                    <input
+                      id="product-create-unit"
+                      v-model="productCreateForm.quantityUnit"
+                      class="form-control"
+                      name="quantity_unit"
+                      type="text"
+                      maxlength="20"
+                      required
+                      :disabled="createProductMutation.isPending.value"
+                    >
+                  </div>
+                  <div class="col-12 col-md-3">
+                    <label class="form-label" for="product-create-threshold">Порог</label>
+                    <input
+                      id="product-create-threshold"
+                      v-model.number="productCreateForm.lowStockThreshold"
+                      class="form-control"
+                      name="low_stock_threshold"
+                      type="number"
+                      min="0"
+                      step="1"
+                      required
+                      :disabled="createProductMutation.isPending.value"
+                    >
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label" for="product-create-tags">Теги</label>
+                    <input
+                      id="product-create-tags"
+                      v-model="productCreateForm.tags"
+                      class="form-control"
+                      name="tags"
+                      type="text"
+                      placeholder="Например: кофе, расходники, склад"
+                      :disabled="createProductMutation.isPending.value"
+                    >
+                  </div>
+                </div>
+              </section>
+
+              <section class="product-create-section">
+                <div class="product-create-section-header">
+                  <h3 class="product-create-section-title">Компания</h3>
+                  <div class="product-create-mode" role="radiogroup" aria-label="Способ выбора компании">
+                    <div class="form-check form-check-inline">
+                      <input
+                        id="product-create-company-existing"
+                        v-model="productCreateForm.companyMode"
+                        class="form-check-input"
+                        type="radio"
+                        name="product_company_mode"
+                        value="existing"
+                        :disabled="createProductMutation.isPending.value"
+                      >
+                      <label class="form-check-label" for="product-create-company-existing">
+                        Существующая
+                      </label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                      <input
+                        id="product-create-company-new"
+                        v-model="productCreateForm.companyMode"
+                        class="form-check-input"
+                        type="radio"
+                        name="product_company_mode"
+                        value="new"
+                        :disabled="createProductMutation.isPending.value"
+                      >
+                      <label class="form-check-label" for="product-create-company-new">
+                        Новая
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="productCreateForm.companyMode === 'existing'">
+                  <div
+                    v-if="productCreateForm.selectedCompany"
+                    class="product-company-selected mb-3"
+                  >
+                    <div>
+                      <div class="fw-semibold">{{ productCreateForm.selectedCompany.name }}</div>
+                      <div class="product-meta">
+                        ID {{ formatCount(productCreateForm.selectedCompany.id) }}
+                        <span v-if="productCreateForm.selectedCompany.iin">
+                          | ИИН {{ productCreateForm.selectedCompany.iin }}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      class="btn btn-sm btn-outline-secondary"
+                      type="button"
+                      :disabled="createProductMutation.isPending.value"
+                      @click="clearSelectedCompany"
+                    >
+                      Сменить
+                    </button>
+                  </div>
+
+                  <div v-else>
+                    <label class="form-label" for="product-create-company-search">
+                      Поиск компании
+                    </label>
+                    <div class="input-group">
+                      <input
+                        id="product-create-company-search"
+                        v-model="productCreateForm.companySearch"
+                        class="form-control"
+                        name="company_search"
+                        type="search"
+                        minlength="2"
+                        maxlength="100"
+                        autocomplete="off"
+                        :disabled="createProductMutation.isPending.value"
+                        @keydown.enter.prevent="runCompanyLookup"
+                      >
+                      <button
+                        class="btn btn-outline-primary"
+                        type="button"
+                        :disabled="createProductMutation.isPending.value || productCreateForm.companySearch.trim().length < 2"
+                        @click="runCompanyLookup"
+                      >
+                        Найти
+                      </button>
+                    </div>
+
+                    <div v-if="companyLookupQuery.isLoading.value" class="text-secondary small mt-2">
+                      Поиск компаний...
+                    </div>
+                    <div v-else-if="companyLookupError" class="text-danger small mt-2">
+                      {{ companyLookupError }}
+                    </div>
+                    <div
+                      v-else-if="companyLookupTerm && companyLookupResults.length === 0"
+                      class="text-secondary small mt-2"
+                    >
+                      Компании не найдены.
+                    </div>
+
+                    <div v-if="companyLookupResults.length > 0" class="list-group product-company-results mt-2">
+                      <button
+                        v-for="company in companyLookupResults"
+                        :key="company.id"
+                        class="list-group-item list-group-item-action product-company-result"
+                        type="button"
+                        :disabled="createProductMutation.isPending.value"
+                        @click="selectCompany(company)"
+                      >
+                        <span class="fw-semibold d-block">{{ company.name }}</span>
+                        <span class="product-meta d-block">
+                          ID {{ formatCount(company.id) }}
+                          <span v-if="company.iin">| ИИН {{ company.iin }}</span>
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-else class="row g-3">
+                  <div class="col-12 col-md-8">
+                    <label class="form-label" for="product-create-new-company-name">
+                      Название компании
+                    </label>
+                    <input
+                      id="product-create-new-company-name"
+                      v-model="productCreateForm.newCompanyName"
+                      class="form-control"
+                      name="new_company_name"
+                      type="text"
+                      maxlength="255"
+                      required
+                      :disabled="createProductMutation.isPending.value"
+                    >
+                  </div>
+                  <div class="col-12 col-md-4">
+                    <label class="form-label" for="product-create-new-company-iin">
+                      ИИН
+                    </label>
+                    <input
+                      id="product-create-new-company-iin"
+                      v-model="productCreateForm.newCompanyIin"
+                      class="form-control"
+                      name="new_company_iin"
+                      type="text"
+                      pattern="\\d{12}"
+                      maxlength="12"
+                      inputmode="numeric"
+                      :disabled="createProductMutation.isPending.value"
+                    >
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <div class="modal-footer product-create-footer">
+              <button
+                class="btn btn-outline-secondary"
+                type="button"
+                :disabled="createProductMutation.isPending.value"
+                @click="closeCreateModal"
+              >
+                Отмена
+              </button>
+              <button class="btn btn-success" type="submit" :disabled="createProductMutation.isPending.value">
+                {{ createProductMutation.isPending.value ? "Сохранение..." : "Создать" }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div v-if="isCreateModalOpen" class="modal-backdrop fade show"></div>
+    </Teleport>
+  </section>
+</template>
