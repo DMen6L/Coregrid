@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from "vue";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { useRoute, useRouter } from "vue-router";
 
+import CompanyDetailModal from "../components/CompanyDetailModal.vue";
 import { createCompany, DEFAULT_PAGE_SIZE, FIRST_PAGE, getCompanies } from "../lib/api";
 import { formatCount, getCreateErrorMessage, getRequestErrorMessage } from "../lib/format";
 import type { CompanyCreatePayload, CompanyResponse, PaginatedResponse } from "../types/api";
@@ -24,8 +25,9 @@ const searchForm = ref<HTMLFormElement | null>(null);
 const createFormElement = ref<HTMLFormElement | null>(null);
 const searchDraft = ref(currentSearchFromRoute());
 const isCreateModalOpen = ref(false);
+const isDetailModalOpen = ref(false);
+const selectedCompanyId = ref<number | null>(null);
 const createError = ref("");
-const createSuccess = ref("");
 const companyCreateForm = reactive({
   name: "",
   iin: "",
@@ -101,6 +103,16 @@ function goToPage(page: number) {
   });
 }
 
+function openCompanyDetail(company: CompanyResponse) {
+  selectedCompanyId.value = company.id;
+  isDetailModalOpen.value = true;
+}
+
+function closeCompanyDetail() {
+  isDetailModalOpen.value = false;
+  selectedCompanyId.value = null;
+}
+
 function openCreateModal() {
   resetCompanyCreateForm();
   createError.value = "";
@@ -117,7 +129,6 @@ function closeCreateModal() {
 
 function submitCompanyCreate() {
   createError.value = "";
-  createSuccess.value = "";
 
   if (!createFormElement.value?.reportValidity()) {
     return;
@@ -140,7 +151,6 @@ async function handleCompanyCreateSuccess(company: CompanyResponse) {
 
   isCreateModalOpen.value = false;
   resetCompanyCreateForm();
-  createSuccess.value = `Компания ${companyName || `#${formatCount(company.id)}`} создана.`;
   navigateCompanies({
     search: companyName,
     page: FIRST_PAGE,
@@ -229,10 +239,6 @@ function normalizeOptionalText(value: string) {
       </div>
     </div>
 
-    <div v-if="createSuccess" class="alert alert-success" role="status">
-      {{ createSuccess }}
-    </div>
-
     <div v-if="companiesQuery.isLoading.value" class="text-secondary py-4" aria-live="polite">
       Загрузка компаний...
     </div>
@@ -252,7 +258,16 @@ function normalizeOptionalText(value: string) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="company in companiesPage.items" :key="company.id">
+          <tr
+            v-for="company in companiesPage.items"
+            :key="company.id"
+            class="company-summary-row"
+            tabindex="0"
+            role="button"
+            :aria-label="`Открыть компанию ${company.name || `#${formatCount(company.id)}`}`"
+            @click="openCompanyDetail(company)"
+            @keydown.enter.prevent="openCompanyDetail(company)"
+          >
             <td class="company-name-cell">
               <div class="fw-semibold">{{ company.name || "Без названия" }}</div>
               <div class="company-meta">ID {{ formatCount(company.id) }}</div>
@@ -372,5 +387,11 @@ function normalizeOptionalText(value: string) {
       </div>
       <div v-if="isCreateModalOpen" class="modal-backdrop fade show"></div>
     </Teleport>
+
+    <CompanyDetailModal
+      :company-id="selectedCompanyId"
+      :is-open="isDetailModalOpen"
+      @close="closeCompanyDetail"
+    />
   </section>
 </template>

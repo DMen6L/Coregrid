@@ -54,6 +54,82 @@ export interface ProductSummaryResponse {
   stock_status: StockStatus;
 }
 
+export interface RestockSummaryResponse {
+  id: number;
+  note: string | null;
+  created_at: string;
+  costs: number;
+  lines_count: number;
+}
+
+export interface SaleSummaryResponse {
+  id: number;
+  note: string | null;
+  created_at: string;
+  revenue: number;
+  lines_count: number;
+}
+
+export interface RestockLineCreatePayload {
+  product_supplier_id: number;
+  restock_quantity: number;
+  unit_cost_snapshot?: number;
+}
+
+export interface RestockCreatePayload {
+  note?: string | null;
+  lines: RestockLineCreatePayload[];
+}
+
+export interface RestockLineResponse {
+  id: number;
+  product_supplier_id: number;
+  product_id: number;
+  product_name: string;
+  supplier_id: number;
+  supplier_name: string | null;
+  restock_quantity: number;
+  unit_cost_snapshot: number;
+  quantity_unit_snapshot: string;
+}
+
+export interface RestockResponse {
+  id: number;
+  note: string | null;
+  created_at: string;
+  lines: RestockLineResponse[];
+}
+
+export interface SaleLineCreatePayload {
+  product_supplier_id: number;
+  sale_quantity: number;
+}
+
+export interface SaleCreatePayload {
+  note?: string | null;
+  lines: SaleLineCreatePayload[];
+}
+
+export interface SaleLineResponse {
+  id: number;
+  product_supplier_id: number;
+  product_id: number;
+  product_name: string;
+  supplier_id: number;
+  supplier_name: string;
+  sale_quantity: number;
+  unit_cost_snapshot: number;
+  unit_sale_price_snapshot: number;
+  quantity_unit_snapshot: string;
+}
+
+export interface SaleResponse {
+  id: number;
+  note: string | null;
+  created_at: string;
+  lines: SaleLineResponse[];
+}
+
 export interface TagResponse {
   id: number;
   name: string;
@@ -76,6 +152,11 @@ export interface CompanyCreatePayload {
   iin?: string | null;
 }
 
+export interface CompanyUpdatePayload {
+  name?: string;
+  iin?: string | null;
+}
+
 export interface SupplierSummaryResponse {
   id: number;
   name: string;
@@ -88,12 +169,25 @@ export interface SupplierCreatePayload {
   phone_number: string;
 }
 
+export interface SupplierUpdatePayload {
+  name?: string;
+  phone_number?: string;
+}
+
 export interface ProductSupplierCreatePayload {
   supplier_id: number;
   purchase_price: number;
   margin_percent: number;
   sale_price?: number | null;
   quantity: number;
+}
+
+export interface ProductSupplierUpdatePayload {
+  supplier_id?: number;
+  purchase_price?: number;
+  margin_percent?: number;
+  sale_price?: number;
+  quantity?: number;
 }
 
 export interface ProductSupplierResponse {
@@ -123,6 +217,14 @@ export interface ProductCreatePayload {
   tags: string[];
   quantity_unit: string;
   low_stock_threshold: number;
+}
+
+export interface ProductUpdatePayload {
+  name?: string;
+  company_id?: number;
+  tags?: string[];
+  quantity_unit?: string;
+  low_stock_threshold?: number;
 }
 
 export interface ProductResponse {

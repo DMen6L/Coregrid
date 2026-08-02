@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from "vue";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { useRoute, useRouter } from "vue-router";
 
+import ProductDetailModal from "../components/ProductDetailModal.vue";
 import {
   createCompany,
   createProduct,
@@ -81,9 +82,10 @@ const searchForm = ref<HTMLFormElement | null>(null);
 const createFormElement = ref<HTMLFormElement | null>(null);
 const searchDraft = ref(currentSearchFromRoute());
 const isCreateModalOpen = ref(false);
+const isDetailModalOpen = ref(false);
+const selectedProductId = ref<number | null>(null);
 const createError = ref("");
-const createSuccess = ref("");
-const createSuccessVariant = ref<"success" | "warning">("success");
+const createWarning = ref("");
 const companyLookupTerm = ref("");
 const supplierLookupTerm = ref("");
 const productCreateForm = reactive({
@@ -176,6 +178,9 @@ const createProductMutation = useMutation({
 });
 
 const productsPage = computed(() => productsQuery.data.value || EMPTY_PRODUCTS_PAGE);
+const selectedProductSummary = computed(() => (
+  productsPage.value.items.find((product) => product.id === selectedProductId.value) || null
+));
 const popularTagsPage = computed(() => popularTagsQuery.data.value || EMPTY_TAGS_PAGE);
 const companyLookupResults = computed(() => companyLookupQuery.data.value?.items || []);
 const supplierLookupResults = computed(() => supplierLookupQuery.data.value?.items || []);
@@ -286,6 +291,16 @@ function applyTagSearch(tagName: string) {
   });
 }
 
+function openProductDetail(product: ProductSummaryResponse) {
+  selectedProductId.value = product.id;
+  isDetailModalOpen.value = true;
+}
+
+function closeProductDetail() {
+  isDetailModalOpen.value = false;
+  selectedProductId.value = null;
+}
+
 function openCreateModal() {
   resetProductCreateForm();
   createError.value = "";
@@ -358,7 +373,7 @@ function clearSelectedSupplier() {
 
 function submitProductCreate() {
   createError.value = "";
-  createSuccess.value = "";
+  createWarning.value = "";
 
   if (!createFormElement.value?.reportValidity()) {
     return;
@@ -472,16 +487,10 @@ async function handleProductCreateSuccess(result: ProductCreateResult) {
   resetProductCreateForm();
 
   if (supplierLinkError) {
-    createSuccessVariant.value = "warning";
-    createSuccess.value = [
+    createWarning.value = [
       `Товар ${productName || `#${formatCount(product.id)}`} создан,`,
       `но связь с поставщиком не создана: ${getCreateErrorMessage(supplierLinkError, "связь с поставщиком")}`,
     ].join(" ");
-  } else {
-    createSuccessVariant.value = "success";
-    createSuccess.value = supplierLinkCreated
-      ? `Товар ${productName || `#${formatCount(product.id)}`} создан и связан с поставщиком.`
-      : `Товар ${productName || `#${formatCount(product.id)}`} создан.`;
   }
 
   navigateProducts({
@@ -673,12 +682,11 @@ function getSupplierCountText(value: number) {
     </div>
 
     <div
-      v-if="createSuccess"
-      class="alert"
-      :class="createSuccessVariant === 'warning' ? 'alert-warning' : 'alert-success'"
+      v-if="createWarning"
+      class="alert alert-warning"
       role="status"
     >
-      {{ createSuccess }}
+      {{ createWarning }}
     </div>
 
     <div v-if="shouldShowPopularTags" class="products-popular-tags" aria-live="polite">
@@ -732,7 +740,16 @@ function getSupplierCountText(value: number) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="product in productsPage.items" :key="product.id">
+          <tr
+            v-for="product in productsPage.items"
+            :key="product.id"
+            class="product-summary-row"
+            tabindex="0"
+            role="button"
+            :aria-label="`Открыть товар ${product.name || `#${formatCount(product.id)}`}`"
+            @click="openProductDetail(product)"
+            @keydown.enter.prevent="openProductDetail(product)"
+          >
             <td class="product-name-cell">
               <div class="fw-semibold">{{ product.name || "Без названия" }}</div>
               <div class="product-meta">
@@ -1303,5 +1320,12 @@ function getSupplierCountText(value: number) {
       </div>
       <div v-if="isCreateModalOpen" class="modal-backdrop fade show"></div>
     </Teleport>
+
+    <ProductDetailModal
+      :product-id="selectedProductId"
+      :is-open="isDetailModalOpen"
+      :summary="selectedProductSummary"
+      @close="closeProductDetail"
+    />
   </section>
 </template>

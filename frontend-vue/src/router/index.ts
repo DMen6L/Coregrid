@@ -2,8 +2,9 @@ import { createRouter, createWebHistory } from "vue-router";
 
 import CompaniesView from "../views/CompaniesView.vue";
 import DashboardView from "../views/DashboardView.vue";
-import PlaceholderView from "../views/PlaceholderView.vue";
 import ProductsView from "../views/ProductsView.vue";
+import RestocksView from "../views/RestocksView.vue";
+import SalesView from "../views/SalesView.vue";
 import SuppliersView from "../views/SuppliersView.vue";
 
 const router = createRouter({
@@ -35,14 +36,12 @@ const router = createRouter({
     {
       path: "/restocks",
       name: "restocks",
-      component: PlaceholderView,
-      props: { title: "Пополнения" },
+      component: RestocksView,
     },
     {
       path: "/sales",
       name: "sales",
-      component: PlaceholderView,
-      props: { title: "Продажи" },
+      component: SalesView,
     },
   ],
 });

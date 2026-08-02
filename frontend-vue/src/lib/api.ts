@@ -3,15 +3,25 @@ import type {
   BestSalesMode,
   CompanyCreatePayload,
   CompanyResponse,
+  CompanyUpdatePayload,
   PaginatedResponse,
   ProductCreatePayload,
   ProductResponse,
   ProductSupplierCreatePayload,
   ProductSupplierResponse,
+  ProductSupplierUpdatePayload,
   ProductSummaryResponse,
+  ProductUpdatePayload,
+  RestockCreatePayload,
+  RestockResponse,
+  RestockSummaryResponse,
+  SaleCreatePayload,
+  SaleResponse,
+  SaleSummaryResponse,
   SupplierCreatePayload,
   SupplierResponse,
   SupplierSummaryResponse,
+  SupplierUpdatePayload,
   SummariesResponse,
   TagSummaryResponse,
 } from "../types/api";
@@ -80,9 +90,74 @@ export function getProducts({
   );
 }
 
+export function getRestocks({
+  dateFrom = "",
+  dateTo = "",
+  page = FIRST_PAGE,
+  pageSize = DEFAULT_PAGE_SIZE,
+}: {
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  pageSize?: number;
+} = {}) {
+  return request<PaginatedResponse<RestockSummaryResponse>>(
+    buildDateListPath("/restocks", dateFrom, dateTo, page, pageSize),
+  );
+}
+
+export function createRestock(payload: RestockCreatePayload) {
+  return request<RestockResponse>("/restocks", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getRestock(restockId: number) {
+  return request<RestockResponse>(`/restocks/${restockId}`);
+}
+
+export function getSales({
+  dateFrom = "",
+  dateTo = "",
+  page = FIRST_PAGE,
+  pageSize = DEFAULT_PAGE_SIZE,
+}: {
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  pageSize?: number;
+} = {}) {
+  return request<PaginatedResponse<SaleSummaryResponse>>(
+    buildDateListPath("/sales", dateFrom, dateTo, page, pageSize),
+  );
+}
+
+export function createSale(payload: SaleCreatePayload) {
+  return request<SaleResponse>("/sales", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getSale(saleId: number) {
+  return request<SaleResponse>(`/sales/${saleId}`);
+}
+
 export function createProduct(payload: ProductCreatePayload) {
   return request<ProductResponse>("/products", {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getProduct(productId: number) {
+  return request<ProductResponse>(`/products/${productId}`);
+}
+
+export function patchProduct(productId: number, payload: ProductUpdatePayload) {
+  return request<ProductResponse>(`/products/${productId}`, {
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 }
@@ -93,6 +168,17 @@ export function createProductSupplierLinks(
 ) {
   return request<ProductSupplierResponse[]>(`/products/${productId}/links`, {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function patchProductSupplierLink(
+  productId: number,
+  linkId: number,
+  payload: ProductSupplierUpdatePayload,
+) {
+  return request<ProductSupplierResponse>(`/products/${productId}/links/${linkId}`, {
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 }
@@ -132,6 +218,17 @@ export function createCompany(payload: CompanyCreatePayload) {
   });
 }
 
+export function getCompany(companyId: number) {
+  return request<CompanyResponse>(`/companies/${companyId}`);
+}
+
+export function patchCompany(companyId: number, payload: CompanyUpdatePayload) {
+  return request<CompanyResponse>(`/companies/${companyId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getSuppliers({
   search = "",
   page = FIRST_PAGE,
@@ -153,11 +250,45 @@ export function createSupplier(payload: SupplierCreatePayload) {
   });
 }
 
+export function getSupplier(supplierId: number) {
+  return request<SupplierResponse>(`/suppliers/${supplierId}`);
+}
+
+export function patchSupplier(supplierId: number, payload: SupplierUpdatePayload) {
+  return request<SupplierResponse>(`/suppliers/${supplierId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 function buildListPath(basePath: string, search: string, page: number, pageSize: number) {
   const params = new URLSearchParams();
 
   if (search) {
     params.set("search", search);
+  }
+
+  params.set("page", String(Math.max(Number(page) || FIRST_PAGE, FIRST_PAGE)));
+  params.set("page_size", String(pageSize));
+
+  return `${basePath}?${params.toString()}`;
+}
+
+function buildDateListPath(
+  basePath: string,
+  dateFrom: string,
+  dateTo: string,
+  page: number,
+  pageSize: number,
+) {
+  const params = new URLSearchParams();
+
+  if (dateFrom) {
+    params.set("from", dateFrom);
+  }
+
+  if (dateTo) {
+    params.set("to", dateTo);
   }
 
   params.set("page", String(Math.max(Number(page) || FIRST_PAGE, FIRST_PAGE)));

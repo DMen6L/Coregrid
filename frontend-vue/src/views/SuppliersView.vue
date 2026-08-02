@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from "vue";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { useRoute, useRouter } from "vue-router";
 
+import SupplierDetailModal from "../components/SupplierDetailModal.vue";
 import { createSupplier, DEFAULT_PAGE_SIZE, FIRST_PAGE, getSuppliers } from "../lib/api";
 import { formatCount, getCreateErrorMessage, getRequestErrorMessage } from "../lib/format";
 import type {
@@ -29,8 +30,9 @@ const searchForm = ref<HTMLFormElement | null>(null);
 const createFormElement = ref<HTMLFormElement | null>(null);
 const searchDraft = ref(currentSearchFromRoute());
 const isCreateModalOpen = ref(false);
+const isDetailModalOpen = ref(false);
+const selectedSupplierId = ref<number | null>(null);
 const createError = ref("");
-const createSuccess = ref("");
 const supplierCreateForm = reactive({
   name: "",
   phoneNumber: "",
@@ -106,6 +108,16 @@ function goToPage(page: number) {
   });
 }
 
+function openSupplierDetail(supplier: SupplierSummaryResponse) {
+  selectedSupplierId.value = supplier.id;
+  isDetailModalOpen.value = true;
+}
+
+function closeSupplierDetail() {
+  isDetailModalOpen.value = false;
+  selectedSupplierId.value = null;
+}
+
 function openCreateModal() {
   resetSupplierCreateForm();
   createError.value = "";
@@ -122,7 +134,6 @@ function closeCreateModal() {
 
 function submitSupplierCreate() {
   createError.value = "";
-  createSuccess.value = "";
 
   if (!createFormElement.value?.reportValidity()) {
     return;
@@ -145,7 +156,6 @@ async function handleSupplierCreateSuccess(supplier: SupplierResponse) {
 
   isCreateModalOpen.value = false;
   resetSupplierCreateForm();
-  createSuccess.value = `Поставщик ${supplierName || `#${formatCount(supplier.id)}`} создан.`;
   navigateSuppliers({
     search: supplierName,
     page: FIRST_PAGE,
@@ -233,10 +243,6 @@ function normalizeText(value: string) {
       </div>
     </div>
 
-    <div v-if="createSuccess" class="alert alert-success" role="status">
-      {{ createSuccess }}
-    </div>
-
     <div v-if="suppliersQuery.isLoading.value" class="text-secondary py-4" aria-live="polite">
       Загрузка поставщиков...
     </div>
@@ -257,7 +263,16 @@ function normalizeText(value: string) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="supplier in suppliersPage.items" :key="supplier.id">
+          <tr
+            v-for="supplier in suppliersPage.items"
+            :key="supplier.id"
+            class="supplier-summary-row"
+            tabindex="0"
+            role="button"
+            :aria-label="`Открыть поставщика ${supplier.name || `#${formatCount(supplier.id)}`}`"
+            @click="openSupplierDetail(supplier)"
+            @keydown.enter.prevent="openSupplierDetail(supplier)"
+          >
             <td class="supplier-name-cell">
               <div class="fw-semibold">{{ supplier.name || "Без названия" }}</div>
               <div class="supplier-meta">ID {{ formatCount(supplier.id) }}</div>
@@ -381,5 +396,11 @@ function normalizeText(value: string) {
       </div>
       <div v-if="isCreateModalOpen" class="modal-backdrop fade show"></div>
     </Teleport>
+
+    <SupplierDetailModal
+      :supplier-id="selectedSupplierId"
+      :is-open="isDetailModalOpen"
+      @close="closeSupplierDetail"
+    />
   </section>
 </template>
