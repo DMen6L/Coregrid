@@ -7,7 +7,7 @@ The key rule is:
 - `products.quantity` stores the current stock state.
 - stock movement tables store the history of how that quantity changed.
 
-This design is implemented in the backend and exposed in the static frontend.
+This design is implemented in the backend and exposed in the Vue frontend.
 The frontend can create stock movements, show movement history, show recent
 dashboard movements, and use sales summaries for dashboard reporting.
 
@@ -433,6 +433,6 @@ Backend endpoint tests should cover:
 - No decimal money handling in the first version.
 - No payments, customers, discount reasons/approvals, returns, or receipts in
   the first sales version.
-- The static frontend has movement UI, but direct product quantity editing is
-  still allowed for compatibility.
+- The Vue frontend has movement UI, but direct product quantity editing is still
+  allowed for compatibility with older clients and tests.
 - Existing models and schemas stay in single files until they become too large.

@@ -8,7 +8,7 @@ App meant for automation of core operations inside businesses.
  - [configuration and maintenance of backend and database on python](docs/BACKEND.md)
  - [stock movement history for inventory changes](docs/STOCK_MOVEMENTS.md)
  - per-product low-stock thresholds with calculated stock status
- - static inventory operations UI for testing product workflows
+ - Vue inventory operations UI for product, supplier, company, and stock movement workflows
 
 ## Tech stack
 
@@ -20,14 +20,12 @@ App meant for automation of core operations inside businesses.
 
 ### Frontend
 
-- HTML
-- CSS
-- JavaScript
 - Vue
 - Vite
 - TypeScript
 - Vue Router
 - TanStack Query
+- Bootstrap
 
 ---
 
@@ -98,23 +96,7 @@ Start the backend API:
 uv run fastapi dev main.py
 ```
 
-Start the current static frontend:
-
-```bash
-# from frontend/
-python3 -m http.server 5173
-```
-
-Open `http://127.0.0.1:5173`. The navbar API selector defaults to
-`http://127.0.0.1:8000`; choose `127.0.0.1:8001` or `Другой` if the backend is
-published on a different host port. You can also preselect an API base with a
-query parameter, for example:
-
-```text
-http://127.0.0.1:5173/?api_base=http://127.0.0.1:8001
-```
-
-Start the new Vue frontend:
+Start the Vue frontend:
 
 ```bash
 # from frontend-vue/
@@ -122,10 +104,18 @@ npm install
 npm run dev
 ```
 
-The Vue frontend also defaults to `http://127.0.0.1:8000` and supports
-`?api_base=...`. For now it contains the shared app shell, dashboard route, and
-products list/create route; the static frontend remains the full workflow UI
-while the Vue migration continues.
+Open `http://127.0.0.1:5173`. The navbar API selector defaults to
+`http://127.0.0.1:8000`; choose another configured option or `Другой` if the
+backend is published on a different host port. You can also preselect an API
+base with a query parameter, for example:
+
+```text
+http://127.0.0.1:5173/?api_base=http://127.0.0.1:8001
+```
+
+The backend currently allows browser requests from `http://127.0.0.1:5173` and
+`http://localhost:5173`. If Vite starts on a fallback port because `5173` is
+busy, free port `5173` or update backend CORS for that local port.
 
 Build/check the Vue frontend:
 
@@ -165,10 +155,6 @@ npm run build
 │   ├── BACKEND.md
 │   ├── DATABASE.md
 │   └── STOCK_MOVEMENTS.md
-├── frontend
-│   ├── css
-│   ├── js
-│   └── index.html
 ├── frontend-vue
 │   ├── src
 │   ├── index.html

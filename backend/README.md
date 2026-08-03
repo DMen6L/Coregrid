@@ -232,4 +232,4 @@ uv run fastapi dev main.py
 
 ## Local frontend access
 
-`main.py` allows local browser requests from `http://127.0.0.1:5173` and `http://localhost:5173` for the static frontend.
+`main.py` allows local browser requests from `http://127.0.0.1:5173` and `http://localhost:5173` for the Vue frontend.
