@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 
 import {
   createProductSupplierLinks,
+  createSupplier,
+  deleteProductSupplierLink,
   getCompanies,
   getProduct,
   getSuppliers,
@@ -17,6 +19,7 @@ import {
   formatDateTime,
   formatQuantity,
   getCreateErrorMessage,
+  getDeleteErrorMessage,
   getRequestErrorMessage,
 } from "../lib/format";
 import type {
@@ -28,10 +31,12 @@ import type {
   ProductSummaryResponse,
   ProductUpdatePayload,
   StockStatus,
+  SupplierCreatePayload,
   SupplierSummaryResponse,
 } from "../types/api";
 
 type ProductStockStatus = StockStatus | "none";
+type SupplierMode = "existing" | "new";
 type LinkEditValue = {
   purchasePrice: number;
   marginPercent: number;
@@ -40,16 +45,27 @@ type LinkEditValue = {
 };
 type NewLinkDraft = {
   id: number;
+  supplierMode: SupplierMode;
   supplierSearch: string;
   selectedSupplier: SupplierSummaryResponse | null;
   lookupTerm: string;
   lookupResults: SupplierSummaryResponse[];
   lookupError: string;
   isLookupLoading: boolean;
+  newSupplierName: string;
+  newSupplierPhoneNumber: string;
   purchasePrice: number;
   marginPercent: number;
   salePrice: string;
   quantity: number;
+};
+type DeleteLinkInput = {
+  productId: number;
+  linkId: number;
+};
+type DeleteLinkResult = {
+  product: ProductResponse;
+  linkId: number;
 };
 
 const props = defineProps<{
@@ -77,6 +93,7 @@ const isEditing = ref(false);
 const editError = ref("");
 const companyLookupTerm = ref("");
 const nextLinkDraftId = ref(1);
+const deletingLinkId = ref<number | null>(null);
 const newLinkDrafts = ref<NewLinkDraft[]>([]);
 const linkEditValues = reactive<Record<number, LinkEditValue>>({});
 const editForm = reactive({
@@ -120,6 +137,16 @@ const updateProductMutation = useMutation({
     editError.value = getCreateErrorMessage(error, "товар");
   },
 });
+const deleteProductSupplierLinkMutation = useMutation({
+  mutationFn: deleteProductSupplierLinkFromModal,
+  onSuccess: handleProductSupplierLinkDeleteSuccess,
+  onError: (error) => {
+    editError.value = getDeleteErrorMessage(error, "связь с поставщиком");
+  },
+  onSettled: () => {
+    deletingLinkId.value = null;
+  },
+});
 
 const product = computed(() => productQuery.data.value || null);
 const supplierLinks = computed(() => product.value?.supplier_links || []);
@@ -153,6 +180,10 @@ const shouldShowContent = computed(() => (
     && !productQuery.isLoading.value
     && !detailError.value
 ));
+const isEditRequestPending = computed(() => (
+  updateProductMutation.isPending.value
+    || deleteProductSupplierLinkMutation.isPending.value
+));
 
 watch(() => props.isOpen, (isOpen) => {
   if (!isOpen) {
@@ -161,7 +192,7 @@ watch(() => props.isOpen, (isOpen) => {
 });
 
 function closeModal() {
-  if (updateProductMutation.isPending.value) {
+  if (isEditRequestPending.value) {
     return;
   }
 
@@ -200,7 +231,7 @@ function startEdit() {
 }
 
 function cancelEdit() {
-  if (updateProductMutation.isPending.value) {
+  if (isEditRequestPending.value) {
     return;
   }
 
@@ -242,12 +273,15 @@ function clearSelectedCompany() {
 function addNewLinkDraft() {
   newLinkDrafts.value.push({
     id: nextLinkDraftId.value,
+    supplierMode: "existing",
     supplierSearch: "",
     selectedSupplier: null,
     lookupTerm: "",
     lookupResults: [],
     lookupError: "",
     isLookupLoading: false,
+    newSupplierName: "",
+    newSupplierPhoneNumber: "",
     purchasePrice: 1,
     marginPercent: 0,
     salePrice: "",
@@ -260,7 +294,41 @@ function removeNewLinkDraft(draftId: number) {
   newLinkDrafts.value = newLinkDrafts.value.filter((draft) => draft.id !== draftId);
 }
 
+function setDraftSupplierMode(draft: NewLinkDraft, mode: SupplierMode) {
+  draft.supplierMode = mode;
+  draft.supplierSearch = "";
+  draft.selectedSupplier = null;
+  draft.lookupTerm = "";
+  draft.lookupResults = [];
+  draft.lookupError = "";
+  draft.newSupplierName = "";
+  draft.newSupplierPhoneNumber = "";
+  editError.value = "";
+}
+
+function deleteExistingLink(link: ProductSupplierResponse) {
+  if (!product.value || isEditRequestPending.value) {
+    return;
+  }
+
+  const supplierName = link.supplier_name || `поставщиком #${formatCount(link.supplier_id)}`;
+  if (!window.confirm(`Удалить связь с ${supplierName}?`)) {
+    return;
+  }
+
+  editError.value = "";
+  deletingLinkId.value = link.id;
+  deleteProductSupplierLinkMutation.mutate({
+    productId: product.value.id,
+    linkId: link.id,
+  });
+}
+
 async function runDraftSupplierLookup(draft: NewLinkDraft) {
+  if (draft.supplierMode !== "existing") {
+    return;
+  }
+
   const search = normalizeText(draft.supplierSearch);
 
   draft.supplierSearch = search;
@@ -312,6 +380,10 @@ function clearDraftSupplier(draft: NewLinkDraft) {
 function submitProductEdit() {
   editError.value = "";
 
+  if (deleteProductSupplierLinkMutation.isPending.value) {
+    return;
+  }
+
   if (!editFormElement.value?.reportValidity()) {
     return;
   }
@@ -337,20 +409,46 @@ async function updateProductFromForm() {
 
   await patchProduct(productId, productPayload);
 
-  const linkRequests: Promise<unknown>[] = supplierLinks.value.map((link) => (
+  const existingLinkRequests: Promise<unknown>[] = supplierLinks.value.map((link) => (
     patchProductSupplierLink(productId, link.id, getExistingLinkPayload(link))
   ));
-  const newLinkPayloads = newLinkDrafts.value.map(getNewLinkPayload);
 
-  if (newLinkPayloads.length > 0) {
-    linkRequests.push(createProductSupplierLinks(productId, newLinkPayloads));
+  if (existingLinkRequests.length > 0) {
+    await Promise.all(existingLinkRequests);
   }
 
-  if (linkRequests.length > 0) {
-    await Promise.all(linkRequests);
+  const createdSupplierNames: string[] = [];
+
+  try {
+    const newLinkPayloads = await getNewLinkPayloads(createdSupplierNames);
+
+    if (newLinkPayloads.length > 0) {
+      await createProductSupplierLinks(productId, newLinkPayloads);
+    }
+  } catch (error) {
+    if (createdSupplierNames.length > 0) {
+      throw createLocalValidationError([
+        `Новый поставщик ${createdSupplierNames.join(", ")} мог быть создан,`,
+        `но связь с товаром не создана: ${getCreateErrorMessage(error, "связь с поставщиком")}`,
+      ].join(" "));
+    }
+
+    throw error;
   }
 
   return getProduct(productId);
+}
+
+async function deleteProductSupplierLinkFromModal({
+  productId,
+  linkId,
+}: DeleteLinkInput): Promise<DeleteLinkResult> {
+  await deleteProductSupplierLink(productId, linkId);
+
+  return {
+    product: await getProduct(productId),
+    linkId,
+  };
 }
 
 async function handleProductUpdateSuccess(updatedProduct: ProductResponse) {
@@ -370,6 +468,22 @@ async function handleProductUpdateSuccess(updatedProduct: ProductResponse) {
   emit("saved", updatedProduct);
 }
 
+async function handleProductSupplierLinkDeleteSuccess({
+  product: updatedProduct,
+  linkId,
+}: DeleteLinkResult) {
+  queryClient.setQueryData(["products", "detail", updatedProduct.id], updatedProduct);
+  delete linkEditValues[linkId];
+  editError.value = "";
+
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["products"] }),
+    queryClient.invalidateQueries({ queryKey: ["suppliers"] }),
+    queryClient.invalidateQueries({ queryKey: ["summaries"] }),
+  ]);
+  emit("saved", updatedProduct);
+}
+
 function validateProductEdit() {
   if (!editForm.selectedCompany) {
     throw createLocalValidationError("Выберите компанию.");
@@ -378,6 +492,18 @@ function validateProductEdit() {
   const usedSupplierIds = new Set(supplierLinks.value.map((link) => Number(link.supplier_id)));
 
   for (const draft of newLinkDrafts.value) {
+    if (draft.supplierMode === "new") {
+      if (!normalizeText(draft.newSupplierName)) {
+        throw createLocalValidationError("Введите название нового поставщика для каждой новой связи.");
+      }
+
+      if (!normalizeText(draft.newSupplierPhoneNumber)) {
+        throw createLocalValidationError("Введите телефон нового поставщика для каждой новой связи.");
+      }
+
+      continue;
+    }
+
     if (!draft.selectedSupplier) {
       throw createLocalValidationError("Выберите поставщика для каждой новой связи.");
     }
@@ -406,9 +532,42 @@ function getExistingLinkPayload(link: ProductSupplierResponse): ProductSupplierU
   };
 }
 
-function getNewLinkPayload(draft: NewLinkDraft): ProductSupplierCreatePayload {
+async function getNewLinkPayloads(createdSupplierNames: string[]) {
+  const payloads: ProductSupplierCreatePayload[] = [];
+
+  for (const draft of newLinkDrafts.value) {
+    const supplierId = await resolveDraftSupplierId(draft, createdSupplierNames);
+
+    payloads.push(getNewLinkPayload(draft, supplierId));
+  }
+
+  return payloads;
+}
+
+async function resolveDraftSupplierId(
+  draft: NewLinkDraft,
+  createdSupplierNames: string[],
+) {
+  if (draft.supplierMode === "new") {
+    const supplier = await createSupplier(getDraftInlineSupplierPayload(draft));
+
+    createdSupplierNames.push(supplier.name || normalizeText(draft.newSupplierName));
+    return Number(supplier.id);
+  }
+
+  return Number(draft.selectedSupplier?.id);
+}
+
+function getDraftInlineSupplierPayload(draft: NewLinkDraft): SupplierCreatePayload {
   return {
-    supplier_id: Number(draft.selectedSupplier?.id),
+    name: normalizeText(draft.newSupplierName),
+    phone_number: normalizeText(draft.newSupplierPhoneNumber),
+  };
+}
+
+function getNewLinkPayload(draft: NewLinkDraft, supplierId: number): ProductSupplierCreatePayload {
+  return {
+    supplier_id: supplierId,
     purchase_price: normalizeRequiredNumber(draft.purchasePrice, 1),
     margin_percent: normalizeRequiredNumber(draft.marginPercent, 0),
     sale_price: normalizeOptionalNumber(draft.salePrice),
@@ -502,7 +661,7 @@ function createLocalValidationError(message: string) {
                 v-if="shouldShowContent && !isEditing"
                 class="btn btn-sm btn-outline-primary"
                 type="button"
-                :disabled="updateProductMutation.isPending.value"
+                :disabled="isEditRequestPending"
                 @click="startEdit"
               >
                 Редактировать
@@ -511,7 +670,7 @@ function createLocalValidationError(message: string) {
                 class="btn-close"
                 type="button"
                 aria-label="Закрыть"
-                :disabled="updateProductMutation.isPending.value"
+                :disabled="isEditRequestPending"
                 @click="closeModal"
               ></button>
             </div>
@@ -635,7 +794,7 @@ function createLocalValidationError(message: string) {
                       type="text"
                       maxlength="255"
                       required
-                      :disabled="updateProductMutation.isPending.value"
+                      :disabled="isEditRequestPending"
                     >
                   </div>
                   <div class="col-12 col-lg-6">
@@ -654,7 +813,7 @@ function createLocalValidationError(message: string) {
                       <button
                         class="btn btn-sm btn-outline-primary"
                         type="button"
-                        :disabled="updateProductMutation.isPending.value"
+                        :disabled="isEditRequestPending"
                         @click="clearSelectedCompany"
                       >
                         Сменить
@@ -671,13 +830,13 @@ function createLocalValidationError(message: string) {
                           maxlength="100"
                           autocomplete="off"
                           placeholder="Начните вводить название"
-                          :disabled="updateProductMutation.isPending.value"
+                          :disabled="isEditRequestPending"
                           @keydown.enter.prevent="runCompanyLookup"
                         >
                         <button
                           class="btn btn-outline-primary"
                           type="button"
-                          :disabled="updateProductMutation.isPending.value || editForm.companySearch.trim().length < 2"
+                          :disabled="isEditRequestPending || editForm.companySearch.trim().length < 2"
                           @click="runCompanyLookup"
                         >
                           Найти
@@ -701,7 +860,7 @@ function createLocalValidationError(message: string) {
                           :key="company.id"
                           class="list-group-item list-group-item-action product-company-result"
                           type="button"
-                          :disabled="updateProductMutation.isPending.value"
+                          :disabled="isEditRequestPending"
                           @click="selectCompany(company)"
                         >
                           <span class="fw-semibold d-block">{{ company.name }}</span>
@@ -723,7 +882,7 @@ function createLocalValidationError(message: string) {
                       type="text"
                       maxlength="20"
                       required
-                      :disabled="updateProductMutation.isPending.value"
+                      :disabled="isEditRequestPending"
                     >
                   </div>
                   <div class="col-12 col-sm-6 col-lg-3">
@@ -737,7 +896,7 @@ function createLocalValidationError(message: string) {
                       min="0"
                       step="1"
                       required
-                      :disabled="updateProductMutation.isPending.value"
+                      :disabled="isEditRequestPending"
                     >
                   </div>
                   <div class="col-12 col-lg-6">
@@ -750,7 +909,7 @@ function createLocalValidationError(message: string) {
                       type="text"
                       maxlength="500"
                       placeholder="склад, сезон, импорт"
-                      :disabled="updateProductMutation.isPending.value"
+                      :disabled="isEditRequestPending"
                     >
                   </div>
                 </div>
@@ -761,7 +920,7 @@ function createLocalValidationError(message: string) {
                     <button
                       class="btn btn-sm btn-outline-primary"
                       type="button"
-                      :disabled="updateProductMutation.isPending.value"
+                      :disabled="isEditRequestPending"
                       @click="addNewLinkDraft"
                     >
                       Добавить поставщика
@@ -780,6 +939,7 @@ function createLocalValidationError(message: string) {
                           <th scope="col">Закупка</th>
                           <th scope="col">Маржа</th>
                           <th scope="col">Продажа</th>
+                          <th scope="col" class="text-end">Действие</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -799,7 +959,7 @@ function createLocalValidationError(message: string) {
                               step="1"
                               required
                               :aria-label="`Остаток поставщика ${link.supplier_name || link.supplier_id}`"
-                              :disabled="updateProductMutation.isPending.value"
+                              :disabled="isEditRequestPending"
                             >
                           </td>
                           <td>
@@ -811,7 +971,7 @@ function createLocalValidationError(message: string) {
                               step="1"
                               required
                               :aria-label="`Цена закупки поставщика ${link.supplier_name || link.supplier_id}`"
-                              :disabled="updateProductMutation.isPending.value"
+                              :disabled="isEditRequestPending"
                             >
                           </td>
                           <td>
@@ -823,7 +983,7 @@ function createLocalValidationError(message: string) {
                               step="1"
                               required
                               :aria-label="`Маржа поставщика ${link.supplier_name || link.supplier_id}`"
-                              :disabled="updateProductMutation.isPending.value"
+                              :disabled="isEditRequestPending"
                             >
                           </td>
                           <td>
@@ -835,8 +995,18 @@ function createLocalValidationError(message: string) {
                               step="1"
                               required
                               :aria-label="`Цена продажи поставщика ${link.supplier_name || link.supplier_id}`"
-                              :disabled="updateProductMutation.isPending.value"
+                              :disabled="isEditRequestPending"
                             >
+                          </td>
+                          <td class="text-end">
+                            <button
+                              class="btn btn-sm btn-outline-danger product-detail-link-delete-button"
+                              type="button"
+                              :disabled="isEditRequestPending"
+                              @click="deleteExistingLink(link)"
+                            >
+                              {{ deletingLinkId === link.id ? "Удаление..." : "Удалить" }}
+                            </button>
                           </td>
                         </tr>
                       </tbody>
@@ -854,7 +1024,7 @@ function createLocalValidationError(message: string) {
                         <button
                           class="btn btn-sm btn-outline-danger"
                           type="button"
-                          :disabled="updateProductMutation.isPending.value"
+                          :disabled="isEditRequestPending"
                           @click="removeNewLinkDraft(draft.id)"
                         >
                           Удалить
@@ -862,78 +1032,162 @@ function createLocalValidationError(message: string) {
                       </div>
 
                       <div class="mb-3">
-                        <label class="form-label" :for="`product-detail-new-link-${draft.id}-supplier-search`">
-                          Поставщик
-                        </label>
-                        <div v-if="draft.selectedSupplier" class="product-supplier-selected">
-                          <div>
-                            <div class="fw-semibold">{{ draft.selectedSupplier.name }}</div>
-                            <div class="product-meta">
-                              ID {{ formatCount(draft.selectedSupplier.id) }}
-                              <span v-if="draft.selectedSupplier.phone_number">
-                                | {{ draft.selectedSupplier.phone_number }}
-                              </span>
+                        <div class="product-detail-link-mode mb-2" role="radiogroup" aria-label="Способ выбора поставщика">
+                          <div class="form-check form-check-inline">
+                            <input
+                              :id="`product-detail-new-link-${draft.id}-supplier-existing`"
+                              class="form-check-input"
+                              type="radio"
+                              :name="`product-detail-new-link-${draft.id}-supplier-mode`"
+                              value="existing"
+                              :checked="draft.supplierMode === 'existing'"
+                              :disabled="isEditRequestPending"
+                              @change="setDraftSupplierMode(draft, 'existing')"
+                            >
+                            <label
+                              class="form-check-label"
+                              :for="`product-detail-new-link-${draft.id}-supplier-existing`"
+                            >
+                              Существующий
+                            </label>
+                          </div>
+                          <div class="form-check form-check-inline">
+                            <input
+                              :id="`product-detail-new-link-${draft.id}-supplier-new`"
+                              class="form-check-input"
+                              type="radio"
+                              :name="`product-detail-new-link-${draft.id}-supplier-mode`"
+                              value="new"
+                              :checked="draft.supplierMode === 'new'"
+                              :disabled="isEditRequestPending"
+                              @change="setDraftSupplierMode(draft, 'new')"
+                            >
+                            <label
+                              class="form-check-label"
+                              :for="`product-detail-new-link-${draft.id}-supplier-new`"
+                            >
+                              Новый
+                            </label>
+                          </div>
+                        </div>
+
+                        <div v-if="draft.supplierMode === 'existing'">
+                          <label class="form-label" :for="`product-detail-new-link-${draft.id}-supplier-search`">
+                            Поставщик
+                          </label>
+                          <div v-if="draft.selectedSupplier" class="product-supplier-selected">
+                            <div>
+                              <div class="fw-semibold">{{ draft.selectedSupplier.name }}</div>
+                              <div class="product-meta">
+                                ID {{ formatCount(draft.selectedSupplier.id) }}
+                                <span v-if="draft.selectedSupplier.phone_number">
+                                  | {{ draft.selectedSupplier.phone_number }}
+                                </span>
+                              </div>
+                            </div>
+                            <button
+                              class="btn btn-sm btn-outline-secondary"
+                              type="button"
+                              :disabled="isEditRequestPending"
+                              @click="clearDraftSupplier(draft)"
+                            >
+                              Сбросить
+                            </button>
+                          </div>
+                          <div v-else>
+                            <div class="input-group">
+                              <input
+                                :id="`product-detail-new-link-${draft.id}-supplier-search`"
+                                v-model="draft.supplierSearch"
+                                class="form-control"
+                                type="search"
+                                minlength="2"
+                                maxlength="100"
+                                autocomplete="off"
+                                placeholder="Введите название поставщика"
+                                :disabled="isEditRequestPending"
+                                @keydown.enter.prevent="runDraftSupplierLookup(draft)"
+                              >
+                              <button
+                                class="btn btn-outline-primary"
+                                type="button"
+                                :disabled="isEditRequestPending || draft.supplierSearch.trim().length < 2"
+                                @click="runDraftSupplierLookup(draft)"
+                              >
+                                Найти
+                              </button>
+                            </div>
+                            <div v-if="draft.isLookupLoading" class="text-secondary small mt-2">
+                              Поиск поставщиков...
+                            </div>
+                            <div v-else-if="draft.lookupError" class="text-danger small mt-2">
+                              {{ draft.lookupError }}
+                            </div>
+                            <div
+                              v-else-if="draft.lookupTerm && draft.lookupResults.length === 0"
+                              class="text-secondary small mt-2"
+                            >
+                              Поставщики не найдены.
+                            </div>
+                            <div v-if="draft.lookupResults.length > 0" class="list-group product-supplier-results mt-2">
+                              <button
+                                v-for="supplier in draft.lookupResults"
+                                :key="supplier.id"
+                                class="list-group-item list-group-item-action product-supplier-result"
+                                type="button"
+                                :disabled="isEditRequestPending"
+                                @click="selectDraftSupplier(draft, supplier)"
+                              >
+                                <span class="fw-semibold d-block">{{ supplier.name }}</span>
+                                <span class="product-meta d-block">
+                                  ID {{ formatCount(supplier.id) }}
+                                  <span v-if="supplier.phone_number">| {{ supplier.phone_number }}</span>
+                                </span>
+                              </button>
                             </div>
                           </div>
-                          <button
-                            class="btn btn-sm btn-outline-secondary"
-                            type="button"
-                            :disabled="updateProductMutation.isPending.value"
-                            @click="clearDraftSupplier(draft)"
-                          >
-                            Сбросить
-                          </button>
                         </div>
-                        <div v-else>
-                          <div class="input-group">
+
+                        <div v-else class="row g-3">
+                          <div class="col-12 col-lg-7">
+                            <label
+                              class="form-label"
+                              :for="`product-detail-new-link-${draft.id}-new-supplier-name`"
+                            >
+                              Название поставщика
+                            </label>
                             <input
-                              :id="`product-detail-new-link-${draft.id}-supplier-search`"
-                              v-model="draft.supplierSearch"
+                              :id="`product-detail-new-link-${draft.id}-new-supplier-name`"
+                              v-model="draft.newSupplierName"
                               class="form-control"
-                              type="search"
-                              minlength="2"
-                              maxlength="100"
-                              autocomplete="off"
-                              placeholder="Введите название поставщика"
-                              :disabled="updateProductMutation.isPending.value"
-                              @keydown.enter.prevent="runDraftSupplierLookup(draft)"
+                              type="text"
+                              maxlength="255"
+                              autocomplete="organization"
+                              required
+                              :disabled="isEditRequestPending"
                             >
-                            <button
-                              class="btn btn-outline-primary"
-                              type="button"
-                              :disabled="updateProductMutation.isPending.value || draft.supplierSearch.trim().length < 2"
-                              @click="runDraftSupplierLookup(draft)"
+                          </div>
+                          <div class="col-12 col-lg-5">
+                            <label
+                              class="form-label"
+                              :for="`product-detail-new-link-${draft.id}-new-supplier-phone`"
                             >
-                              Найти
-                            </button>
-                          </div>
-                          <div v-if="draft.isLookupLoading" class="text-secondary small mt-2">
-                            Поиск поставщиков...
-                          </div>
-                          <div v-else-if="draft.lookupError" class="text-danger small mt-2">
-                            {{ draft.lookupError }}
-                          </div>
-                          <div
-                            v-else-if="draft.lookupTerm && draft.lookupResults.length === 0"
-                            class="text-secondary small mt-2"
-                          >
-                            Поставщики не найдены.
-                          </div>
-                          <div v-if="draft.lookupResults.length > 0" class="list-group product-supplier-results mt-2">
-                            <button
-                              v-for="supplier in draft.lookupResults"
-                              :key="supplier.id"
-                              class="list-group-item list-group-item-action product-supplier-result"
-                              type="button"
-                              :disabled="updateProductMutation.isPending.value"
-                              @click="selectDraftSupplier(draft, supplier)"
+                              Телефон
+                            </label>
+                            <input
+                              :id="`product-detail-new-link-${draft.id}-new-supplier-phone`"
+                              v-model="draft.newSupplierPhoneNumber"
+                              class="form-control"
+                              type="tel"
+                              inputmode="tel"
+                              pattern="(8[0-9]{10}|[+]7[0-9]{10})"
+                              maxlength="12"
+                              autocomplete="tel"
+                              placeholder="+77001234567"
+                              required
+                              :disabled="isEditRequestPending"
                             >
-                              <span class="fw-semibold d-block">{{ supplier.name }}</span>
-                              <span class="product-meta d-block">
-                                ID {{ formatCount(supplier.id) }}
-                                <span v-if="supplier.phone_number">| {{ supplier.phone_number }}</span>
-                              </span>
-                            </button>
+                            <div class="form-text">Формат: +7XXXXXXXXXX или 8XXXXXXXXXX.</div>
                           </div>
                         </div>
                       </div>
@@ -951,7 +1205,7 @@ function createLocalValidationError(message: string) {
                             min="1"
                             step="1"
                             required
-                            :disabled="updateProductMutation.isPending.value"
+                            :disabled="isEditRequestPending"
                           >
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
@@ -966,7 +1220,7 @@ function createLocalValidationError(message: string) {
                             min="0"
                             step="1"
                             required
-                            :disabled="updateProductMutation.isPending.value"
+                            :disabled="isEditRequestPending"
                           >
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
@@ -981,7 +1235,7 @@ function createLocalValidationError(message: string) {
                             min="1"
                             step="1"
                             placeholder="Авто"
-                            :disabled="updateProductMutation.isPending.value"
+                            :disabled="isEditRequestPending"
                           >
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
@@ -996,7 +1250,7 @@ function createLocalValidationError(message: string) {
                             min="0"
                             step="1"
                             required
-                            :disabled="updateProductMutation.isPending.value"
+                            :disabled="isEditRequestPending"
                           >
                         </div>
                       </div>
@@ -1012,7 +1266,7 @@ function createLocalValidationError(message: string) {
               v-if="isEditing"
               class="btn btn-outline-secondary"
               type="button"
-              :disabled="updateProductMutation.isPending.value"
+              :disabled="isEditRequestPending"
               @click="cancelEdit"
             >
               Отмена
@@ -1021,7 +1275,7 @@ function createLocalValidationError(message: string) {
               v-if="isEditing"
               class="btn btn-primary"
               type="button"
-              :disabled="updateProductMutation.isPending.value"
+              :disabled="isEditRequestPending"
               @click="submitProductEdit"
             >
               {{ updateProductMutation.isPending.value ? "Сохранение..." : "Сохранить" }}

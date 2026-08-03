@@ -85,6 +85,36 @@ export function getCreateErrorMessage(error: unknown, label: string) {
   return `Не удалось создать ${label}. Проверьте, что API запущен.`;
 }
 
+export function getDeleteErrorMessage(error: unknown, label: string) {
+  const detail = getErrorDetail(error);
+
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        const location = Array.isArray(item?.loc) ? item.loc.slice(1).join(".") : "";
+        const message = typeof item?.msg === "string" ? item.msg : "";
+
+        return location && message ? `${location}: ${message}` : message;
+      })
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  if (typeof detail === "string") {
+    return detail;
+  }
+
+  if (hasMessage(detail)) {
+    return detail.message;
+  }
+
+  if (error instanceof ApiRequestError) {
+    return `Не удалось удалить ${label}. API вернул статус ${error.status}.`;
+  }
+
+  return `Не удалось удалить ${label}. Проверьте, что API запущен.`;
+}
+
 function getErrorDetail(error: unknown) {
   if (error instanceof ApiRequestError) {
     return error.data && typeof error.data === "object"

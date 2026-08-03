@@ -183,6 +183,12 @@ export function patchProductSupplierLink(
   });
 }
 
+export function deleteProductSupplierLink(productId: number, linkId: number) {
+  return request<void>(`/products/${productId}/links/${linkId}`, {
+    method: "DELETE",
+  });
+}
+
 export function getTags({
   search = "",
   page = FIRST_PAGE,

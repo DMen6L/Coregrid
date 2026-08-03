@@ -632,6 +632,10 @@ body {
   min-width: 7rem;
 }
 
+.product-detail-link-delete-button {
+  min-width: 5.75rem;
+}
+
 .product-detail-new-links {
   display: grid;
   gap: 0.75rem;
@@ -652,6 +656,13 @@ body {
   margin-bottom: 0.75rem;
 }
 
+.product-detail-link-mode {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+}
+
 .product-detail-suppliers-table,
 .product-detail-edit-links-table,
 .supplier-detail-product-links-table {
@@ -661,9 +672,12 @@ body {
 }
 
 .product-detail-suppliers-table table,
-.product-detail-edit-links-table table,
 .supplier-detail-product-links-table table {
   min-width: 860px;
+}
+
+.product-detail-edit-links-table table {
+  min-width: 980px;
 }
 
 .status-badge {
