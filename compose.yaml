@@ -9,6 +9,14 @@ services:
     depends_on:
       - db
 
+  frontend:
+    build:
+      context: ./frontend-vue
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
   db:
     image: postgres:18
     environment:
