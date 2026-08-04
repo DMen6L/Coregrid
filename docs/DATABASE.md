@@ -26,9 +26,13 @@ Stores catalog product identities. Supplier-specific stock and pricing lives in
 `product_suppliers`.
 
 - `id` unique identifier of each product
-- `company_id` optional reference to the company/brand connected to the product
+- `company_id` required reference to the company/brand connected to the product
 - `name` stores the names of each of the products
 - `created_at` needed to identify the creation time of the product
+- `quantity_unit` stores the short unit label used for this product, default set
+  to `шт`
+- `low_stock_threshold` stores the warning threshold for aggregated stock,
+  default set to 5
 
 ### Product suppliers
 
@@ -42,8 +46,6 @@ current inventory and pricing row used by restocks and sales.
 - `margin_percent` stores the desired markup percentage over `purchase_price`
 - `sale_price` stores the final editable selling price shown to sellers
 - `quantity` stores the currently stored amount for this product-supplier link
-- `quantity_unit` stores the short unit label for `quantity`, default set to `шт`
-- `low_stock_threshold` stores the warning threshold, default set to 5
 
 `(product_id, supplier_id)` is unique, so one supplier has only one active link
 for a given product.
@@ -60,10 +62,11 @@ round prices up to cleaner values while preserving the minimum margin.
 Stock status is calculated by the API and is not stored as a column:
 
 - `out` when `quantity` is `0`
-- `low` when `low_stock_threshold > 0` and `quantity` is within the threshold
+- `low` when quantity is above `0` and at or below the product's
+  `low_stock_threshold`
 - `available` otherwise
 
-`low_stock_threshold = 0` disables low-stock warnings for that link.
+Product list summaries calculate status from aggregated supplier-link quantity.
 
 ### Tags
 
@@ -84,6 +87,8 @@ Stores the many-to-many relationship between products and tags.
 Deleting a product removes only rows from `product_tags`; reusable tag records
 remain available for other products.
 
+Deleting a tag removes its `product_tags` rows through database cascade.
+
 ### Restocks
 
 Stores incoming stock transaction headers.
@@ -101,7 +106,7 @@ Stores the product-supplier level changes inside a restock.
 - `product_supplier_id` reference to the product-supplier link that changed
 - `restock_quantity` positive quantity added to stock
 - `unit_cost_snapshot` optional copied or entered purchase cost
-- `quantity_unit_snapshot` product-supplier quantity unit copied when created
+- `quantity_unit_snapshot` product quantity unit copied when created
 
 ### Sales
 
@@ -121,7 +126,7 @@ Stores the product-supplier level changes inside a sale.
 - `sale_quantity` positive quantity removed from stock
 - `unit_cost_snapshot` purchase price copied when the sale was created
 - `unit_sale_price_snapshot` sale price copied when the sale was created
-- `quantity_unit_snapshot` product-supplier quantity unit copied when created
+- `quantity_unit_snapshot` product quantity unit copied when created
 
 ## Connection and working with Coregrid database
 

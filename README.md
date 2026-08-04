@@ -7,6 +7,7 @@ App meant for automation of core operations inside businesses.
  - [storing products, suppliers, supplier companies/brands](docs/DATABASE.md)
  - [configuration and maintenance of backend and database on python](docs/BACKEND.md)
  - [stock movement history for inventory changes](docs/STOCK_MOVEMENTS.md)
+ - [roadmap and next feature ideas](docs/ROADMAP.md)
  - per-product low-stock thresholds with calculated stock status
  - Vue inventory operations UI for product, supplier, company, and stock movement workflows
 
@@ -154,6 +155,7 @@ npm run build
 ├── docs
 │   ├── BACKEND.md
 │   ├── DATABASE.md
+│   ├── ROADMAP.md
 │   └── STOCK_MOVEMENTS.md
 ├── frontend-vue
 │   ├── src

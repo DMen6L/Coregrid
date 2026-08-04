@@ -1,438 +1,300 @@
-# Stock movements design
+# Stock movement design
 
-This document describes the stock movement model for Coregrid.
+This document describes how Coregrid currently records inventory changes.
 
 The key rule is:
 
-- `products.quantity` stores the current stock state.
-- stock movement tables store the history of how that quantity changed.
+- `product_suppliers.quantity` stores current stock for a specific
+  product-supplier link.
+- `restocks` and `sales` store history for stock increases and decreases.
 
 This design is implemented in the backend and exposed in the Vue frontend.
-The frontend can create stock movements, show movement history, show recent
-dashboard movements, and use sales summaries for dashboard reporting.
-
-Sales are now explicit commercial records. A sale creates a linked outgoing
-stock movement internally, but a generic outgoing stock movement is not counted
-as a sale.
 
 ## Purpose
 
-The current product table can answer:
+The product table answers:
 
-> How many units are in stock right now?
+> What catalog item is this?
 
-It cannot answer:
+The product-supplier link answers:
 
-> Why is this the current amount?
+> How much stock do we have from this supplier, and at what price?
 
-Stock movements add that history. They should support:
+Restocks and sales answer:
 
-- incoming stock
-- outgoing stock for non-sale write-offs or removals
-- manual stock corrections
-- one stock event that changes multiple products
-- product-specific movement history
-- dashboard and reporting screens
-- explicit sales linked to outgoing stock movement history
+> Why did this stock amount change?
+
+This keeps catalog identity, supplier-specific inventory, and historical events
+separate.
+
+## Current movement types
+
+Coregrid currently has two explicit movement workflows:
+
+- `restocks`: incoming stock received from suppliers
+- `sales`: outgoing stock sold to customers
+
+Manual write-offs and inventory corrections should become a separate stock
+adjustment workflow later.
 
 ## Table model
 
-Use two tables:
+Current stock is stored on:
 
 ```text
-stock_movements
-stock_movement_lines
+product_suppliers
 ```
 
-`stock_movements` is the transaction header. It stores information shared by
-the whole stock event.
-
-`stock_movement_lines` stores the per-product changes inside that event.
-
-This avoids duplicating the same note, date, and movement type for every product
-when one real-world transaction changes multiple products.
-
-## `stock_movements`
-
-Columns:
-
-| Column | Type | Rules |
-| --- | --- | --- |
-| `id` | integer | primary key |
-| `movement_type` | `String(20)` | must be `in`, `out`, or `adjustment` |
-| `note` | `String(500)` or text | nullable |
-| `created_at` | timestamp | server default `now()` |
-
-Database constraint:
+Historical incoming stock is stored in:
 
 ```text
-movement_type in ('in', 'out', 'adjustment')
+restocks
+restock_lines
 ```
 
-Constraint name:
+Historical outgoing sales are stored in:
 
 ```text
-ck_stock_movements_type
+sales
+sale_lines
 ```
 
-Do not use PostgreSQL enum for the first version. `String` plus
-`CheckConstraint` is easier to evolve while the project is still changing.
+`Restock.lines` and `Sale.lines` are delete-orphan relationships from the parent
+transaction header. Product-supplier links are not deleted by historical line
+records.
 
-## `stock_movement_lines`
+## Product-supplier stock
 
-Columns:
+`product_suppliers.quantity` is the current stock amount for one product from
+one supplier.
 
-| Column | Type | Rules |
-| --- | --- | --- |
-| `id` | integer | primary key |
-| `movement_id` | integer | foreign key to `stock_movements.id` |
-| `product_id` | integer | foreign key to `products.id` |
-| `quantity_delta` | integer | cannot be `0` |
-| `quantity_before` | integer | must be `>= 0` |
-| `quantity_after` | integer | must be `>= 0` |
-| `unit_price_snapshot` | integer | nullable, must be `> 0` when present |
-| `quantity_unit_snapshot` | string | required, copied from the product unit |
+`products.quantity_unit` stores the unit label for the product, such as `шт`.
+The unit is copied into historical restock and sale lines as
+`quantity_unit_snapshot`.
 
-Database constraints:
+Stock status is calculated:
 
-```text
-quantity_delta != 0
-quantity_before >= 0
-quantity_after >= 0
-unit_price_snapshot is null or unit_price_snapshot > 0
-char_length(quantity_unit_snapshot) > 0
-```
+- `out` when the product-supplier quantity is `0`
+- `low` when quantity is above `0` and at or below the product's
+  `low_stock_threshold`
+- `available` otherwise
 
-Constraint names:
+Product list summaries aggregate all supplier-link quantities into
+`total_quantity`.
 
-```text
-ck_stock_movement_lines_quantity_delta
-ck_stock_movement_lines_quantity_before
-ck_stock_movement_lines_quantity_after
-ck_stock_movement_lines_unit_price_snapshot
-ck_stock_movement_lines_quantity_unit_snapshot_not_empty
-```
+## Restocks
 
-Foreign key behavior:
+`POST /restocks` creates one restock header and one or more restock lines in a
+single transaction.
 
-```text
-stock_movement_lines.movement_id -> stock_movements.id ON DELETE CASCADE
-stock_movement_lines.product_id -> products.id with no cascade
-```
-
-Product deletion should become stricter once movement history exists. Long term,
-Coregrid should probably use archive or soft delete for products with movement
-history.
-
-## Movement types
-
-Use controlled values:
-
-```text
-in
-out
-adjustment
-```
-
-Meaning:
-
-- `in`: stock increased because products were received
-- `out`: stock decreased because products were written off, used, removed, or shipped
-- `adjustment`: stock changed because of recount or manual correction
-
-Commercial sales should use the sales API. The sales API creates an outgoing
-stock movement internally, so inventory history stays complete without treating
-every outgoing movement as revenue.
-
-The frontend may translate these labels for users, but the API/database values
-should stay stable and English-like.
-
-## Quantity rules
-
-`quantity_delta` stores the change:
-
-```text
-+10 means stock increased by 10
--3 means stock decreased by 3
-```
-
-The backend must calculate:
-
-```text
-quantity_before = current product.quantity
-quantity_after = quantity_before + quantity_delta
-```
-
-The backend must reject a movement line if:
-
-```text
-quantity_after < 0
-```
-
-The request schema also enforces:
-
-```text
-movement_type = in  -> quantity_delta must be positive
-movement_type = out -> quantity_delta must be negative
-movement_type = adjustment -> quantity_delta can be positive or negative
-```
-
-Each product can appear only once in a single movement request. If the same
-product needs a larger change, the client should send one combined
-`quantity_delta`.
-
-The backend should update `products.quantity`, create `stock_movements`, and
-create `stock_movement_lines` in one database transaction.
-
-## Price snapshot
-
-`unit_price_snapshot` should copy the current `Product.sale_price` when the
-movement is created.
-
-For explicit sales, `POST /sales` accepts an actual positive `unit_price` on
-each sale line. That entered price is copied into `unit_price_snapshot`, so
-discounted sales affect revenue and dashboard summaries correctly.
-
-Reason:
-
-- product sale price can change later
-- old movement history should keep the price context from the moment of change
-- current product prices are already integers, so the snapshot should also be an
-  integer for the first version
-
-If decimal currency is needed later, both product price fields and
-`unit_price_snapshot` can move toward a numeric database type.
-
-## Quantity unit snapshot
-
-`quantity_unit_snapshot` should copy the current `Product.quantity_unit` when
-the movement is created.
-
-Reason:
-
-- product quantity units can change later
-- old movement history should still answer what the recorded quantity meant
-- sales summaries can group sold quantities by unit label without converting
-  unlike units
-
-## API shape
-
-Endpoints:
-
-```http
-POST /stock-movements
-GET /stock-movements?page=1&page_size=25
-GET /stock-movements/sales-summary?date_from=2026-07-05&date_to=2026-07-07
-GET /stock-movements/{id}
-GET /products/{product_id}/movements?page=1&page_size=25
-POST /sales
-GET /sales?page=1&page_size=25
-GET /sales/{id}
-```
-
-The client sends intent only. It should not send calculated fields.
-
-Create movement request:
+Request shape:
 
 ```json
 {
-  "movement_type": "in",
-  "note": "Поставка от поставщика",
+  "note": "Поставка",
   "lines": [
     {
-      "product_id": 1,
-      "quantity_delta": 10
-    },
-    {
-      "product_id": 2,
-      "quantity_delta": 5
+      "product_supplier_id": 1,
+      "restock_quantity": 10,
+      "unit_cost_snapshot": 500
     }
   ]
 }
 ```
 
-Create movement response:
+Rules:
+
+- `lines` must contain at least one item.
+- `product_supplier_id` must reference an existing product-supplier link.
+- `restock_quantity` must be positive.
+- each product-supplier link can appear only once in one restock.
+- `unit_cost_snapshot` is optional; when omitted, the current link purchase
+  price is copied.
+- creating a restock increases `product_suppliers.quantity`.
+- the backend locks affected product-supplier rows while applying the change.
+
+Response shape:
 
 ```json
 {
   "id": 1,
-  "movement_type": "in",
-  "note": "Поставка от поставщика",
+  "note": "Поставка",
   "created_at": "2026-07-03T14:30:00",
   "lines": [
     {
       "id": 1,
+      "product_supplier_id": 1,
       "product_id": 1,
-      "quantity_delta": 10,
-      "quantity_before": 0,
-      "quantity_after": 10,
-      "unit_price_snapshot": 500,
+      "product_name": "Товар",
+      "supplier_id": 2,
+      "supplier_name": "Поставщик",
+      "restock_quantity": 10,
+      "unit_cost_snapshot": 500,
       "quantity_unit_snapshot": "шт"
-    },
-    {
-      "id": 2,
-      "product_id": 2,
-      "quantity_delta": 5,
-      "quantity_before": 7,
-      "quantity_after": 12,
-      "unit_price_snapshot": 1200,
-      "quantity_unit_snapshot": "м"
     }
   ]
 }
 ```
 
-Movement collection responses are paginated:
+## Sales
+
+`POST /sales` creates one sale header and one or more sale lines in a single
+transaction.
+
+Request shape:
+
+```json
+{
+  "note": "Продажа",
+  "lines": [
+    {
+      "product_supplier_id": 1,
+      "sale_quantity": 2
+    }
+  ]
+}
+```
+
+Rules:
+
+- `lines` must contain at least one item.
+- `product_supplier_id` must reference an existing product-supplier link.
+- `sale_quantity` must be positive.
+- each product-supplier link can appear only once in one sale.
+- creating a sale decreases `product_suppliers.quantity`.
+- a sale is rejected with `409 Conflict` if requested quantity exceeds available
+  stock.
+- sale lines snapshot current purchase price, sale price, and quantity unit.
+- the backend locks affected product-supplier rows while applying the change.
+
+Response shape:
+
+```json
+{
+  "id": 1,
+  "note": "Продажа",
+  "created_at": "2026-07-03T14:30:00",
+  "lines": [
+    {
+      "id": 1,
+      "product_supplier_id": 1,
+      "product_id": 1,
+      "product_name": "Товар",
+      "supplier_id": 2,
+      "supplier_name": "Поставщик",
+      "sale_quantity": 2,
+      "unit_cost_snapshot": 500,
+      "unit_sale_price_snapshot": 700,
+      "quantity_unit_snapshot": "шт"
+    }
+  ]
+}
+```
+
+## List and detail endpoints
+
+Restocks:
+
+```http
+GET /restocks?page=1&page_size=20
+GET /restocks?from=2026-07-01&to=2026-07-31&page=1&page_size=20
+GET /restocks/{restock_id}
+POST /restocks
+```
+
+Sales:
+
+```http
+GET /sales?page=1&page_size=20
+GET /sales?from=2026-07-01&to=2026-07-31&page=1&page_size=20
+GET /sales/{sale_id}
+POST /sales
+```
+
+List responses are paginated:
 
 ```json
 {
   "items": [],
-  "total": 0,
   "page": 1,
-  "page_size": 25,
-  "pages": 0
+  "page_size": 20,
+  "total": 0,
+  "total_pages": 0,
+  "has_next": false,
+  "has_previous": false
 }
 ```
 
-Sales summary responses include:
+## Dashboard summaries
 
-- aggregate revenue for the selected calendar range
-- total sold quantity
-- sold quantities grouped by `quantity_unit_snapshot`
-- sale operation count
-- `daily_totals` rows for every date in the range
-- `best_sellers` with up to five products ranked by actual revenue
+The dashboard uses:
 
-Dates without outgoing sales return zero values so dashboard charts can draw a
-continuous trend.
-
-Each `best_sellers` item includes the current product name, revenue, distinct
-sale operation count, sold quantities grouped by their historical unit
-snapshots, and current quantity, unit, and stock status. Revenue ties are
-ordered by product ID. Generic outgoing movements do not affect the ranking.
-
-Sales summary responses count explicit `sales` rows and their linked outgoing
-stock movements. Generic outgoing stock movements are inventory write-offs and
-do not affect sales totals.
-
-## Sales workflow
-
-`POST /sales` accepts positive product quantities and positive actual
-`unit_price` values. The backend creates:
-
-- one `sales` row
-- one linked `stock_movements` row with `movement_type = "out"`
-- one or more `stock_movement_lines` with negative `quantity_delta`
-- price snapshots from the entered sale line prices
-
-The sale response exposes the linked `stock_movement_id`, calculated revenue,
-and the movement line snapshots. Payments, customers, returns, and receipt
-numbers are left for later versions.
-
-## Pydantic schema direction
-
-Schemas are kept in the existing `backend/app/schemas.py` file.
-
-Expected create schemas:
-
-```text
-StockMovementLineCreate
-StockMovementCreate
+```http
+GET /summaries?days=7&best_sales_mode=quantity
 ```
 
-Expected response schemas:
+`best_sales_mode` can be:
 
-```text
-StockMovementLineResponse
-StockMovementResponse
-SaleLineCreate
-SaleCreate
-SaleResponse
-StockMovementSalesSummaryUnitResponse
-StockMovementSalesSummaryDailyResponse
-StockMovementSalesSummaryBestSellerResponse
-StockMovementSalesSummaryResponse
-```
+- `quantity`
+- `revenue`
+- `gross_profit`
 
-`StockMovementCreate` should use a controlled Python type for movement type,
-such as:
+The response includes:
 
-```text
-Literal["in", "out", "adjustment"]
-```
-
-`lines` should require at least one item.
-
-## SQLAlchemy model direction
-
-Models are kept in the existing `backend/app/models.py` file.
-
-Expected models:
-
-```text
-StockMovement
-StockMovementLine
-```
-
-Expected relationships:
-
-```text
-StockMovement.lines
-StockMovementLine.movement
-StockMovementLine.product
-Product.stock_movement_lines
-```
+- total dashboard sales value
+- number of sales
+- low-stock count
+- out-of-stock count
+- daily sales rows
+- top products
+- top suppliers
 
 ## Product quantity editing
 
-Direct product quantity edits should still be reconsidered.
+Direct catalog product updates should not be used as the main stock-changing
+workflow.
 
-Preferred future rule:
+Current rule:
 
-- `PATCH /products/{id}` can update product metadata such as name, pricing,
-  company, and supplier.
-- stock movement endpoints should be the main way to change quantity.
+- product metadata lives on `products`
+- current stock and supplier pricing live on `product_suppliers`
+- restocks and sales should be the main way to change quantity
 
-This prevents product quantity from changing without history.
+`PATCH /products/{id}` updates product metadata such as name, company, tags,
+quantity unit, and low-stock threshold.
 
-Current compatibility note:
+`PATCH /products/{product_id}/links/{link_id}` can update supplier-link stock
+and pricing directly. For stricter inventory history later, quantity changes
+should move into dedicated restock, sale, or adjustment workflows.
 
-- `PATCH /products/{id}` still accepts `quantity` so the existing frontend and
-  tests keep working.
-- Stock movements are now the preferred API for stock changes.
+## Future stock adjustments
+
+Coregrid should add a stock adjustment workflow for non-sale inventory changes:
+
+- damaged stock
+- expired stock
+- lost stock
+- recount correction
+- manual correction
+
+A future adjustment should snapshot before/after quantity and require a reason.
 
 ## Test plan
 
 Backend endpoint tests should cover:
 
-- creating an incoming movement increases product quantity
-- creating an outgoing movement decreases product quantity
-- creating an adjustment can increase quantity
-- creating an adjustment can decrease quantity
-- one movement with multiple lines updates all related products
-- movement that would make quantity negative returns an error
-- movement with empty `lines` is rejected
-- movement with `quantity_delta = 0` is rejected
-- movement with an invalid `movement_type` is rejected
-- movement with missing product id returns an error
-- global movement history can be fetched
-- one movement can be fetched by id
-- product-specific movement history can be fetched
-- movement lines snapshot the product quantity unit
-- creating a sale decreases product quantity and creates a linked outgoing movement
-- generic outgoing movements do not create sale records
-- sales summary returns aggregate totals
-- sales summary ignores generic outgoing movements
-- sales summary returns sold quantities grouped by unit
-- sales summary returns daily totals, including zero-sale days
-
-## Assumptions
-
-- No user/auth tracking in the first version.
-- No supplier/order document tracking in the first version.
-- No decimal money handling in the first version.
-- No payments, customers, discount reasons/approvals, returns, or receipts in
-  the first sales version.
-- The Vue frontend has movement UI, but direct product quantity editing is still
-  allowed for compatibility with older clients and tests.
-- Existing models and schemas stay in single files until they become too large.
+- creating a restock increases product-supplier quantity
+- creating a sale decreases product-supplier quantity
+- creating a sale rejects quantities above available stock
+- one restock with multiple lines updates all related links
+- one sale with multiple lines updates all related links
+- duplicate product-supplier links in one restock are rejected
+- duplicate product-supplier links in one sale are rejected
+- missing product-supplier links return `404`
+- restock and sale lines snapshot quantity unit
+- restock lines snapshot purchase cost
+- sale lines snapshot purchase cost and sale price
+- restock and sale lists support `from`, `to`, `page`, and `page_size`
+- one restock can be fetched by id
+- one sale can be fetched by id
+- dashboard summaries include daily sales, top products, and top suppliers

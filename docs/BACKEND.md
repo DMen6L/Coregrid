@@ -27,15 +27,19 @@ Holds actual table models that the database has, essential for both initializati
 - Supplier
 - Product
 - Tag
-- StockMovement
-- StockMovementLine
+- ProductSupplier
+- Restock
+- RestockLine
+- Sale
+- SaleLine
 
 > [!NOTE]
 > for the actual database tables refer to [this](/docs/DATABASE.md)
 
 ### `main.py`
 
-Defines the FastAPI app, local development CORS, and includes the routers for companies, suppliers, products, tags, and stock movements.
+Defines the FastAPI app, local development CORS, and includes the routers for
+companies, suppliers, products, tags, restocks, and sales.
 
 > [!NOTE]
 > Check current endpoints and their functions in [here](/backend/README.md)
@@ -51,9 +55,9 @@ used by collection endpoints.
 
 Automated tests to check responses of FastAPI.
 Currently includes CRUD, validation, delete behavior, pagination behavior,
-product tags, product pricing rules, quantity units, stock movement behavior,
-explicit sales, sales summaries, dashboard daily totals, bestseller rankings,
-product sorting, and low-stock threshold behavior.
+product tags, product pricing rules, quantity units, restock behavior, sale
+behavior, dashboard daily totals, bestseller rankings, and low-stock threshold
+behavior.
 
 - Needed to lower amount of manual testing of endpoints.
 
@@ -66,6 +70,6 @@ uv run pytest -s
 
 Purpose is to save and generate transaction scripts to dynamically update the tables if such needs occur.
 
-- Current migrations include product constraints, stock movement tables, product
-  tags, product low-stock thresholds, product quantity units, and stock movement
-  unit snapshots, and sales backfilled from historical outgoing movements.
+- Current migrations include product constraints, product-supplier inventory,
+  product tags, product low-stock thresholds, product quantity units, restocks,
+  sales, and later inventory-pricing relationship updates.

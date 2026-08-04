@@ -1,220 +1,231 @@
-# FastAPI
+# Coregrid Backend
+
+FastAPI backend for Coregrid inventory, supplier, company, restock, sale, tag,
+and dashboard workflows.
 
 > [!NOTE]
-> Check all table structures [here](/docs/DATABASE.md)
-
-#### CRUD checklist
-
-- [x] Create
-- [x] Read
-- [x] Update
-- [x] Delete
+> Table structures are documented in [`docs/DATABASE.md`](../docs/DATABASE.md).
 
 ## Current endpoints
 
-Collection endpoints use pagination query parameters:
+Collection endpoints use pagination query parameters unless noted otherwise:
 
 - `page`: page number, defaults to `1`, minimum `1`
-- `page_size`: number of rows per page, defaults to `25`, maximum `100`
+- `page_size`: rows per page, defaults to `20`, maximum `100`
 
 Paginated responses use:
 
 ```json
 {
   "items": [],
-  "total": 0,
   "page": 1,
-  "page_size": 25,
-  "pages": 0
+  "page_size": 20,
+  "total": 0,
+  "total_pages": 0,
+  "has_next": false,
+  "has_previous": false
 }
 ```
 
-### `GET /`
+### Health
 
-- Testing endpoint health
+#### `GET /`
 
----
+- Simple health/testing endpoint.
+
+### Dashboard
+
+#### `GET /summaries`
+
+- Returns dashboard totals and rankings.
+- Query parameters:
+  - `days`: integer from `7` to `365`, default `7`
+  - `best_sales_mode`: `quantity`, `revenue`, or `gross_profit`
+- Response includes sales value, sales count, low-stock count, out-of-stock
+  count, daily sales, top products, and top suppliers.
 
 ### Companies
 
-#### `POST /companies`
-
-- Creating new instance for table Companies
-
-#### `PATCH /companies/{id}`
-
-- Updating data of an instance for table Companies
-
 #### `GET /companies`
 
-- Returns a paginated list of companies
+- Returns a paginated company list.
+- Supports `search` by company name.
 
 #### `GET /companies/{id}`
 
-- Returns a single instance of Companies referenced by `id`
+- Returns one company by id.
 
-#### `DELETE /companies/{id}`
+#### `POST /companies`
 
-- Deletes a company and clears `company_id` from linked products
+- Creates a company.
+- Requires `name`.
+- Accepts nullable `iin`.
 
----
+#### `PATCH /companies/{id}`
+
+- Updates company fields.
+- Empty update bodies are rejected.
+- `iin` may be set to `null`.
+- Duplicate `name` or duplicate non-null `iin` returns `409 Conflict`.
 
 ### Suppliers
 
-#### `POST /suppliers`
-
-- Creating new instance for table Suppliers
-- `phone_number` accepts `8XXXXXXXXXX` or `+7XXXXXXXXXX`
-
-#### `PATCH /suppliers/{id}`
-
-- Updating data of an instance for table Suppliers
-- `phone_number` accepts `8XXXXXXXXXX` or `+7XXXXXXXXXX`
-
 #### `GET /suppliers`
 
-- Returns a paginated list of suppliers
+- Returns a paginated supplier list.
+- Supports `search` by supplier name.
+- Summary rows include `product_links_count`.
 
 #### `GET /suppliers/{id}`
 
-- Returns a single instance of Suppliers referenced by `id`
+- Returns one supplier by id.
+- Includes linked product-supplier rows.
 
-#### `DELETE /suppliers/{id}`
+#### `POST /suppliers`
 
-- Deletes a supplier and clears `supplier_id` from linked products
+- Creates a supplier.
+- Requires `name`.
+- Requires `phone_number` in `8XXXXXXXXXX` or `+7XXXXXXXXXX` format.
 
----
+#### `PATCH /suppliers/{id}`
+
+- Updates supplier fields.
+- Empty update bodies are rejected.
+- `null` update values are rejected.
+- Duplicate `name` or `phone_number` returns `409 Conflict`.
 
 ### Products
 
-#### `POST /products`
-
-- Creating new instance for table Products
-- Requires `purchase_price`
-- Accepts `margin_percent`, defaulting to `0`
-- Accepts optional `sale_price`; when omitted, it defaults to calculated `floor_price`
-- Accepts optional `quantity_unit`, defaulting to `шт`
-- Accepts optional `low_stock_threshold`, defaulting to `5`
-- Accepts optional `tags` as tag-name strings; names are trimmed, lowercased, deduplicated, and created if missing
-- Rejects `sale_price` lower than calculated `floor_price`
-
-#### `PATCH /products/{id}`
-
-- Updating data of an instance for table Products
-- Can update `purchase_price`, `margin_percent`, and `sale_price`
-- Can update `quantity_unit`
-- Can update `low_stock_threshold`
-- Can update `tags`; omit `tags` to keep existing tags, send `tags: []` to clear them
-- Rejects pricing changes that would make `sale_price` lower than calculated `floor_price`
-
 #### `GET /products`
 
-- Returns a paginated list of products
-- Product responses include `purchase_price`, `margin_percent`, calculated `floor_price`, and `sale_price`
-- Product responses include `quantity` and `quantity_unit`
-- Product responses include calculated `stock_status`
-- Product responses include `company_name` and `supplier_name` for display
-- Product responses include reusable `tags`
-- Supports `search` by product, company, supplier, or tag name
-- Supports repeated exact `tags` filtering by tag name; products must match all selected tags
-- Keeps legacy exact `tag` filtering by tag name or tag id
-- Supports `stock` values: `all`, `available`, `low`, `empty`
-- Supports `sort` values: `name`, `quantity`, `stock_status`, `inventory_value`, `company`, `supplier`, `created_at`
-- Supports `order` values: `asc`, `desc`
-
-#### `GET /products/summary`
-
-- Returns global product totals for dashboard summary tiles
-- Includes product count, total units, purchase-value inventory total, low-stock count, and out-of-stock count
+- Returns a paginated product summary list.
+- Supports `search` by product name or tag name.
+- Product summaries include:
+  - `company_name`
+  - `tags`
+  - `suppliers_count`
+  - aggregated `total_quantity`
+  - cheapest available supplier pricing fields
+  - calculated `stock_status`
 
 #### `GET /products/{id}`
 
-- Returns a single instance of Products referenced by `id`
-- Product responses include `purchase_price`, `margin_percent`, calculated `floor_price`, and `sale_price`
-- Product responses include `quantity` and `quantity_unit`
-- Product responses include calculated `stock_status`
-- Product responses include `company_name` and `supplier_name` for display
-- Product responses include reusable `tags`
+- Returns one product by id.
+- Includes company data, tags, and product-supplier links.
 
-#### `DELETE /products/{id}`
+#### `POST /products`
 
-- Deletes a product
-- Returns conflict if the product has stock movement history
+- Creates a catalog product.
+- Requires `name` and `company_id`.
+- Accepts `quantity_unit`, defaulting to `шт`.
+- Accepts `low_stock_threshold`, defaulting to `5`.
+- Accepts `tags` as tag-name strings.
+- Does not create supplier links; use `POST /products/{product_id}/links`.
+
+#### `PATCH /products/{id}`
+
+- Updates product metadata.
+- Can update `name`, `company_id`, `quantity_unit`, `low_stock_threshold`, and
+  `tags`.
+- Omit `tags` to keep existing tags.
+- Send `tags: []` to clear all tags.
+- Empty update bodies are rejected.
+- Duplicate `(name, company_id, quantity_unit)` returns `409 Conflict`.
+
+#### `POST /products/{product_id}/links`
+
+- Creates one or more product-supplier links for an existing product.
+- Body is a non-empty list.
+- Each item requires `supplier_id`, `purchase_price`, and optionally
+  `margin_percent`, `sale_price`, and `quantity`.
+- When `sale_price` is omitted, it defaults to the calculated floor price.
+- Duplicate suppliers inside one request return `422`.
+- Missing suppliers return `404`.
+- Existing duplicate product-supplier links return `409`.
+
+#### `PATCH /products/{product_id}/links/{link_id}`
+
+- Updates one product-supplier link.
+- Can update `supplier_id`, `purchase_price`, `margin_percent`, `sale_price`,
+  and `quantity`.
+- Empty update bodies are rejected.
+- `null` update values are rejected.
+- Missing product, link, or supplier references return `404`.
+- Duplicate `(product_id, supplier_id)` returns `409 Conflict`.
+- `sale_price` below calculated floor price returns `422`.
+
+#### `DELETE /products/{product_id}/links/{link_id}`
+
+- Deletes a product-supplier link.
+- Returns `404` when the product or link is missing, or when the link belongs to
+  a different product.
+- Returns `409 Conflict` when the link has stock or restock/sale history.
+- Returns `204 No Content` on successful deletion.
 
 Product `stock_status` values:
 
-- `out` when `quantity` is `0`
-- `low` when `low_stock_threshold` is greater than `0` and quantity is within the threshold
+- `out` when total quantity is `0`
+- `low` when total quantity is at or below the product low-stock threshold
 - `available` otherwise
 
 ### Tags
 
-#### `POST /tags`
-
-- Creates a reusable product tag
-- Stores tag names normalized to lowercase
-- Returns conflict if the normalized tag already exists
-
 #### `GET /tags`
 
-- Returns a paginated list of tags
-- Supports `search` by tag name
+- Returns a paginated list of tags ordered by usage count, then name.
+- Supports `search` by tag name.
+- Returns only tags attached to at least one product.
 
----
+#### `DELETE /tags/{id}`
 
-### Stock movements
+- Deletes a tag.
+- Product-tag join rows are removed by database cascade.
+- Returns `404` when the tag does not exist.
 
-#### `POST /stock-movements`
+### Restocks
 
-- Creates one stock movement with one or more product lines
-- Updates product quantities in the same database transaction
-- Rejects movements that would make product quantity negative
+#### `GET /restocks`
 
-#### `GET /stock-movements`
+- Returns a paginated restock summary list.
+- Supports date filters:
+  - `from=YYYY-MM-DD`
+  - `to=YYYY-MM-DD`
+- Ordered newest first.
 
-- Returns a paginated list of stock movements with their lines
-- Supports `order=oldest` by default and `order=latest` for recent activity panels
+#### `GET /restocks/{restock_id}`
 
-#### `GET /stock-movements/sales-summary`
+- Returns one restock with line details.
 
-- Returns actual sales totals for a calendar date range
-- Requires `date_from=YYYY-MM-DD` and `date_to=YYYY-MM-DD`
-- Counts explicit sales and their linked outgoing stock movements
-- Returns revenue from sale line price snapshots, sold quantity, sold quantities grouped by unit label, and sale operation count
-- Includes `daily_totals` with one row per selected calendar day, including zero-sale days, for dashboard charts
-- Includes `best_sellers` with the top five products by actual revenue, unit-aware sold quantities, sale counts, and current stock status
+#### `POST /restocks`
 
-#### `GET /stock-movements/{id}`
-
-- Returns one stock movement with its lines
-
-#### `GET /products/{product_id}/movements`
-
-- Returns paginated stock movements connected to a product
-
----
+- Creates one restock with one or more lines.
+- Each line references `product_supplier_id`.
+- Increases `product_suppliers.quantity` in the same transaction.
+- Optional `unit_cost_snapshot` defaults to the link purchase price.
+- Duplicate product-supplier links in one restock are rejected.
 
 ### Sales
 
-#### `POST /sales`
-
-- Creates a commercial sale with one or more product lines
-- Accepts positive line quantities as `quantity`
-- Accepts positive actual sale prices as `unit_price`
-- Creates a linked outgoing stock movement internally
-- Stores each entered `unit_price` as the movement line price snapshot
-- Updates product quantities in the same database transaction
-- Rejects sales that would make product quantity negative
-
 #### `GET /sales`
 
-- Returns a paginated list of sales
-- Supports `order=latest` by default and `order=oldest`
-- Sale responses include linked stock movement id, revenue, note, created date, and movement line snapshots
+- Returns a paginated sale summary list.
+- Supports date filters:
+  - `from=YYYY-MM-DD`
+  - `to=YYYY-MM-DD`
+- Ordered newest first.
 
-#### `GET /sales/{id}`
+#### `GET /sales/{sale_id}`
 
-- Returns one sale with linked movement line snapshots
+- Returns one sale with line details.
+
+#### `POST /sales`
+
+- Creates one sale with one or more lines.
+- Each line references `product_supplier_id`.
+- Decreases `product_suppliers.quantity` in the same transaction.
+- Rejects a sale with `409 Conflict` when requested quantity exceeds available
+  stock.
+- Snapshots purchase price, sale price, and quantity unit.
 
 ## Running the server
 
@@ -228,8 +239,12 @@ uv run fastapi dev main.py
 ```
 
 > [!NOTE]
-> Check http://127.0.0.1:8000/docs after running dev server for tests
+> Check `http://127.0.0.1:8000/docs` after running the dev server.
 
 ## Local frontend access
 
-`main.py` allows local browser requests from `http://127.0.0.1:5173` and `http://localhost:5173` for the Vue frontend.
+`main.py` allows local browser requests from `http://127.0.0.1:5173` and
+`http://localhost:5173` for the Vue frontend.
+
+If the frontend runs on another local port, update CORS before using the browser
+against that port.
