@@ -12,9 +12,10 @@ from app.schemas import (
     SupplierSummaryResponse,
     SupplierUpdate,
 )
-from devs import DbSession
-from errors import commit_or_raise
-from utils import aggr_paginate, build_unique_values_candidates, paginate
+from helpers.dependencies import DbSession
+from helpers.pagination import aggr_paginate
+from helpers.transactions import commit_or_raise
+from helpers.update_helpers import build_unique_values_candidates
 
 
 router = APIRouter(prefix="/suppliers", tags=["suppliers"])

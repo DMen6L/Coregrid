@@ -14,8 +14,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
-from app.pricing import calculate_floor_price
-from app.units import DEFAULT_QUANTITY_UNIT, QUANTITY_UNIT_MAX_LENGTH
+from app.type_definitions import DEFAULT_QUANTITY_UNIT, QUANTITY_UNIT_MAX_LENGTH
+from helpers.pricing import calculate_floor_price
 
 
 # ======

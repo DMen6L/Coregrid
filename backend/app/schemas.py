@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Annotated, Any, ClassVar, Generic, Literal, TypeVar
+from typing import Annotated, ClassVar, Generic, Literal, TypeVar
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -10,8 +10,8 @@ from pydantic import (
     StringConstraints,
 )
 
-from app.pricing import calculate_floor_price
-from app.units import DEFAULT_QUANTITY_UNIT, QUANTITY_UNIT_MAX_LENGTH
+from app.type_definitions import DEFAULT_QUANTITY_UNIT, QUANTITY_UNIT_MAX_LENGTH
+from helpers.pricing import calculate_floor_price
 
 # ======
 # FIELDS
@@ -75,23 +75,13 @@ class UpdateValidator(BaseModel):
 # SCHEMAS
 # =======
 
+# ==============
+# Create Schemas
+# ==============
+
 
 class CompanyCreate(BaseModel):
     name: Name
-    iin: IIN | None = None
-
-
-class CompanyResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: int
-    name: str
-    iin: str | None = None
-
-
-class CompanyUpdate(UpdateValidator):
-    nullable_update_fields: ClassVar[set[str]] = {"iin"}
-
-    name: Name | None = None
     iin: IIN | None = None
 
 
@@ -100,41 +90,8 @@ class SupplierCreate(BaseModel):
     phone_number: PhoneNumber
 
 
-class SupplierResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    name: str
-    phone_number: str
-    product_links: list[ProductSupplierResponse]
-
-
-class SupplierUpdate(UpdateValidator):
-    name: Name | None = None
-    phone_number: PhoneNumber | None = None
-
-
-class SupplierSummaryResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    name: str
-    phone_number: str
-    product_links_count: int = Field(default=0, ge=0)
-
-
 class TagCreate(BaseModel):
     name: TagName
-
-
-class TagResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: int
-    name: str
-
-
-class TagSummaryResponse(TagResponse):
-    usage_count: int
 
 
 class ProductSupplierCreate(BaseModel):
@@ -159,22 +116,6 @@ class ProductSupplierCreate(BaseModel):
         return self
 
 
-class ProductSupplierResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    product_id: int
-    supplier_id: int
-    product_name: str | None = None
-    supplier_name: str | None = None
-    purchase_price: int
-    margin_percent: int
-    floor_price: int
-    sale_price: int
-    quantity: int
-    stock_status: StockStatus
-
-
 class ProductCreate(BaseModel):
     name: Name
     company_id: int = Field(gt=0)
@@ -186,19 +127,129 @@ class ProductCreate(BaseModel):
     low_stock_threshold: int = Field(default=5, ge=0, validate_default=True)
 
 
-class ProductResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class RestockLineCreate(BaseModel):
+    product_supplier_id: int = Field(gt=0)
+    restock_quantity: int = Field(gt=0)
+    unit_cost_snapshot: int | None = Field(
+        default=None,
+        ge=0,
+    )
 
-    id: int
-    name: str
-    created_at: datetime
 
-    company_id: int
-    company_name: str
-    quantity_unit: str
-    low_stock_threshold: int
-    tags: list[TagResponse] = Field(default_factory=list)
-    supplier_links: list[ProductSupplierResponse] = Field(default_factory=list)
+class RestockCreate(BaseModel):
+    note: str | None = Field(default=None, max_length=500)
+
+    lines: list[RestockLineCreate] = Field(
+        min_length=1,
+    )
+
+    @model_validator(mode="after")
+    def validate_unique_product_suppliers(self) -> "RestockCreate":
+        product_supplier_ids = [line.product_supplier_id for line in self.lines]
+
+        if len(product_supplier_ids) != len(set(product_supplier_ids)):
+            raise ValueError(
+                "Each product-supplier link may appear only once in a restock."
+            )
+        return self
+
+
+class SaleLineCreate(BaseModel):
+    product_supplier_id: int = Field(gt=0)
+    sale_quantity: int = Field(gt=0)
+
+
+class SaleCreate(BaseModel):
+    note: str | None = Field(default=None, max_length=500)
+
+    lines: list[SaleLineCreate] = Field(
+        min_length=1,
+    )
+
+    @model_validator(mode="after")
+    def validate_unique_product_suppliers(self) -> "SaleCreate":
+        product_supplier_ids = [line.product_supplier_id for line in self.lines]
+
+        if len(product_supplier_ids) != len(set(product_supplier_ids)):
+            raise ValueError(
+                "Each product-supplier link may appear only once in a sale."
+            )
+        return self
+
+
+# =====================
+# Atomic create schemas
+# =====================
+
+
+class ProductSupplierAtomicCreate(BaseModel):
+    supplier_id: int | None = Field(default=None, gt=0)
+    supplier: SupplierCreate | None = Field(default=None)
+
+    purchase_price: int = Field(gt=0)
+    margin_percent: int = Field(default=0, ge=0, validate_default=True)
+    sale_price: int | None = Field(default=None, gt=0)
+    quantity: int = Field(default=0, ge=0, validate_default=True)
+
+    @model_validator(mode="after")
+    def validate_supplier_source(self):
+        if (self.supplier is None) == (self.supplier_id is None):
+            raise ValueError("Provide exactly one of supplier id or supplier")
+        return self
+
+    @model_validator(mode="after")
+    def validate_sale_price(self):
+        if self.sale_price is None:
+            return self
+
+        floor_price = calculate_floor_price(
+            self.purchase_price,
+            self.margin_percent,
+        )
+        if self.sale_price < floor_price:
+            raise ValueError("sale_price cannot be lower than floor_price")
+
+        return self
+
+
+class ProductAtomicCreate(BaseModel):
+    product_name: Name
+    tags: list[TagName] = Field(default_factory=list)
+    quantity_unit: QuantityUnit = Field(
+        default=DEFAULT_QUANTITY_UNIT,
+        validate_default=True,
+    )
+    low_stock_threshold: int = Field(default=5, ge=0, validate_default=True)
+
+    # Company is either existing or needs to be created
+    # Only one can be true
+    company_id: int | None = Field(default=None, gt=0)
+    company: CompanyCreate | None = Field(default=None)
+
+    product_links: list[ProductSupplierAtomicCreate] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_company_source(self):
+        if (self.company is None) == (self.company_id is None):
+            raise ValueError("Provide exactly one of company id or company")
+        return self
+
+
+# ==============
+# Update schemas
+# ==============
+
+
+class CompanyUpdate(UpdateValidator):
+    nullable_update_fields: ClassVar[set[str]] = {"iin"}
+
+    name: Name | None = None
+    iin: IIN | None = None
+
+
+class SupplierUpdate(UpdateValidator):
+    name: Name | None = None
+    phone_number: PhoneNumber | None = None
 
 
 class ProductUpdate(UpdateValidator):
@@ -235,6 +286,75 @@ class ProductSupplierUpdate(UpdateValidator):
         return self
 
 
+# Response schemas
+
+
+class CompanyResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    iin: str | None = None
+
+
+class SupplierResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    phone_number: str
+    product_links: list[ProductSupplierResponse]
+
+
+class SupplierSummaryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    phone_number: str
+    product_links_count: int = Field(default=0, ge=0)
+
+
+class TagResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+
+
+class TagSummaryResponse(TagResponse):
+    usage_count: int
+
+
+class ProductSupplierResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    product_id: int
+    supplier_id: int
+    product_name: str | None = None
+    supplier_name: str | None = None
+    purchase_price: int
+    margin_percent: int
+    floor_price: int
+    sale_price: int
+    quantity: int
+    stock_status: StockStatus
+
+
+class ProductResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    created_at: datetime
+
+    company_id: int
+    company_name: str
+    quantity_unit: str
+    low_stock_threshold: int
+    tags: list[TagResponse] = Field(default_factory=list)
+    supplier_links: list[ProductSupplierResponse] = Field(default_factory=list)
+
+
 class ProductSummaryResponse(BaseModel):
     id: int
     name: str
@@ -250,33 +370,6 @@ class ProductSummaryResponse(BaseModel):
     margin_percent: int | None = None
     min_sale_price: int | None = None
     stock_status: StockStatus
-
-
-class RestockLineCreate(BaseModel):
-    product_supplier_id: int = Field(gt=0)
-    restock_quantity: int = Field(gt=0)
-    unit_cost_snapshot: int | None = Field(
-        default=None,
-        ge=0,
-    )
-
-
-class RestockCreate(BaseModel):
-    note: str | None = Field(default=None, max_length=500)
-
-    lines: list[RestockLineCreate] = Field(
-        min_length=1,
-    )
-
-    @model_validator(mode="after")
-    def validate_unique_product_suppliers(self) -> "RestockCreate":
-        product_supplier_ids = [line.product_supplier_id for line in self.lines]
-
-        if len(product_supplier_ids) != len(set(product_supplier_ids)):
-            raise ValueError(
-                "Each product-supplier link may appear only once in a restock."
-            )
-        return self
 
 
 class RestockLineResponse(BaseModel):
@@ -312,29 +405,6 @@ class RestockSummaryResponse(BaseModel):
     lines_count: int
 
 
-class SaleLineCreate(BaseModel):
-    product_supplier_id: int = Field(gt=0)
-    sale_quantity: int = Field(gt=0)
-
-
-class SaleCreate(BaseModel):
-    note: str | None = Field(default=None, max_length=500)
-
-    lines: list[SaleLineCreate] = Field(
-        min_length=1,
-    )
-
-    @model_validator(mode="after")
-    def validate_unique_product_suppliers(self) -> "SaleCreate":
-        product_supplier_ids = [line.product_supplier_id for line in self.lines]
-
-        if len(product_supplier_ids) != len(set(product_supplier_ids)):
-            raise ValueError(
-                "Each product-supplier link may appear only once in a sale."
-            )
-        return self
-
-
 class SaleLineResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -367,6 +437,9 @@ class SaleSummaryResponse(BaseModel):
     created_at: datetime
     revenue: int
     lines_count: int
+
+
+# Other Response Schemas
 
 
 class DailySalesResponse(BaseModel):

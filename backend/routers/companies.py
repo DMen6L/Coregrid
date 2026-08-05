@@ -5,9 +5,10 @@ from sqlalchemy import Integer, func, select, type_coerce
 
 from app.models import Company
 from app.schemas import CompanyCreate, CompanyResponse, CompanyUpdate, PaginatedResponse
-from devs import DbSession
-from errors import commit_or_raise
-from utils import build_unique_values_candidates, paginate
+from helpers.dependencies import DbSession
+from helpers.pagination import paginate
+from helpers.transactions import commit_or_raise
+from helpers.update_helpers import build_unique_values_candidates
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 

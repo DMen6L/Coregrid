@@ -6,9 +6,9 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by, array
 from sqlalchemy.orm import selectinload
 
 from app.models import Company, Product, ProductSupplier, Supplier, Tag
-from app.pricing import calculate_floor_price
 from app.schemas import (
     PaginatedResponse,
+    ProductAtomicCreate,
     ProductCreate,
     ProductResponse,
     ProductSummaryResponse,
@@ -17,10 +17,16 @@ from app.schemas import (
     ProductSupplierUpdate,
     ProductUpdate,
 )
-from app.tags import get_or_create_tags
-from devs import DbSession
-from errors import commit_or_raise
-from utils import aggr_paginate, build_unique_values_candidates
+from helpers.dependencies import DbSession
+from helpers.pagination import aggr_paginate
+from helpers.transactions import (
+    commit_or_raise,
+    create_or_resolve_company,
+    create_or_resolve_supplier,
+    get_or_create_tags,
+)
+from helpers.update_helpers import build_unique_values_candidates
+from helpers.pricing import calculate_floor_price
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -276,6 +282,68 @@ def add_supplier_links(
     ).all()
 
     return created_supplier_links
+
+
+@router.post(
+    "/full",
+    response_model=ProductResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_product_atomic(
+    db: DbSession,
+    data: ProductAtomicCreate,
+) -> Product:
+    company_id = create_or_resolve_company(data, db)
+
+    tags = get_or_create_tags(db, data.tags)
+    product = Product(
+        company_id=company_id,
+        name=data.product_name,
+        quantity_unit=data.quantity_unit,
+        low_stock_threshold=data.low_stock_threshold,
+        tags=tags,
+    )
+
+    db.add(product)
+    db.flush()
+
+    for product_link in data.product_links:
+        supplier_id = create_or_resolve_supplier(product_link, db)
+        sale_price = (
+            product_link.sale_price
+            if product_link.sale_price
+            else calculate_floor_price(
+                product_link.purchase_price,
+                product_link.margin_percent,
+            )
+        )
+
+        product_supplier = ProductSupplier(
+            product_id=product.id,
+            supplier_id=supplier_id,
+            purchase_price=product_link.purchase_price,
+            margin_percent=product_link.margin_percent,
+            sale_price=sale_price,
+            quantity=product_link.quantity,
+        )
+
+        db.add(product_supplier)
+
+    commit_or_raise(db)
+
+    statement = (
+        select(Product)
+        .options(
+            selectinload(Product.company),
+            selectinload(Product.tags),
+            selectinload(Product.supplier_links).selectinload(ProductSupplier.supplier),
+        )
+        .where(Product.id == product.id)
+    )
+
+    response = db.scalars(statement).one()
+
+    return response
 
 
 @router.patch(

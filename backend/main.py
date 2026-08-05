@@ -4,10 +4,11 @@ from fastapi import FastAPI, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.schemas import SummariesResponse
+from app.type_definitions import BestSalesMode
 
-from devs import DbSession
+from helpers.dependencies import DbSession
+from helpers.services import build_summaries
 from routers import companies, products, restocks, sales, suppliers, tags
-from utils import BestSalesMode, build_summaries
 
 
 LOCAL_DEVELOPMENT_ORIGINS = [

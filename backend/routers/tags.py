@@ -5,9 +5,9 @@ from sqlalchemy import func, select
 
 from app.models import Product, Tag
 from app.schemas import PaginatedResponse, TagSummaryResponse
-from devs import DbSession
-from errors import commit_or_raise
-from utils import aggr_paginate
+from helpers.dependencies import DbSession
+from helpers.pagination import aggr_paginate
+from helpers.transactions import commit_or_raise
 
 router = APIRouter(prefix="/tags", tags=["tags"])
 

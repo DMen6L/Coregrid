@@ -7,9 +7,9 @@ from sqlalchemy.orm import selectinload
 
 from app.models import ProductSupplier, Sale, SaleLine
 from app.schemas import PaginatedResponse, SaleCreate, SaleResponse, SaleSummaryResponse
-from devs import DbSession
-from errors import commit_or_raise
-from utils import aggr_paginate, paginate
+from helpers.dependencies import DbSession
+from helpers.pagination import aggr_paginate
+from helpers.transactions import commit_or_raise
 
 
 router = APIRouter(prefix="/sales", tags=["sales"])
