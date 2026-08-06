@@ -5,10 +5,7 @@ import { useRoute, useRouter } from "vue-router";
 
 import ProductDetailModal from "../components/ProductDetailModal.vue";
 import {
-  createCompany,
-  createProduct,
-  createProductSupplierLinks,
-  createSupplier,
+  createProductAtomic,
   DEFAULT_PAGE_SIZE,
   FIRST_PAGE,
   getCompanies,
@@ -28,9 +25,9 @@ import {
 import type {
   CompanyResponse,
   PaginatedResponse,
-  ProductCreatePayload,
+  ProductAtomicCreatePayload,
   ProductResponse,
-  ProductSupplierCreatePayload,
+  ProductSupplierAtomicCreatePayload,
   ProductSummaryResponse,
   StockStatus,
   SupplierCreatePayload,
@@ -41,11 +38,6 @@ import type {
 type ProductStockStatus = StockStatus | "none";
 type CompanyMode = "existing" | "new";
 type SupplierMode = "existing" | "new";
-type ProductCreateResult = {
-  product: ProductResponse;
-  supplierLinkCreated: boolean;
-  supplierLinkError: unknown | null;
-};
 
 const POPULAR_TAGS_LIMIT = 10;
 const COMPANY_LOOKUP_PAGE_SIZE = 10;
@@ -85,7 +77,6 @@ const isCreateModalOpen = ref(false);
 const isDetailModalOpen = ref(false);
 const selectedProductId = ref<number | null>(null);
 const createError = ref("");
-const createWarning = ref("");
 const companyLookupTerm = ref("");
 const supplierLookupTerm = ref("");
 const productCreateForm = reactive({
@@ -373,7 +364,6 @@ function clearSelectedSupplier() {
 
 function submitProductCreate() {
   createError.value = "";
-  createWarning.value = "";
 
   if (!createFormElement.value?.reportValidity()) {
     return;
@@ -383,84 +373,61 @@ function submitProductCreate() {
 }
 
 async function createProductFromForm() {
-  validateProductSupplierSelection();
-
-  const companyId = await resolveProductCompanyId();
-  const payload: ProductCreatePayload = {
-    name: normalizeTagName(productCreateForm.name),
-    company_id: companyId,
+  const payload: ProductAtomicCreatePayload = {
+    product_name: normalizeTagName(productCreateForm.name),
+    ...getAtomicCompanyPayload(),
     tags: parseTags(productCreateForm.tags),
     quantity_unit: normalizeTagName(productCreateForm.quantityUnit) || DEFAULT_QUANTITY_UNIT,
     low_stock_threshold: Math.max(Number(productCreateForm.lowStockThreshold) || 0, 0),
+    product_links: getAtomicSupplierLinksPayload(),
   };
 
-  const product = await createProduct(payload);
-  const result: ProductCreateResult = {
-    product,
-    supplierLinkCreated: false,
-    supplierLinkError: null,
-  };
-
-  if (!productCreateForm.linkEnabled) {
-    return result;
-  }
-
-  try {
-    const supplierId = await resolveProductSupplierId();
-
-    await createProductSupplierLinks(product.id, [
-      {
-        ...getSupplierLinkPayload(),
-        supplier_id: supplierId,
-      },
-    ]);
-    result.supplierLinkCreated = true;
-  } catch (error) {
-    result.supplierLinkError = error;
-  }
-
-  return result;
+  return createProductAtomic(payload);
 }
 
-async function resolveProductCompanyId() {
+function getAtomicCompanyPayload(): Pick<ProductAtomicCreatePayload, "company_id" | "company"> {
   if (productCreateForm.companyMode === "new") {
-    const company = await createCompany({
-      name: normalizeTagName(productCreateForm.newCompanyName),
-      iin: normalizeOptionalText(productCreateForm.newCompanyIin),
-    });
-
-    return Number(company.id);
+    return {
+      company: {
+        name: normalizeTagName(productCreateForm.newCompanyName),
+        iin: normalizeOptionalText(productCreateForm.newCompanyIin),
+      },
+    };
   }
 
   if (!productCreateForm.selectedCompany) {
     throw createLocalValidationError("Выберите компанию или создайте новую.");
   }
 
-  return Number(productCreateForm.selectedCompany.id);
+  return {
+    company_id: Number(productCreateForm.selectedCompany.id),
+  };
 }
 
-async function resolveProductSupplierId() {
-  if (productCreateForm.supplierMode === "new") {
-    const supplier = await createSupplier(getInlineSupplierPayload());
+function getAtomicSupplierLinksPayload(): ProductSupplierAtomicCreatePayload[] {
+  if (!productCreateForm.linkEnabled) {
+    return [];
+  }
 
-    return Number(supplier.id);
+  if (productCreateForm.supplierMode === "new") {
+    return [
+      {
+        supplier: getInlineSupplierPayload(),
+        ...getSupplierLinkPayload(),
+      },
+    ];
   }
 
   if (!productCreateForm.selectedSupplier) {
     throw createLocalValidationError("Выберите поставщика или создайте нового.");
   }
 
-  return Number(productCreateForm.selectedSupplier.id);
-}
-
-function validateProductSupplierSelection() {
-  if (
-    productCreateForm.linkEnabled
-    && productCreateForm.supplierMode === "existing"
-    && !productCreateForm.selectedSupplier
-  ) {
-    throw createLocalValidationError("Выберите поставщика или создайте нового.");
-  }
+  return [
+    {
+      supplier_id: Number(productCreateForm.selectedSupplier.id),
+      ...getSupplierLinkPayload(),
+    },
+  ];
 }
 
 function getInlineSupplierPayload(): SupplierCreatePayload {
@@ -470,7 +437,7 @@ function getInlineSupplierPayload(): SupplierCreatePayload {
   };
 }
 
-function getSupplierLinkPayload(): Omit<ProductSupplierCreatePayload, "supplier_id"> {
+function getSupplierLinkPayload(): Omit<ProductSupplierAtomicCreatePayload, "supplier_id" | "supplier"> {
   return {
     purchase_price: normalizeRequiredNumber(productCreateForm.purchasePrice, 1),
     margin_percent: normalizeRequiredNumber(productCreateForm.marginPercent, 0),
@@ -479,19 +446,11 @@ function getSupplierLinkPayload(): Omit<ProductSupplierCreatePayload, "supplier_
   };
 }
 
-async function handleProductCreateSuccess(result: ProductCreateResult) {
-  const { product, supplierLinkCreated, supplierLinkError } = result;
+async function handleProductCreateSuccess(product: ProductResponse) {
   const productName = product.name || normalizeTagName(productCreateForm.name);
 
   isCreateModalOpen.value = false;
   resetProductCreateForm();
-
-  if (supplierLinkError) {
-    createWarning.value = [
-      `Товар ${productName || `#${formatCount(product.id)}`} создан,`,
-      `но связь с поставщиком не создана: ${getCreateErrorMessage(supplierLinkError, "связь с поставщиком")}`,
-    ].join(" ");
-  }
 
   navigateProducts({
     search: productName,
@@ -679,14 +638,6 @@ function getSupplierCountText(value: number) {
           {{ formatCount(productsPage.total) }} товаров
         </span>
       </div>
-    </div>
-
-    <div
-      v-if="createWarning"
-      class="alert alert-warning"
-      role="status"
-    >
-      {{ createWarning }}
     </div>
 
     <div v-if="shouldShowPopularTags" class="products-popular-tags" aria-live="polite">

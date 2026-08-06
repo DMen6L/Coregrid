@@ -10,6 +10,7 @@ from helpers.pagination import paginate
 from helpers.transactions import commit_or_raise
 from helpers.update_helpers import (
     check_unique_constraints,
+    validate_update,
 )
 
 router = APIRouter(prefix="/companies", tags=["companies"])
@@ -99,19 +100,19 @@ def patch_company(
         patch_data.model_dump(exclude_unset=True),
     )
 
-    check_unique_constraints(
-        db,
-        type(company),
-        update_data,
-        company,
-        "uq_companies_name",
+    validate_update(
+        db=db,
+        model=Company,
+        constraint_name="uq_companies_name",
+        update_data=update_data,
+        update_obj=company,
     )
-    check_unique_constraints(
-        db,
-        type(company),
-        update_data,
-        company,
-        "uq_companies_iin",
+    validate_update(
+        db=db,
+        model=Company,
+        constraint_name="uq_companies_iin",
+        update_data=update_data,
+        update_obj=company,
     )
 
     for field, value in update_data.items():

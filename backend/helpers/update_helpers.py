@@ -54,42 +54,59 @@ def build_unique_values_candidates(
 def check_unique_constraints(
     db: Session,
     model: type[OrmModelT],
-    data: Mapping[str, object],
-    obj: object,
     constraint_name: str,
+    values: Mapping[str, object],
+    exclude_id: int | None = None,
 ) -> None:
     constraints = get_unique_constraints(model)
     unique_fields = constraints[constraint_name]
 
-    candidate_values, changed = build_unique_values_candidates(
-        unique_fields,
-        data,
-        obj,
-    )
-
-    if not changed:
-        return
+    candidate_values = {field: values[field] for field in unique_fields}
 
     if any(value is None for value in candidate_values.values()):
         return
 
-    conditions = []
-    for field, value in candidate_values.items():
-        column = cast(InstrumentedAttribute[object], getattr(model, field))
-        conditions.append(column == value)
+    conditions = [
+        getattr(model, field) == value for field, value in candidate_values.items()
+    ]
 
-    id_column = cast(InstrumentedAttribute[object], getattr(model, "id"))
-    obj_id = cast(object, getattr(obj, "id"))
+    model_id = cast(InstrumentedAttribute[object], getattr(model, "id"))
+    statement = select(model_id).where(*conditions)
 
-    duplicate_id = db.scalar(
-        select(id_column).where(
-            id_column != obj_id,
-            *conditions,
-        )
-    )
+    if exclude_id is not None:
+        statement = statement.where(model_id != exclude_id)
+
+    duplicate_id = db.scalar(statement)
 
     if duplicate_id is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Violated unique constraint: {constraint_name}",
+        )
+
+
+def validate_update(
+    db: Session,
+    model: type[OrmModelT],
+    constraint_name: str,
+    update_data: Mapping[str, object],
+    update_obj: object,
+) -> None:
+    unique_fields = get_unique_constraints(model)[constraint_name]
+
+    candidate_values, changed = build_unique_values_candidates(
+        unique_fields,
+        update_data,
+        update_obj,
+    )
+
+    exclude_id = cast(int, getattr(update_obj, "id"))
+
+    if changed:
+        check_unique_constraints(
+            db,
+            model,
+            constraint_name,
+            candidate_values,
+            exclude_id=exclude_id,
         )

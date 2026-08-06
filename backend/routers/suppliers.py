@@ -16,7 +16,7 @@ from helpers.dependencies import DbSession
 from helpers.pagination import aggr_paginate
 from helpers.transactions import commit_or_raise
 from helpers.update_helpers import (
-    check_unique_constraints,
+    validate_update,
 )
 
 
@@ -127,19 +127,19 @@ def patch_supplier(
 
     update_data = patch_data.model_dump(exclude_unset=True)
 
-    check_unique_constraints(
-        db,
-        Supplier,
-        update_data,
-        supplier,
-        "uq_suppliers_name",
+    validate_update(
+        db=db,
+        model=Supplier,
+        constraint_name="uq_suppliers_name",
+        update_data=update_data,
+        update_obj=supplier,
     )
-    check_unique_constraints(
-        db,
-        Supplier,
-        update_data,
-        supplier,
-        "uq_suppliers_phone_number",
+    validate_update(
+        db=db,
+        model=Supplier,
+        constraint_name="uq_suppliers_phone_number",
+        update_data=update_data,
+        update_obj=supplier,
     )
 
     for field, value in update_data.items():

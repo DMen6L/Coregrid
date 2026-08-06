@@ -23,10 +23,12 @@ from helpers.transactions import (
     commit_or_raise,
     create_or_resolve_company,
     create_or_resolve_supplier,
+    flush_or_raise,
     get_or_create_tags,
 )
 from helpers.update_helpers import (
     check_unique_constraints,
+    validate_update,
 )
 from helpers.pricing import calculate_floor_price
 
@@ -297,17 +299,29 @@ def add_product_atomic(
 ) -> Product:
     company_id = create_or_resolve_company(data, db)
 
+    product_schema = {
+        "company_id": company_id,
+        "name": data.product_name,
+        "quantity_unit": data.quantity_unit,
+        "low_stock_threshold": data.low_stock_threshold,
+    }
+
+    check_unique_constraints(
+        db=db,
+        model=Product,
+        constraint_name="uq_products_name_company_unit",
+        values=product_schema,
+    )
+
     tags = get_or_create_tags(db, data.tags)
+
     product = Product(
-        company_id=company_id,
-        name=data.product_name,
-        quantity_unit=data.quantity_unit,
-        low_stock_threshold=data.low_stock_threshold,
+        **product_schema,
         tags=tags,
     )
 
     db.add(product)
-    db.flush()
+    flush_or_raise(db)
 
     for product_link in data.product_links:
         supplier_id = create_or_resolve_supplier(product_link, db)
@@ -320,14 +334,22 @@ def add_product_atomic(
             )
         )
 
-        product_supplier = ProductSupplier(
-            product_id=product.id,
-            supplier_id=supplier_id,
-            purchase_price=product_link.purchase_price,
-            margin_percent=product_link.margin_percent,
-            sale_price=sale_price,
-            quantity=product_link.quantity,
+        product_supplier_schema = {
+            "product_id": product.id,
+            "supplier_id": supplier_id,
+            "purchase_price": product_link.purchase_price,
+            "margin_percent": product_link.margin_percent,
+            "sale_price": sale_price,
+            "quantity": product_link.quantity,
+        }
+
+        check_unique_constraints(
+            db=db,
+            model=ProductSupplier,
+            constraint_name="uq_product_suppliers_product_supplier",
+            values=product_supplier_schema,
         )
+        product_supplier = ProductSupplier(**product_supplier_schema)
 
         db.add(product_supplier)
 
@@ -380,12 +402,12 @@ def patch_product(
         patch_data.model_dump(exclude_unset=True),
     )
 
-    check_unique_constraints(
-        db,
-        Product,
-        update_data,
-        product,
-        "uq_products_name_company_unit",
+    validate_update(
+        db=db,
+        model=Product,
+        constraint_name="uq_products_name_company_unit",
+        update_data=update_data,
+        update_obj=product,
     )
 
     tag_names = cast(list[str], update_data.pop("tags", None))
@@ -498,12 +520,12 @@ def patch_product_links(
             detail="sale_price cannot be lower than calculated floor price.",
         )
 
-    check_unique_constraints(
-        db,
-        ProductSupplier,
-        update_data,
-        product_supplier,
-        "uq_product_suppliers_product_supplier",
+    validate_update(
+        db=db,
+        model=ProductSupplier,
+        constraint_name="uq_product_suppliers_product_supplier",
+        update_data=update_data,
+        update_obj=product_supplier,
     )
 
     for field, value in update_data.items():

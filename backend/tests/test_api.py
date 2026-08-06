@@ -17,4 +17,5 @@ def test_get_summaries():
         "out_of_stock": 0,
         "latest_sales": [],
         "top_products": [],
+        "top_suppliers": [],
     }

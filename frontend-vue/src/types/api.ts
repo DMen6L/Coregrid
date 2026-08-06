@@ -182,6 +182,15 @@ export interface ProductSupplierCreatePayload {
   quantity: number;
 }
 
+export interface ProductSupplierAtomicCreatePayload {
+  supplier_id?: number;
+  supplier?: SupplierCreatePayload;
+  purchase_price: number;
+  margin_percent: number;
+  sale_price?: number | null;
+  quantity: number;
+}
+
 export interface ProductSupplierUpdatePayload {
   supplier_id?: number;
   purchase_price?: number;
@@ -217,6 +226,16 @@ export interface ProductCreatePayload {
   tags: string[];
   quantity_unit: string;
   low_stock_threshold: number;
+}
+
+export interface ProductAtomicCreatePayload {
+  product_name: string;
+  company_id?: number;
+  company?: CompanyCreatePayload;
+  tags: string[];
+  quantity_unit: string;
+  low_stock_threshold: number;
+  product_links: ProductSupplierAtomicCreatePayload[];
 }
 
 export interface ProductUpdatePayload {

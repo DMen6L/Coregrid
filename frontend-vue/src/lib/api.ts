@@ -5,6 +5,7 @@ import type {
   CompanyResponse,
   CompanyUpdatePayload,
   PaginatedResponse,
+  ProductAtomicCreatePayload,
   ProductCreatePayload,
   ProductResponse,
   ProductSupplierCreatePayload,
@@ -146,6 +147,13 @@ export function getSale(saleId: number) {
 
 export function createProduct(payload: ProductCreatePayload) {
   return request<ProductResponse>("/products", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createProductAtomic(payload: ProductAtomicCreatePayload) {
+  return request<ProductResponse>("/products/full", {
     method: "POST",
     body: JSON.stringify(payload),
   });

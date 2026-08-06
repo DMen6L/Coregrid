@@ -2,6 +2,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.models import Company, Product, ProductSupplier, Supplier
 from main import app
@@ -100,6 +101,13 @@ def create_product(payload: dict) -> dict:
     return response.json()
 
 
+def create_product_atomic(payload: dict) -> dict:
+    response = client.post("/products/full", json=payload)
+
+    assert response.status_code == 201
+    return response.json()
+
+
 def assert_paginated_response(data: dict) -> None:
     assert set(data) == {
         "items",
@@ -163,6 +171,7 @@ def assert_product_response_shape(product: dict) -> None:
         "company_name",
         "quantity_unit",
         "low_stock_threshold",
+        "tags",
         "supplier_links",
     }
     assert isinstance(product["id"], int)
@@ -172,6 +181,7 @@ def assert_product_response_shape(product: dict) -> None:
     assert isinstance(product["company_name"], str)
     assert isinstance(product["quantity_unit"], str)
     assert isinstance(product["low_stock_threshold"], int)
+    assert isinstance(product["tags"], list)
     assert isinstance(product["supplier_links"], list)
 
 
@@ -240,6 +250,7 @@ def test_post_products_creates_catalog_product_with_company_and_stock_fields(
     assert product["company_name"] == company.name
     assert product["quantity_unit"] == "уп"
     assert product["low_stock_threshold"] == 3
+    assert [tag["name"] for tag in product["tags"]] == ["retail", "warehouse"]
     assert product["supplier_links"] == []
     assert "purchase_price" not in product
     assert "supplier_id" not in product
@@ -511,3 +522,217 @@ def test_post_product_link_rejects_invalid_price_and_duplicate_link(db_session):
 
     assert first_response.status_code == 201
     assert duplicate_response.status_code == 409
+
+
+def test_post_product_full_creates_product_company_supplier_and_link_atomically(
+    db_session,
+):
+    suffix = unique_suffix()
+    supplier_phone_number = unique_phone_number()
+
+    product = create_product_atomic(
+        {
+            "product_name": f"Atomic product {suffix}",
+            "company": {
+                "name": f"Atomic company {suffix}",
+                "iin": f"{uuid4().int % 1_000_000_000_000:012d}",
+            },
+            "tags": ["Atomic", "atomic", "Featured"],
+            "quantity_unit": "box",
+            "low_stock_threshold": 3,
+            "product_links": [
+                {
+                    "supplier": {
+                        "name": f"Atomic supplier {suffix}",
+                        "phone_number": supplier_phone_number,
+                    },
+                    "purchase_price": 100,
+                    "margin_percent": 25,
+                    "quantity": 7,
+                }
+            ],
+        }
+    )
+
+    assert_product_response_shape(product)
+    assert product["name"] == f"Atomic product {suffix}"
+    assert product["company_name"] == f"Atomic company {suffix}"
+    assert product["quantity_unit"] == "box"
+    assert product["low_stock_threshold"] == 3
+    assert [tag["name"] for tag in product["tags"]] == ["atomic", "featured"]
+
+    links = product["supplier_links"]
+    assert len(links) == 1
+
+    link = links[0]
+    assert_product_supplier_response_shape(link)
+    assert link["product_id"] == product["id"]
+    assert link["supplier_name"] == f"Atomic supplier {suffix}"
+    assert link["purchase_price"] == 100
+    assert link["margin_percent"] == 25
+    assert link["floor_price"] == 125
+    assert link["sale_price"] == 125
+    assert link["quantity"] == 7
+    assert link["stock_status"] == "available"
+
+    stored_product = db_session.get(Product, product["id"])
+    stored_link = db_session.get(ProductSupplier, link["id"])
+    stored_supplier = db_session.get(Supplier, link["supplier_id"])
+
+    assert stored_product is not None
+    assert stored_link is not None
+    assert stored_supplier is not None
+    assert stored_supplier.phone_number == supplier_phone_number
+
+
+def test_post_product_full_rejects_duplicate_product_identity(db_session):
+    suffix = unique_suffix()
+    company = create_company(db_session, suffix)
+    supplier = create_supplier(db_session, suffix)
+    existing_product = create_product_model(
+        db_session,
+        suffix,
+        name=f"Atomic duplicate product {suffix}",
+        company=company,
+        quantity_unit="шт",
+    )
+
+    response = client.post(
+        "/products/full",
+        json={
+            "product_name": existing_product.name,
+            "company_id": company.id,
+            "quantity_unit": "шт",
+            "product_links": [
+                {
+                    "supplier_id": supplier.id,
+                    "purchase_price": 100,
+                    "margin_percent": 20,
+                    "quantity": 1,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"]
+        == "Violated unique constraint: uq_products_name_company_unit"
+    )
+
+
+def test_post_product_full_rejects_duplicate_new_company(db_session):
+    suffix = unique_suffix()
+    company = create_company(db_session, suffix)
+
+    response = client.post(
+        "/products/full",
+        json={
+            "product_name": f"Atomic company duplicate product {suffix}",
+            "company": {
+                "name": company.name,
+                "iin": f"{uuid4().int % 1_000_000_000_000:012d}",
+            },
+            "product_links": [
+                {
+                    "supplier": {
+                        "name": f"Atomic company duplicate supplier {suffix}",
+                        "phone_number": unique_phone_number(),
+                    },
+                    "purchase_price": 100,
+                    "margin_percent": 20,
+                    "quantity": 1,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Violated unique constraint: uq_companies_name"
+
+    stored_product_id = db_session.scalar(
+        select(Product.id).where(
+            Product.name == f"Atomic company duplicate product {suffix}"
+        )
+    )
+    assert stored_product_id is None
+
+
+def test_post_product_full_rejects_duplicate_new_supplier_and_rolls_back_product(
+    db_session,
+):
+    suffix = unique_suffix()
+    supplier = create_supplier(db_session, suffix)
+    product_name = f"Atomic supplier duplicate product {suffix}"
+
+    response = client.post(
+        "/products/full",
+        json={
+            "product_name": product_name,
+            "company": {
+                "name": f"Atomic supplier duplicate company {suffix}",
+                "iin": f"{uuid4().int % 1_000_000_000_000:012d}",
+            },
+            "product_links": [
+                {
+                    "supplier": {
+                        "name": supplier.name,
+                        "phone_number": unique_phone_number(),
+                    },
+                    "purchase_price": 100,
+                    "margin_percent": 20,
+                    "quantity": 1,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Violated unique constraint: uq_suppliers_name"
+
+    stored_product_id = db_session.scalar(
+        select(Product.id).where(Product.name == product_name)
+    )
+    assert stored_product_id is None
+
+
+def test_post_product_full_rejects_duplicate_product_supplier_links(db_session):
+    suffix = unique_suffix()
+    supplier = create_supplier(db_session, suffix)
+    product_name = f"Atomic duplicate link product {suffix}"
+
+    response = client.post(
+        "/products/full",
+        json={
+            "product_name": product_name,
+            "company": {
+                "name": f"Atomic duplicate link company {suffix}",
+                "iin": f"{uuid4().int % 1_000_000_000_000:012d}",
+            },
+            "product_links": [
+                {
+                    "supplier_id": supplier.id,
+                    "purchase_price": 100,
+                    "margin_percent": 20,
+                    "quantity": 1,
+                },
+                {
+                    "supplier_id": supplier.id,
+                    "purchase_price": 110,
+                    "margin_percent": 20,
+                    "quantity": 2,
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"]
+        == "Violated unique constraint: uq_product_suppliers_product_supplier"
+    )
+
+    stored_product_id = db_session.scalar(
+        select(Product.id).where(Product.name == product_name)
+    )
+    assert stored_product_id is None
