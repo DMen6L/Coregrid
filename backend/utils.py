@@ -1,5 +1,9 @@
 from app.type_definitions import BestSalesMode
 
+# =================
+# Summary Utilities
+# =================
+
 
 def get_best_sales_expr(mode: BestSalesMode):
     from app.models import SaleLine
@@ -17,6 +21,11 @@ def get_best_sales_expr(mode: BestSalesMode):
                 (SaleLine.unit_sale_price_snapshot - SaleLine.unit_cost_snapshot)
                 * SaleLine.sale_quantity
             )
+
+
+# =============
+# Tag Utilities
+# =============
 
 
 def normalize_tag_name(tag_name: str) -> str:

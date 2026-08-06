@@ -1,4 +1,4 @@
-from typing import Annotated, cast
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Query, status
 from sqlalchemy import func, select
@@ -15,7 +15,9 @@ from app.schemas import (
 from helpers.dependencies import DbSession
 from helpers.pagination import aggr_paginate
 from helpers.transactions import commit_or_raise
-from helpers.update_helpers import build_unique_values_candidates
+from helpers.update_helpers import (
+    check_unique_constraints,
+)
 
 
 router = APIRouter(prefix="/suppliers", tags=["suppliers"])
@@ -125,48 +127,20 @@ def patch_supplier(
 
     update_data = patch_data.model_dump(exclude_unset=True)
 
-    name_val, name_changed = build_unique_values_candidates(
-        ("name",),
+    check_unique_constraints(
+        db,
+        Supplier,
         update_data,
         supplier,
+        "uq_suppliers_name",
     )
-    phone_numer_val, phone_number_changed = build_unique_values_candidates(
-        ("phone_number",),
+    check_unique_constraints(
+        db,
+        Supplier,
         update_data,
         supplier,
+        "uq_suppliers_phone_number",
     )
-
-    if name_changed:
-        candidate_name = cast(str, name_val["name"])
-
-        duplicate_supplier_id = db.scalar(
-            select(Supplier.id).where(
-                Supplier.id != id,
-                Supplier.name == candidate_name,
-            )
-        )
-
-        if duplicate_supplier_id is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Supplier name already exists.",
-            )
-
-    if phone_number_changed:
-        candidate_phone_number = cast(str, phone_numer_val["phone_number"])
-
-        duplicate_supplier_id = db.scalar(
-            select(Supplier.id).where(
-                Supplier.id != id,
-                Supplier.phone_number == candidate_phone_number,
-            )
-        )
-
-        if duplicate_supplier_id is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Supplier phone number already exists.",
-            )
 
     for field, value in update_data.items():
         setattr(supplier, field, value)

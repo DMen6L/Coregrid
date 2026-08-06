@@ -8,7 +8,9 @@ from app.schemas import CompanyCreate, CompanyResponse, CompanyUpdate, Paginated
 from helpers.dependencies import DbSession
 from helpers.pagination import paginate
 from helpers.transactions import commit_or_raise
-from helpers.update_helpers import build_unique_values_candidates
+from helpers.update_helpers import (
+    check_unique_constraints,
+)
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -97,49 +99,20 @@ def patch_company(
         patch_data.model_dump(exclude_unset=True),
     )
 
-    name_val, name_changed = build_unique_values_candidates(
-        ("name",),
+    check_unique_constraints(
+        db,
+        type(company),
         update_data,
         company,
+        "uq_companies_name",
     )
-
-    iin_val, iin_changed = build_unique_values_candidates(
-        ("iin",),
+    check_unique_constraints(
+        db,
+        type(company),
         update_data,
         company,
+        "uq_companies_iin",
     )
-
-    if name_changed:
-        candidate_name = cast(str, name_val["name"])
-
-        duplicate_company_id = db.scalar(
-            select(Company.id).where(
-                Company.id != id,
-                Company.name == candidate_name,
-            )
-        )
-
-        if duplicate_company_id is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="company with this name exists.",
-            )
-
-    if iin_changed:
-        candidate_iin = cast(str | None, iin_val["iin"])
-
-        duplicate_company_id = db.scalar(
-            select(Company.id).where(
-                Company.id != id,
-                Company.iin == candidate_iin,
-            )
-        )
-
-        if duplicate_company_id is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="company with this iin exists.",
-            )
 
     for field, value in update_data.items():
         setattr(company, field, value)

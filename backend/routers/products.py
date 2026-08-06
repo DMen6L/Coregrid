@@ -25,7 +25,9 @@ from helpers.transactions import (
     create_or_resolve_supplier,
     get_or_create_tags,
 )
-from helpers.update_helpers import build_unique_values_candidates
+from helpers.update_helpers import (
+    check_unique_constraints,
+)
 from helpers.pricing import calculate_floor_price
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -377,29 +379,14 @@ def patch_product(
         dict[str, object],
         patch_data.model_dump(exclude_unset=True),
     )
-    unique_values, identity_changed = build_unique_values_candidates(
-        ["name", "company_id", "quantity_unit"],
+
+    check_unique_constraints(
+        db,
+        Product,
         update_data,
         product,
+        "uq_products_name_company_unit",
     )
-
-    if identity_changed:
-        candidate_name = cast(str, unique_values["name"])
-        candidate_company_id = cast(int, unique_values["company_id"])
-        candidate_quantity_unit = cast(str, unique_values["quantity_unit"])
-        duplicate_product_id = db.scalar(
-            select(Product.id).where(
-                Product.id != id,
-                Product.name == candidate_name,
-                Product.company_id == candidate_company_id,
-                Product.quantity_unit == candidate_quantity_unit,
-            )
-        )
-        if duplicate_product_id is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="product with given name, company id and quantity unit already exists.",
-            )
 
     tag_names = cast(list[str], update_data.pop("tags", None))
 
@@ -511,32 +498,13 @@ def patch_product_links(
             detail="sale_price cannot be lower than calculated floor price.",
         )
 
-    # Unique constraints check
-    unique_values, identity_changed = build_unique_values_candidates(
-        (
-            "product_id",
-            "supplier_id",
-        ),
+    check_unique_constraints(
+        db,
+        ProductSupplier,
         update_data,
         product_supplier,
+        "uq_product_suppliers_product_supplier",
     )
-    if identity_changed:
-        candidate_product_id = cast(int, unique_values["product_id"])
-        candidate_supplier_id = cast(int, unique_values["supplier_id"])
-
-        duplicate_id = db.scalar(
-            select(ProductSupplier.id).where(
-                ProductSupplier.id != link_id,
-                ProductSupplier.product_id == candidate_product_id,
-                ProductSupplier.supplier_id == candidate_supplier_id,
-            )
-        )
-
-        if duplicate_id is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Product link with such product id and supplier id already exists.",
-            )
 
     for field, value in update_data.items():
         setattr(product_supplier, field, value)
