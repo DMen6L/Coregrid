@@ -9,7 +9,6 @@ from helpers.dependencies import DbSession
 from helpers.pagination import paginate
 from helpers.transactions import commit_or_raise
 from helpers.update_helpers import (
-    check_unique_constraints,
     validate_update,
 )
 
@@ -103,14 +102,14 @@ def patch_company(
     validate_update(
         db=db,
         model=Company,
-        constraint_name="uq_companies_name",
+        constraint_name="uq_companies_workspace_name",
         update_data=update_data,
         update_obj=company,
     )
     validate_update(
         db=db,
         model=Company,
-        constraint_name="uq_companies_iin",
+        constraint_name="uq_companies_workspace_iin",
         update_data=update_data,
         update_obj=company,
     )

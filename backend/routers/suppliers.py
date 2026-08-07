@@ -130,14 +130,14 @@ def patch_supplier(
     validate_update(
         db=db,
         model=Supplier,
-        constraint_name="uq_suppliers_name",
+        constraint_name="uq_suppliers_workspace_name",
         update_data=update_data,
         update_obj=supplier,
     )
     validate_update(
         db=db,
         model=Supplier,
-        constraint_name="uq_suppliers_phone_number",
+        constraint_name="uq_suppliers_workspace_phone_number",
         update_data=update_data,
         update_obj=supplier,
     )

@@ -66,13 +66,13 @@ def create_or_resolve_company(
         check_unique_constraints(
             db=db,
             model=Company,
-            constraint_name="uq_companies_name",
+            constraint_name="uq_companies_workspace_name",
             values=company_data,
         )
         check_unique_constraints(
             db=db,
             model=Company,
-            constraint_name="uq_companies_iin",
+            constraint_name="uq_companies_workspace_iin",
             values=company_data,
         )
         company = Company(**company_data)
@@ -109,13 +109,13 @@ def create_or_resolve_supplier(
         check_unique_constraints(
             db=db,
             model=Supplier,
-            constraint_name="uq_suppliers_name",
+            constraint_name="uq_suppliers_workspace_name",
             values=supplier_data,
         )
         check_unique_constraints(
             db=db,
             model=Supplier,
-            constraint_name="uq_suppliers_phone_number",
+            constraint_name="uq_suppliers_workspace_phone_number",
             values=supplier_data,
         )
 

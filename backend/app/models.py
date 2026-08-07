@@ -27,12 +27,20 @@ product_tags = Table(
     Base.metadata,
     Column(
         "product_id",
-        ForeignKey("products.id", ondelete="CASCADE"),
+        ForeignKey(
+            "products.id",
+            name="fk_product_tags_product_id_products",
+            ondelete="CASCADE",
+        ),
         primary_key=True,
     ),
     Column(
         "tag_id",
-        ForeignKey("tags.id", ondelete="CASCADE"),
+        ForeignKey(
+            "tags.id",
+            name="fk_product_tags_tag_id_tags",
+            ondelete="CASCADE",
+        ),
         primary_key=True,
     ),
 )
@@ -44,12 +52,29 @@ class ProductSupplier(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     product_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("products.id", ondelete="CASCADE"),
+        ForeignKey(
+            "products.id",
+            name="fk_product_suppliers_product_id_products",
+            ondelete="CASCADE",
+        ),
         nullable=False,
     )
     supplier_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("suppliers.id", ondelete="CASCADE"),
+        ForeignKey(
+            "suppliers.id",
+            name="fk_product_suppliers_supplier_id_suppliers",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    workspace_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "workspaces.id",
+            name="fk_product_suppliers_workspace_id_workspaces",
+            ondelete="CASCADE",
+        ),
         nullable=False,
     )
 
@@ -89,7 +114,8 @@ class ProductSupplier(Base):
         UniqueConstraint(
             "product_id",
             "supplier_id",
-            name="uq_product_suppliers_product_supplier",
+            "workspace_id",
+            name="uq_product_suppliers_product_supplier_workspace",
         ),
         CheckConstraint(
             "purchase_price > 0",
@@ -132,6 +158,16 @@ class Company(Base):
     __tablename__ = "companies"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "workspaces.id",
+            name="fk_companies_workspace_id_workspaces",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+
     iin: Mapped[str | None] = mapped_column(
         String(12),
         default=None,
@@ -148,8 +184,8 @@ class Company(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("iin", name="uq_companies_iin"),
-        UniqueConstraint("name", name="uq_companies_name"),
+        UniqueConstraint("workspace_id", "iin", name="uq_companies_workspace_iin"),
+        UniqueConstraint("workspace_id", "name", name="uq_companies_workspace_name"),
     )
 
 
@@ -157,6 +193,16 @@ class Supplier(Base):
     __tablename__ = "suppliers"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "workspaces.id",
+            name="fk_suppliers_workspace_id_workspaces",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+
     name: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
@@ -171,8 +217,12 @@ class Supplier(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("name", name="uq_suppliers_name"),
-        UniqueConstraint("phone_number", name="uq_suppliers_phone_number"),
+        UniqueConstraint("workspace_id", "name", name="uq_suppliers_workspace_name"),
+        UniqueConstraint(
+            "workspace_id",
+            "phone_number",
+            name="uq_suppliers_workspace_phone_number",
+        ),
         CheckConstraint(
             "phone_number ~ '^(8[0-9]{10}|\\+7[0-9]{10})$'",
             name="ck_suppliers_phone_number",
@@ -184,6 +234,16 @@ class Tag(Base):
     __tablename__ = "tags"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "workspaces.id",
+            name="fk_tags_workspace_id_workspaces",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+
     name: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
@@ -199,7 +259,7 @@ class Tag(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("name", name="uq_tags_name"),
+        UniqueConstraint("workspace_id", "name", name="uq_tags_workspace_name"),
         CheckConstraint("char_length(name) > 0", name="ck_tags_name_not_empty"),
     )
 
@@ -210,7 +270,19 @@ class Product(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("companies.id"),
+        ForeignKey(
+            "companies.id",
+            name="fk_products_company_id_companies",
+        ),
+        nullable=False,
+    )
+    workspace_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "workspaces.id",
+            name="fk_products_workspace_id_workspaces",
+            ondelete="CASCADE",
+        ),
         nullable=False,
     )
 
@@ -254,10 +326,11 @@ class Product(Base):
 
     __table_args__ = (
         UniqueConstraint(
+            "workspace_id",
             "name",
             "company_id",
             "quantity_unit",
-            name="uq_products_name_company_unit",
+            name="uq_products_workspace_name_company_unit",
         ),
         CheckConstraint(
             "char_length(quantity_unit) > 0",
@@ -274,6 +347,15 @@ class Restock(Base):
     __tablename__ = "restocks"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "workspaces.id",
+            name="fk_restocks_workspace_id_workspaces",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
     note: Mapped[str | None] = mapped_column(
         String(500),
         nullable=True,
@@ -296,14 +378,30 @@ class RestockLine(Base):
     __tablename__ = "restock_lines"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "workspaces.id",
+            name="fk_restock_lines_workspace_id_workspaces",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
     restock_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("restocks.id", ondelete="CASCADE"),
+        ForeignKey(
+            "restocks.id",
+            name="fk_restock_lines_restock_id_restocks",
+            ondelete="CASCADE",
+        ),
         nullable=False,
     )
     product_supplier_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("product_suppliers.id"),
+        ForeignKey(
+            "product_suppliers.id",
+            name="fk_restock_lines_product_supplier_id_product_suppliers",
+        ),
         nullable=False,
     )
 
@@ -333,9 +431,10 @@ class RestockLine(Base):
             name="ck_restock_lines_restock_quantity",
         ),
         UniqueConstraint(
+            "workspace_id",
             "restock_id",
             "product_supplier_id",
-            name="uq_restock_lines_restock_product_supplier",
+            name="uq_restock_lines_workspace_restock_product_supplier",
         ),
     )
 
@@ -360,6 +459,15 @@ class Sale(Base):
     __tablename__ = "sales"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "workspaces.id",
+            name="fk_sales_workspace_id_workspaces",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
 
     note: Mapped[str | None] = mapped_column(
         String(500),
@@ -383,14 +491,30 @@ class SaleLine(Base):
     __tablename__ = "sale_lines"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "workspaces.id",
+            name="fk_sale_lines_workspace_id_workspaces",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
     sale_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("sales.id", ondelete="CASCADE"),
+        ForeignKey(
+            "sales.id",
+            name="fk_sale_lines_sale_id_sales",
+            ondelete="CASCADE",
+        ),
         nullable=False,
     )
     product_supplier_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("product_suppliers.id"),
+        ForeignKey(
+            "product_suppliers.id",
+            name="fk_sale_lines_product_supplier_id_product_suppliers",
+        ),
         nullable=False,
     )
 
@@ -424,9 +548,10 @@ class SaleLine(Base):
             name="ck_sale_lines_sale_quantity",
         ),
         UniqueConstraint(
+            "workspace_id",
             "sale_id",
             "product_supplier_id",
-            name="uq_sale_lines_sale_product_supplier",
+            name="uq_sale_lines_workspace_sale_product_supplier",
         ),
     )
 
@@ -445,3 +570,111 @@ class SaleLine(Base):
     @property
     def supplier_name(self) -> str | None:
         return self.product_supplier.supplier_name
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+    )
+    email: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+    password_hash: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "char_length(email) > 0",
+            name="ck_users_email_not_empty",
+        ),
+        CheckConstraint(
+            "char_length(password_hash) > 0",
+            name="ck_users_password_not_empty",
+        ),
+        CheckConstraint(
+            "char_length(name) > 0",
+            name="ck_users_name_not_empty",
+        ),
+        UniqueConstraint(
+            "email",
+            name="uq_users_email",
+        ),
+    )
+
+
+class Workspace(Base):
+    __tablename__ = "workspaces"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+    )
+    name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "char_length(name) > 0",
+            name="ck_workspaces_name_not_empty",
+        ),
+        UniqueConstraint(
+            "name",
+            name="uq_workspaces_name",
+        ),
+    )
+
+
+class WorkspaceMembership(Base):
+    __tablename__ = "workspace_memberships"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "users.id",
+            name="fk_workspace_memberships_user_id_users",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    workspace_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "workspaces.id",
+            name="fk_workspace_memberships_workspace_id_workspaces",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "role in ('owner', 'admin', 'manager', 'operator', 'viewer')",
+            name="ck_workspace_membership_role",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "workspace_id",
+            name="uq_workspace_memberships_user_workspace",
+        ),
+    )

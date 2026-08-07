@@ -1,8 +1,10 @@
 from datetime import date, datetime
+import email
 from typing import Annotated, ClassVar, Generic, Literal, TypeVar
 from pydantic import (
     BaseModel,
     ConfigDict,
+    EmailStr,
     Field,
     ValidationInfo,
     field_validator,
@@ -44,6 +46,21 @@ QuantityUnit = Annotated[
 StockStatus = Literal["available", "low", "out"]
 
 ItemT = TypeVar("ItemT")
+
+WEAK_PASSWORDS = frozenset(
+    {
+        "123456789012",
+        "adminadmin",
+        "changeme",
+        "letmein",
+        "password",
+        "password1",
+        "password123",
+        "qwertyuiop",
+        "welcome",
+        "welcome123",
+    }
+)
 
 # ===============
 # VALIDATOR CLASS
@@ -174,6 +191,62 @@ class SaleCreate(BaseModel):
             raise ValueError(
                 "Each product-supplier link may appear only once in a sale."
             )
+        return self
+
+
+class UserCreate(BaseModel):
+    email: EmailStr = Field(max_length=254)
+    name: Name
+    password: str = Field(min_length=12, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, email: str) -> str:
+        return email.casefold()
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, password: str) -> str:
+        if password != password.strip():
+            raise ValueError("password cannot start or end with whitespace")
+
+        if any(ord(char) < 32 or ord(char) == 127 for char in password):
+            raise ValueError("password cannot contain control characters")
+
+        normalized_password = "".join(password.casefold().split())
+        if normalized_password in WEAK_PASSWORDS:
+            raise ValueError("password is too common")
+
+        if password.isdigit():
+            raise ValueError("password cannot contain only digits")
+
+        character_groups = [
+            any(char.islower() for char in password),
+            any(char.isupper() for char in password),
+            any(char.isdigit() for char in password),
+            any(not char.isalnum() and char != " " for char in password),
+        ]
+
+        if len(password) < 16 and sum(character_groups) < 3:
+            raise ValueError(
+                "passwords under 16 characters must include at least three of: "
+                "lowercase letters, uppercase letters, digits, symbols"
+            )
+
+        return password
+
+    @model_validator(mode="after")
+    def password_must_not_include_identity(self):
+        password = self.password.casefold()
+        email_local_part = self.email.split("@", 1)[0].casefold()
+        name = self.name.casefold()
+
+        if email_local_part and email_local_part in password:
+            raise ValueError("password cannot contain the email username")
+
+        if name and name in password:
+            raise ValueError("password cannot contain the user's name")
+
         return self
 
 
@@ -439,6 +512,14 @@ class SaleSummaryResponse(BaseModel):
     lines_count: int
 
 
+class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    email: str
+
+
 # Other Response Schemas
 
 
@@ -477,3 +558,16 @@ class PaginatedResponse(BaseModel, Generic[ItemT]):
     total_pages: int
     has_next: bool
     has_previous: bool
+
+
+# Auth Schemas
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"

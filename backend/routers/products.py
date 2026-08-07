@@ -309,7 +309,7 @@ def add_product_atomic(
     check_unique_constraints(
         db=db,
         model=Product,
-        constraint_name="uq_products_name_company_unit",
+        constraint_name="uq_products_workspace_name_company_unit",
         values=product_schema,
     )
 
@@ -346,7 +346,7 @@ def add_product_atomic(
         check_unique_constraints(
             db=db,
             model=ProductSupplier,
-            constraint_name="uq_product_suppliers_product_supplier",
+            constraint_name="uq_product_suppliers_product_supplier_workspace",
             values=product_supplier_schema,
         )
         product_supplier = ProductSupplier(**product_supplier_schema)
@@ -405,7 +405,7 @@ def patch_product(
     validate_update(
         db=db,
         model=Product,
-        constraint_name="uq_products_name_company_unit",
+        constraint_name="uq_products_workspace_name_company_unit",
         update_data=update_data,
         update_obj=product,
     )
@@ -523,7 +523,7 @@ def patch_product_links(
     validate_update(
         db=db,
         model=ProductSupplier,
-        constraint_name="uq_product_suppliers_product_supplier",
+        constraint_name="uq_product_suppliers_product_supplier_workspace",
         update_data=update_data,
         update_obj=product_supplier,
     )
