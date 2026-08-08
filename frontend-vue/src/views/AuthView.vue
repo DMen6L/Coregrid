@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
 import { ApiRequestError, loginUser, registerUser } from "../lib/api";
 import { saveAuthToken } from "../lib/authSession";
@@ -8,8 +8,9 @@ import { saveAuthToken } from "../lib/authSession";
 type AuthMode = "login" | "register";
 
 const router = useRouter();
+const route = useRoute();
 
-const mode = ref<AuthMode>("login");
+const mode = ref<AuthMode>(getModeFromQuery(route.query.mode));
 const loginEmail = ref("");
 const loginPassword = ref("");
 const registerName = ref("");
@@ -27,7 +28,28 @@ function setMode(nextMode: AuthMode) {
   mode.value = nextMode;
   errorMessage.value = "";
   successMessage.value = "";
+  void router.replace({
+    path: "/auth",
+    query: nextMode === "register" ? { mode: "register" } : { mode: "login" },
+  });
 }
+
+function getModeFromQuery(value: unknown): AuthMode {
+  if (Array.isArray(value)) {
+    return value[0] === "register" ? "register" : "login";
+  }
+
+  return value === "register" ? "register" : "login";
+}
+
+watch(
+  () => route.query.mode,
+  (nextMode) => {
+    mode.value = getModeFromQuery(nextMode);
+    errorMessage.value = "";
+    successMessage.value = "";
+  },
+);
 
 async function submitAuthForm() {
   errorMessage.value = "";

@@ -44,8 +44,17 @@ onUnmounted(() => {
           привязаны к аккаунту и рабочему пространству.
         </p>
         <div class="home-actions">
-          <RouterLink class="btn btn-primary" to="/auth">
+          <RouterLink
+            class="btn btn-outline-primary"
+            :to="{ path: '/auth', query: { mode: 'login' } }"
+          >
             {{ isAuthenticated ? "Открыть вход" : "Войти" }}
+          </RouterLink>
+          <RouterLink
+            class="btn btn-primary"
+            :to="{ path: '/auth', query: { mode: 'register' } }"
+          >
+            Регистрация
           </RouterLink>
           <RouterLink class="btn btn-outline-primary" to="/dashboard">
             Дэшборд

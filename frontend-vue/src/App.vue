@@ -2,14 +2,12 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
 
-import ApiBaseSelector from "./components/ApiBaseSelector.vue";
 import {
   AUTH_SESSION_CHANGE_EVENT,
   clearAuthToken,
   getAuthToken,
 } from "./lib/authSession";
 
-const appMessage = ref("");
 const route = useRoute();
 const router = useRouter();
 const authToken = ref(getAuthToken());
@@ -25,17 +23,13 @@ const isStockRouteActive = computed(() =>
 );
 const isAuthenticated = computed(() => Boolean(authToken.value));
 
-function handleApiBaseChange(baseApi: string) {
-  appMessage.value = `API: ${baseApi}`;
-}
-
 function syncAuthSession() {
   authToken.value = getAuthToken();
 }
 
 async function signOut() {
   clearAuthToken();
-  await router.push("/auth");
+  await router.push({ path: "/auth", query: { mode: "login" } });
 }
 
 onMounted(() => {
@@ -120,8 +114,6 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <ApiBaseSelector @api-base-change="handleApiBaseChange" />
-
         <div class="navbar-auth ms-lg-3 mt-3 mt-lg-0">
           <button
             v-if="isAuthenticated"
@@ -131,25 +123,26 @@ onUnmounted(() => {
           >
             Выйти
           </button>
-          <RouterLink v-else class="btn btn-primary btn-sm" to="/auth">
-            Войти
-          </RouterLink>
+          <div v-else class="navbar-auth-actions">
+            <RouterLink
+              class="btn btn-outline-primary btn-sm"
+              :to="{ path: '/auth', query: { mode: 'login' } }"
+            >
+              Войти
+            </RouterLink>
+            <RouterLink
+              class="btn btn-primary btn-sm"
+              :to="{ path: '/auth', query: { mode: 'register' } }"
+            >
+              Регистрация
+            </RouterLink>
+          </div>
         </div>
       </div>
     </div>
   </nav>
 
   <main class="container-fluid px-0">
-    <div class="container-fluid px-4 pt-4">
-      <div
-        class="alert alert-info mb-0"
-        :class="{ 'd-none': !appMessage }"
-        role="status"
-      >
-        {{ appMessage }}
-      </div>
-    </div>
-
     <RouterView />
   </main>
 </template>
