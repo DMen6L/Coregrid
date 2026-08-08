@@ -1,17 +1,14 @@
-from typing import Annotated
-
-from fastapi import APIRouter, HTTPException, Path, status
+from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from app.models import User
 from app.schemas import TokenResponse, UserCreate, UserLogin, UserResponse
 from helpers.auth import (
     create_access_token,
-    decode_access_token,
     hash_password,
     verify_password,
 )
-from helpers.dependencies import DbSession
+from helpers.dependencies import CurrentUser, DbSession
 
 from helpers.transactions import commit_or_raise
 from helpers.update_helpers import check_unique_constraints
@@ -76,18 +73,9 @@ def login(db: DbSession, login_data: UserLogin):
 
 
 @router.get(
-    "/me/{token}",
+    "/me",
     response_model=UserResponse,
     status_code=status.HTTP_200_OK,
 )
-def get_user(db: DbSession, token: Annotated[str, Path(min_length=1)]):
-    user_id = decode_access_token(token)
-    user = db.get(User, user_id)
-
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User could not be extracted using the provided token",
-        )
-
-    return user
+def get_user(current_user: CurrentUser):
+    return current_user

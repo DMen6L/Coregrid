@@ -1,18 +1,19 @@
 from typing import Annotated, cast
 
-from fastapi import APIRouter, HTTPException, Path, Query, status
-from sqlalchemy import Integer, func, select, type_coerce
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from sqlalchemy import Integer, func, or_, select, type_coerce
 
-from app.models import Company
+from app.models import Company, WorkspaceMembership
 from app.schemas import CompanyCreate, CompanyResponse, CompanyUpdate, PaginatedResponse
-from helpers.dependencies import DbSession
+from helpers.dependencies import DbSession, require_workspace_membership
 from helpers.pagination import paginate
 from helpers.transactions import commit_or_raise
 from helpers.update_helpers import (
+    check_unique_constraints,
     validate_update,
 )
 
-router = APIRouter(prefix="/companies", tags=["companies"])
+router = APIRouter(prefix="/workspaces/{workspace_id}/companies", tags=["companies"])
 
 
 @router.get(
@@ -22,18 +23,27 @@ router = APIRouter(prefix="/companies", tags=["companies"])
 )
 def get_companies(
     db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     search: Annotated[str | None, Query(max_length=100)] = None,
-):
-
-    statement = select(Company).order_by(Company.id)
-    count_statement = select(type_coerce(func.count(Company.id), Integer)).select_from(
-        Company
+) -> PaginatedResponse[CompanyResponse]:
+    statement = (
+        select(Company)
+        .order_by(Company.id)
+        .where(Company.workspace_id == membership.workspace_id)
+    )
+    count_statement = (
+        select(type_coerce(func.count(Company.id), Integer))
+        .select_from(Company)
+        .where(Company.workspace_id == membership.workspace_id)
     )
 
     if search and (search := search.strip()):
-        condition = Company.name.ilike(f"%{search}%")
+        condition = or_(
+            Company.name.ilike(f"%{search}%"),
+            Company.iin.ilike(f"%{search}%"),
+        )
 
         statement = statement.where(condition)
         count_statement = count_statement.where(condition)
@@ -48,9 +58,20 @@ def get_companies(
     )
 
 
-@router.get("/{id}", response_model=CompanyResponse, status_code=status.HTTP_200_OK)
-def get_company_by_id(db: DbSession, id: Annotated[int, Path(gt=0)]) -> Company:
-    company = db.get(Company, id)
+@router.get(
+    "/{company_id}", response_model=CompanyResponse, status_code=status.HTTP_200_OK
+)
+def get_company_by_id(
+    db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    company_id: Annotated[int, Path(gt=0)],
+) -> Company:
+    company = db.scalar(
+        select(Company).where(
+            Company.id == company_id,
+            Company.workspace_id == membership.workspace_id,
+        )
+    )
 
     if company is None:
         raise HTTPException(
@@ -66,8 +87,30 @@ def get_company_by_id(db: DbSession, id: Annotated[int, Path(gt=0)]) -> Company:
     response_model=CompanyResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def add_company(db: DbSession, company_data: CompanyCreate):
-    company = Company(**company_data.model_dump())
+def add_company(
+    db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    company_data: CompanyCreate,
+) -> Company:
+    company_schema = company_data.model_dump()
+
+    check_unique_constraints(
+        db=db,
+        model=Company,
+        constraint_name="uq_companies_workspace_name",
+        values=company_schema,
+    )
+    check_unique_constraints(
+        db=db,
+        model=Company,
+        constraint_name="uq_companies_workspace_iin",
+        values=company_schema,
+    )
+
+    company = Company(
+        **company_schema,
+        workspace_id=membership.workspace_id,
+    )
 
     db.add(company)
     commit_or_raise(db)
@@ -77,17 +120,22 @@ def add_company(db: DbSession, company_data: CompanyCreate):
 
 
 @router.patch(
-    "/{id}",
+    "/{company_id}",
     response_model=CompanyResponse,
     status_code=status.HTTP_200_OK,
 )
 def patch_company(
     db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
     patch_data: CompanyUpdate,
-    id: Annotated[int, Path(gt=0)],
+    company_id: Annotated[int, Path(gt=0)],
 ) -> Company:
-    company = db.get(Company, id)
-
+    company = db.scalar(
+        select(Company).where(
+            Company.id == company_id,
+            Company.workspace_id == membership.workspace_id,
+        )
+    )
     if company is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -8,7 +8,16 @@ from app.type_definitions import BestSalesMode
 
 from helpers.dependencies import DbSession
 from helpers.services import build_summaries
-from routers import companies, products, restocks, sales, suppliers, tags, auth
+from routers import (
+    companies,
+    products,
+    restocks,
+    sales,
+    suppliers,
+    tags,
+    auth,
+    workspaces,
+)
 
 
 LOCAL_DEVELOPMENT_ORIGINS = [
@@ -34,6 +43,7 @@ app.include_router(restocks.router)
 app.include_router(sales.router)
 app.include_router(tags.router)
 app.include_router(auth.router)
+app.include_router(workspaces.router)
 
 
 @app.get("/")

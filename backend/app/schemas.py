@@ -1,5 +1,4 @@
 from datetime import date, datetime
-import email
 from typing import Annotated, ClassVar, Generic, Literal, TypeVar
 from pydantic import (
     BaseModel,
@@ -518,6 +517,14 @@ class UserResponse(BaseModel):
     id: int
     name: str
     email: str
+
+
+class WorkspaceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    role: str
 
 
 # Other Response Schemas
