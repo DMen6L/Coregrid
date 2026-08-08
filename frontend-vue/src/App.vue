@@ -52,7 +52,7 @@ onUnmounted(() => {
 <template>
   <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom">
     <div class="container-fluid">
-      <RouterLink class="navbar-brand text-primary fs-4 fw-bold" to="/dashboard">
+      <RouterLink class="navbar-brand text-primary fs-4 fw-bold" to="/">
         Coregrid
       </RouterLink>
 

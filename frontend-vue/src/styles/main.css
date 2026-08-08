@@ -84,6 +84,121 @@ body {
   min-width: 0;
 }
 
+.home-page {
+  display: grid;
+  gap: 1.25rem;
+  padding: 2rem 1rem 3rem;
+}
+
+.home-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(18rem, 0.6fr);
+  gap: 1rem;
+  align-items: stretch;
+  max-width: 72rem;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.home-intro,
+.home-access-panel {
+  min-width: 0;
+  padding: 1.25rem;
+  background: #fff;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.5rem;
+  box-shadow: 0 0.5rem 1.25rem rgba(33, 37, 41, 0.06);
+}
+
+.home-kicker {
+  margin-bottom: 0.35rem;
+  color: var(--bs-primary);
+  font-weight: 700;
+}
+
+.home-intro h1 {
+  max-width: 46rem;
+  margin-bottom: 0.75rem;
+  font-size: 2.75rem;
+  line-height: 1.05;
+}
+
+.home-summary {
+  max-width: 42rem;
+  color: var(--bs-secondary-color);
+  font-size: 1rem;
+}
+
+.home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.home-access-panel h2 {
+  margin-bottom: 1rem;
+  font-size: 1.15rem;
+}
+
+.home-access-list {
+  display: grid;
+  gap: 0.85rem;
+  margin: 0;
+}
+
+.home-access-list div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.home-access-list dt {
+  color: var(--bs-secondary-color);
+  font-size: 0.85rem;
+}
+
+.home-access-list dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.home-sections {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  max-width: 72rem;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.home-section-link {
+  display: grid;
+  gap: 0.3rem;
+  min-height: 6rem;
+  padding: 1rem;
+  color: var(--bs-body-color);
+  text-decoration: none;
+  background: #fff;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.5rem;
+  box-shadow: 0 0.35rem 1rem rgba(33, 37, 41, 0.04);
+}
+
+.home-section-link:hover,
+.home-section-link:focus-visible {
+  color: var(--bs-primary);
+  border-color: rgba(13, 110, 253, 0.45);
+}
+
+.home-section-link span {
+  font-weight: 700;
+}
+
+.home-section-link small {
+  color: var(--bs-secondary-color);
+  line-height: 1.35;
+}
+
 .dashboard-card {
   min-height: 9rem;
   border: 1px solid var(--bs-border-color);
@@ -721,7 +836,27 @@ body {
   border-radius: 0.5rem;
 }
 
+@media (max-width: 991.98px) {
+  .home-main,
+  .home-sections {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 575.98px) {
+  .home-page {
+    padding: 1rem 0.75rem 2rem;
+  }
+
+  .home-intro h1 {
+    font-size: 2rem;
+  }
+
+  .home-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .products-toolbar {
     align-items: stretch !important;
   }

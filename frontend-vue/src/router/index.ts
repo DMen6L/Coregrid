@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import CompaniesView from "../views/CompaniesView.vue";
 import AuthView from "../views/AuthView.vue";
 import DashboardView from "../views/DashboardView.vue";
+import HomeView from "../views/HomeView.vue";
 import ProductsView from "../views/ProductsView.vue";
 import RestocksView from "../views/RestocksView.vue";
 import SalesView from "../views/SalesView.vue";
@@ -13,7 +14,11 @@ const router = createRouter({
   linkActiveClass: "active",
   linkExactActiveClass: "active",
   routes: [
-    { path: "/", redirect: "/dashboard" },
+    {
+      path: "/",
+      name: "home",
+      component: HomeView,
+    },
     {
       path: "/auth",
       name: "auth",
