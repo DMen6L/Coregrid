@@ -1,4 +1,5 @@
 import { getBaseApi } from "./apiBase";
+import { getAuthToken } from "./authSession";
 import type {
   BestSalesMode,
   CompanyCreatePayload,
@@ -25,6 +26,10 @@ import type {
   SupplierUpdatePayload,
   SummariesResponse,
   TagSummaryResponse,
+  TokenResponse,
+  UserCreatePayload,
+  UserLoginPayload,
+  UserResponse,
 } from "../types/api";
 
 export const FIRST_PAGE = 1;
@@ -49,6 +54,11 @@ export async function request<T>(path: string, options: RequestInit = {}) {
     headers.set("Content-Type", "application/json");
   }
 
+  const authToken = getAuthToken();
+  if (authToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${authToken}`);
+  }
+
   const response = await fetch(`${getBaseApi()}${path}`, {
     ...options,
     headers,
@@ -60,6 +70,20 @@ export async function request<T>(path: string, options: RequestInit = {}) {
   }
 
   return data as T;
+}
+
+export function registerUser(payload: UserCreatePayload) {
+  return request<UserResponse>("/auth/register", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function loginUser(payload: UserLoginPayload) {
+  return request<TokenResponse>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getSummaries({

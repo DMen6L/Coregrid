@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 
 import CompaniesView from "../views/CompaniesView.vue";
+import AuthView from "../views/AuthView.vue";
 import DashboardView from "../views/DashboardView.vue";
 import ProductsView from "../views/ProductsView.vue";
 import RestocksView from "../views/RestocksView.vue";
@@ -13,6 +14,11 @@ const router = createRouter({
   linkExactActiveClass: "active",
   routes: [
     { path: "/", redirect: "/dashboard" },
+    {
+      path: "/auth",
+      name: "auth",
+      component: AuthView,
+    },
     {
       path: "/dashboard",
       name: "dashboard",

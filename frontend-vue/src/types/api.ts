@@ -38,6 +38,28 @@ export interface SummariesResponse {
   top_suppliers: TopSupplier[];
 }
 
+export interface UserCreatePayload {
+  email: string;
+  name: string;
+  password: string;
+}
+
+export interface UserLoginPayload {
+  email: string;
+  password: string;
+}
+
+export interface UserResponse {
+  id: number;
+  name: string;
+  email: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: "bearer";
+}
+
 export interface ProductSummaryResponse {
   id: number;
   name: string;

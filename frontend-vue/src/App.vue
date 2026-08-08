@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { RouterView, useRoute } from "vue-router";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import { RouterView, useRoute, useRouter } from "vue-router";
 
 import ApiBaseSelector from "./components/ApiBaseSelector.vue";
+import {
+  AUTH_SESSION_CHANGE_EVENT,
+  clearAuthToken,
+  getAuthToken,
+} from "./lib/authSession";
 
 const appMessage = ref("");
 const route = useRoute();
+const router = useRouter();
+const authToken = ref(getAuthToken());
 
 const listRouteNames = new Set(["products", "companies", "suppliers"]);
 const stockRouteNames = new Set(["restocks", "sales"]);
@@ -16,10 +23,30 @@ const isListRouteActive = computed(() =>
 const isStockRouteActive = computed(() =>
   stockRouteNames.has(String(route.name ?? "")),
 );
+const isAuthenticated = computed(() => Boolean(authToken.value));
 
 function handleApiBaseChange(baseApi: string) {
   appMessage.value = `API: ${baseApi}`;
 }
+
+function syncAuthSession() {
+  authToken.value = getAuthToken();
+}
+
+async function signOut() {
+  clearAuthToken();
+  await router.push("/auth");
+}
+
+onMounted(() => {
+  window.addEventListener(AUTH_SESSION_CHANGE_EVENT, syncAuthSession);
+  window.addEventListener("storage", syncAuthSession);
+});
+
+onUnmounted(() => {
+  window.removeEventListener(AUTH_SESSION_CHANGE_EVENT, syncAuthSession);
+  window.removeEventListener("storage", syncAuthSession);
+});
 </script>
 
 <template>
@@ -94,6 +121,20 @@ function handleApiBaseChange(baseApi: string) {
         </div>
 
         <ApiBaseSelector @api-base-change="handleApiBaseChange" />
+
+        <div class="navbar-auth ms-lg-3 mt-3 mt-lg-0">
+          <button
+            v-if="isAuthenticated"
+            class="btn btn-outline-secondary btn-sm"
+            type="button"
+            @click="signOut"
+          >
+            Выйти
+          </button>
+          <RouterLink v-else class="btn btn-primary btn-sm" to="/auth">
+            Войти
+          </RouterLink>
+        </div>
       </div>
     </div>
   </nav>
