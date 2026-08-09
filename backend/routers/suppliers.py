@@ -12,7 +12,10 @@ from app.schemas import (
     SupplierSummaryResponse,
     SupplierUpdate,
 )
-from helpers.dependencies import DbSession, require_workspace_membership
+from helpers.dependencies import (
+    DbSession,
+    require_workspace_permission,
+)
 from helpers.pagination import aggr_paginate
 from helpers.transactions import commit_or_raise
 from helpers.update_helpers import (
@@ -31,7 +34,10 @@ router = APIRouter(prefix="/workspaces/{workspace_id}/suppliers", tags=["supplie
 )
 def get_suppliers(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("inventory.read")),
+    ],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     search: Annotated[str | None, Query(max_length=100)] = None,
@@ -78,7 +84,10 @@ def get_suppliers(
 )
 def get_supplier_by_id(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("inventory.read")),
+    ],
     supplier_id: Annotated[int, Path(gt=0)],
 ) -> Supplier:
     statement = (
@@ -112,7 +121,10 @@ def get_supplier_by_id(
 )
 def add_supplier(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("catalog.write")),
+    ],
     supplier_data: SupplierCreate,
 ) -> Supplier:
     supplier_schema = supplier_data.model_dump()
@@ -147,7 +159,10 @@ def add_supplier(
 )
 def patch_supplier(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("catalog.write")),
+    ],
     patch_data: SupplierUpdate,
     supplier_id: Annotated[
         int,

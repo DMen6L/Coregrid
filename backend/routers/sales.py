@@ -7,7 +7,10 @@ from sqlalchemy.orm import selectinload
 
 from app.models import ProductSupplier, Sale, SaleLine, WorkspaceMembership
 from app.schemas import PaginatedResponse, SaleCreate, SaleResponse, SaleSummaryResponse
-from helpers.dependencies import DbSession, require_workspace_membership
+from helpers.dependencies import (
+    DbSession,
+    require_workspace_permission,
+)
 from helpers.pagination import aggr_paginate
 from helpers.transactions import commit_or_raise
 
@@ -22,7 +25,10 @@ router = APIRouter(prefix="/workspaces/{workspace_id}/sales", tags=["sales"])
 )
 def get_sales(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("inventory.read")),
+    ],
     date_from: Annotated[date | None, Query(alias="from")] = None,
     date_to: Annotated[date | None, Query(alias="to")] = None,
     page: Annotated[int, Query(ge=1)] = 1,
@@ -86,7 +92,10 @@ def get_sales(
 )
 def get_sale_by_id(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("inventory.read")),
+    ],
     sale_id: Annotated[int, Path(gt=0)],
 ):
     statement = (
@@ -119,7 +128,10 @@ def get_sale_by_id(
 @router.post("", response_model=SaleResponse, status_code=201)
 def add_sale(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("stock_movement.create")),
+    ],
     sale_data: SaleCreate,
 ) -> Sale:
     product_supplier_ids = {line.product_supplier_id for line in sale_data.lines}

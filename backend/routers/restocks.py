@@ -12,7 +12,10 @@ from app.schemas import (
     RestockResponse,
     RestockSummaryResponse,
 )
-from helpers.dependencies import DbSession, require_workspace_membership
+from helpers.dependencies import (
+    DbSession,
+    require_workspace_permission,
+)
 from helpers.pagination import aggr_paginate
 from helpers.transactions import commit_or_raise
 
@@ -27,7 +30,10 @@ router = APIRouter(prefix="/workspaces/{workspace_id}/restocks", tags=["restocks
 )
 def get_restocks(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("inventory.read")),
+    ],
     date_from: Annotated[
         date | None,
         Query(alias="from"),
@@ -100,9 +106,12 @@ def get_restocks(
 )
 def get_restock_by_id(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("inventory.read")),
+    ],
     restock_id: Annotated[int, Path(gt=0)],
-):
+) -> Restock:
     statement = (
         select(Restock)
         .options(
@@ -136,7 +145,10 @@ def get_restock_by_id(
 )
 def add_restock(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("stock_movement.create")),
+    ],
     restock_data: RestockCreate,
 ) -> Restock:
     product_supplier_ids = {line.product_supplier_id for line in restock_data.lines}

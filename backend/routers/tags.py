@@ -5,7 +5,10 @@ from sqlalchemy import func, select
 
 from app.models import Product, Tag, WorkspaceMembership
 from app.schemas import PaginatedResponse, TagSummaryResponse
-from helpers.dependencies import DbSession, require_workspace_membership
+from helpers.dependencies import (
+    DbSession,
+    require_workspace_permission,
+)
 from helpers.pagination import aggr_paginate
 from helpers.transactions import commit_or_raise
 
@@ -19,7 +22,10 @@ router = APIRouter(prefix="/workspaces/{workspace_id}/tags", tags=["tags"])
 )
 def get_tags_by_name(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("inventory.read")),
+    ],
     search: Annotated[str | None, Query(min_length=2, max_length=100)] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -65,7 +71,10 @@ def get_tags_by_name(
 )
 def delete_tag(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("catalog.write")),
+    ],
     tag_id: Annotated[int, Path(gt=0)],
 ) -> None:
     tag = db.scalar(

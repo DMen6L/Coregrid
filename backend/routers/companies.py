@@ -5,7 +5,10 @@ from sqlalchemy import Integer, func, or_, select, type_coerce
 
 from app.models import Company, WorkspaceMembership
 from app.schemas import CompanyCreate, CompanyResponse, CompanyUpdate, PaginatedResponse
-from helpers.dependencies import DbSession, require_workspace_membership
+from helpers.dependencies import (
+    DbSession,
+    require_workspace_permission,
+)
 from helpers.pagination import paginate
 from helpers.transactions import commit_or_raise
 from helpers.update_helpers import (
@@ -23,7 +26,10 @@ router = APIRouter(prefix="/workspaces/{workspace_id}/companies", tags=["compani
 )
 def get_companies(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("inventory.read")),
+    ],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     search: Annotated[str | None, Query(max_length=100)] = None,
@@ -59,11 +65,16 @@ def get_companies(
 
 
 @router.get(
-    "/{company_id}", response_model=CompanyResponse, status_code=status.HTTP_200_OK
+    "/{company_id}",
+    response_model=CompanyResponse,
+    status_code=status.HTTP_200_OK,
 )
 def get_company_by_id(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("inventory.read")),
+    ],
     company_id: Annotated[int, Path(gt=0)],
 ) -> Company:
     company = db.scalar(
@@ -89,10 +100,14 @@ def get_company_by_id(
 )
 def add_company(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("catalog.write")),
+    ],
     company_data: CompanyCreate,
 ) -> Company:
     company_schema = company_data.model_dump()
+    company_schema["workspace_id"] = membership.workspace_id
 
     check_unique_constraints(
         db=db,
@@ -107,10 +122,7 @@ def add_company(
         values=company_schema,
     )
 
-    company = Company(
-        **company_schema,
-        workspace_id=membership.workspace_id,
-    )
+    company = Company(**company_schema)
 
     db.add(company)
     commit_or_raise(db)
@@ -126,7 +138,10 @@ def add_company(
 )
 def patch_company(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("catalog.write")),
+    ],
     patch_data: CompanyUpdate,
     company_id: Annotated[int, Path(gt=0)],
 ) -> Company:

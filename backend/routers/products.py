@@ -24,7 +24,10 @@ from app.schemas import (
     ProductSupplierUpdate,
     ProductUpdate,
 )
-from helpers.dependencies import DbSession, require_workspace_membership
+from helpers.dependencies import (
+    DbSession,
+    require_workspace_permission,
+)
 from helpers.pagination import aggr_paginate
 from helpers.transactions import (
     commit_or_raise,
@@ -49,7 +52,10 @@ router = APIRouter(prefix="/workspaces/{workspace_id}/products", tags=["products
 )
 def get_products_by_name(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("inventory.read")),
+    ],
     search: Annotated[str | None, Query(min_length=2, max_length=100)] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -177,7 +183,10 @@ def get_products_by_name(
 )
 def get_product_by_id(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("inventory.read")),
+    ],
     product_id: Annotated[int, Path(gt=0)],
 ) -> Product:
     statement = (
@@ -210,7 +219,10 @@ def get_product_by_id(
 )
 def app_product(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("catalog.write")),
+    ],
     product_data: ProductCreate,
 ) -> Product:
     tags = get_or_create_tags(
@@ -266,7 +278,10 @@ def app_product(
 )
 def add_supplier_links(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("catalog.write")),
+    ],
     supplier_links_data: Annotated[list[ProductSupplierCreate], Body(min_length=1)],
     product_id: Annotated[int, Path(gt=0)],
 ):
@@ -368,7 +383,10 @@ def add_supplier_links(
 )
 def add_product_atomic(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("catalog.write")),
+    ],
     data: ProductAtomicCreate,
 ) -> Product:
     company_id = create_or_resolve_company(
@@ -468,7 +486,10 @@ def add_product_atomic(
 )
 def patch_product(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("catalog.write")),
+    ],
     product_id: Annotated[int, Path(gt=0)],
     patch_data: ProductUpdate,
 ) -> Product:
@@ -544,7 +565,10 @@ def patch_product(
 )
 def patch_product_links(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("catalog.write")),
+    ],
     patch_data: ProductSupplierUpdate,
     product_id: Annotated[int, Path(gt=0)],
     link_id: Annotated[int, Path(gt=0)],
@@ -662,7 +686,10 @@ def patch_product_links(
 )
 def delete_product_link(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("catalog.write")),
+    ],
     product_id: Annotated[int, Path(gt=0)],
     link_id: Annotated[int, Path(gt=0)],
 ) -> None:

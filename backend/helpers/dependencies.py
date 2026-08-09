@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.models import User, WorkspaceMembership
+from app.type_definitions import ROLE_PERMISSIONS, Permissions
 from helpers.auth import decode_access_token
 
 
@@ -59,3 +60,23 @@ def require_workspace_membership(
         )
 
     return membership
+
+
+def require_workspace_permission(
+    permission: Permissions,
+):
+    def dependency(
+        membership: Annotated[
+            WorkspaceMembership,
+            Depends(require_workspace_membership),
+        ],
+    ) -> WorkspaceMembership:
+        if permission not in ROLE_PERMISSIONS.get(membership.role, set()):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient workspace permission",
+            )
+
+        return membership
+
+    return dependency

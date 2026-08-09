@@ -7,7 +7,10 @@ from app.models import WorkspaceMembership
 from app.schemas import SummariesResponse
 from app.type_definitions import BestSalesMode
 
-from helpers.dependencies import DbSession, require_workspace_membership
+from helpers.dependencies import (
+    DbSession,
+    require_workspace_permission,
+)
 from helpers.services import build_summaries
 from routers import (
     companies,
@@ -59,7 +62,10 @@ def read_root() -> dict[str, str]:
 )
 def get_summaries(
     db: DbSession,
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("inventory.read")),
+    ],
     days: Annotated[int, Query(ge=7, le=365)] = 7,
     best_sales_mode: Annotated[BestSalesMode, Query] = "quantity",
 ) -> SummariesResponse:
