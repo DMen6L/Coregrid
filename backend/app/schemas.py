@@ -249,6 +249,10 @@ class UserCreate(BaseModel):
         return self
 
 
+class WorkspaceCreate(BaseModel):
+    name: Name
+
+
 # =====================
 # Atomic create schemas
 # =====================

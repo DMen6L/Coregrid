@@ -60,6 +60,16 @@ export interface TokenResponse {
   token_type: "bearer";
 }
 
+export interface WorkspaceResponse {
+  id: number;
+  name: string;
+  role: string;
+}
+
+export interface WorkspaceCreatePayload {
+  name: string;
+}
+
 export interface ProductSummaryResponse {
   id: number;
   name: string;

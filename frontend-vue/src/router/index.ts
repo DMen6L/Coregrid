@@ -8,6 +8,7 @@ import ProductsView from "../views/ProductsView.vue";
 import RestocksView from "../views/RestocksView.vue";
 import SalesView from "../views/SalesView.vue";
 import SuppliersView from "../views/SuppliersView.vue";
+import { getAuthToken } from "../lib/authSession";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -28,33 +29,59 @@ const router = createRouter({
       path: "/dashboard",
       name: "dashboard",
       component: DashboardView,
+      meta: { requiresAuth: true, requiresWorkspace: true },
     },
     {
       path: "/products",
       name: "products",
       component: ProductsView,
+      meta: { requiresAuth: true, requiresWorkspace: true },
     },
     {
       path: "/companies",
       name: "companies",
       component: CompaniesView,
+      meta: { requiresAuth: true, requiresWorkspace: true },
     },
     {
       path: "/suppliers",
       name: "suppliers",
       component: SuppliersView,
+      meta: { requiresAuth: true, requiresWorkspace: true },
     },
     {
       path: "/restocks",
       name: "restocks",
       component: RestocksView,
+      meta: { requiresAuth: true, requiresWorkspace: true },
     },
     {
       path: "/sales",
       name: "sales",
       component: SalesView,
+      meta: { requiresAuth: true, requiresWorkspace: true },
     },
   ],
+});
+
+router.beforeEach((to) => {
+  const isAuthenticated = Boolean(getAuthToken());
+
+  if (to.meta.requiresAuth && !isAuthenticated) {
+    return {
+      path: "/auth",
+      query: {
+        mode: "login",
+        redirect: to.fullPath,
+      },
+    };
+  }
+
+  if (to.name === "auth" && isAuthenticated) {
+    return { path: "/dashboard" };
+  }
+
+  return true;
 });
 
 export default router;

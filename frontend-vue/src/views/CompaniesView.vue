@@ -6,6 +6,7 @@ import { useRoute, useRouter } from "vue-router";
 import CompanyDetailModal from "../components/CompanyDetailModal.vue";
 import { createCompany, DEFAULT_PAGE_SIZE, FIRST_PAGE, getCompanies } from "../lib/api";
 import { formatCount, getCreateErrorMessage, getRequestErrorMessage } from "../lib/format";
+import { activeWorkspaceId } from "../lib/workspaceSession";
 import type { CompanyCreatePayload, CompanyResponse, PaginatedResponse } from "../types/api";
 
 const EMPTY_COMPANIES_PAGE: PaginatedResponse<CompanyResponse> = {
@@ -38,6 +39,7 @@ const currentPage = computed(() => currentPageFromRoute());
 const companiesQuery = useQuery({
   queryKey: computed(() => [
     "companies",
+    activeWorkspaceId.value,
     "list",
     currentSearch.value,
     currentPage.value,
@@ -48,6 +50,7 @@ const companiesQuery = useQuery({
     page: currentPage.value,
     pageSize: DEFAULT_PAGE_SIZE,
   }),
+  enabled: computed(() => Boolean(activeWorkspaceId.value)),
 });
 const createCompanyMutation = useMutation({
   mutationFn: createCompanyFromForm,
@@ -156,7 +159,7 @@ async function handleCompanyCreateSuccess(company: CompanyResponse) {
     page: FIRST_PAGE,
   });
 
-  await queryClient.invalidateQueries({ queryKey: ["companies"] });
+  await queryClient.invalidateQueries({ queryKey: ["companies", activeWorkspaceId.value] });
 }
 
 function resetCompanyCreateForm() {

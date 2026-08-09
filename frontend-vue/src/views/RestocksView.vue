@@ -12,6 +12,7 @@ import {
   formatDateTime,
   getRequestErrorMessage,
 } from "../lib/format";
+import { activeWorkspaceId } from "../lib/workspaceSession";
 import type { PaginatedResponse, RestockSummaryResponse } from "../types/api";
 
 const EMPTY_RESTOCKS_PAGE: PaginatedResponse<RestockSummaryResponse> = {
@@ -42,6 +43,7 @@ const currentPage = computed(() => currentPageFromRoute());
 const restocksQuery = useQuery({
   queryKey: computed(() => [
     "restocks",
+    activeWorkspaceId.value,
     "list",
     currentDateFrom.value,
     currentDateTo.value,
@@ -54,6 +56,7 @@ const restocksQuery = useQuery({
     page: currentPage.value,
     pageSize: DEFAULT_PAGE_SIZE,
   }),
+  enabled: computed(() => Boolean(activeWorkspaceId.value)),
 });
 
 const restocksPage = computed(() => restocksQuery.data.value || EMPTY_RESTOCKS_PAGE);
@@ -158,8 +161,8 @@ async function handleRestockCreated() {
   });
 
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["restocks"] }),
-    queryClient.invalidateQueries({ queryKey: ["products"] }),
+    queryClient.invalidateQueries({ queryKey: ["restocks", activeWorkspaceId.value] }),
+    queryClient.invalidateQueries({ queryKey: ["products", activeWorkspaceId.value] }),
     queryClient.invalidateQueries({ queryKey: ["summaries"] }),
   ]);
 }

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 
 import { getCompany, patchCompany } from "../lib/api";
 import { formatCount, getCreateErrorMessage, getRequestErrorMessage } from "../lib/format";
+import { activeWorkspaceId } from "../lib/workspaceSession";
 import type { CompanyResponse, CompanyUpdatePayload } from "../types/api";
 
 const props = defineProps<{
@@ -26,9 +27,9 @@ const editForm = reactive({
 
 const detailId = computed(() => Number(props.companyId || 0));
 const companyQuery = useQuery({
-  queryKey: computed(() => ["companies", "detail", detailId.value]),
+  queryKey: computed(() => ["companies", activeWorkspaceId.value, "detail", detailId.value]),
   queryFn: () => getCompany(detailId.value),
-  enabled: computed(() => props.isOpen && detailId.value > 0),
+  enabled: computed(() => Boolean(activeWorkspaceId.value) && props.isOpen && detailId.value > 0),
 });
 const updateCompanyMutation = useMutation({
   mutationFn: updateCompanyFromForm,
@@ -108,11 +109,14 @@ function updateCompanyFromForm() {
 }
 
 async function handleCompanyUpdateSuccess(updatedCompany: CompanyResponse) {
-  queryClient.setQueryData(["companies", "detail", updatedCompany.id], updatedCompany);
+  queryClient.setQueryData(
+    ["companies", activeWorkspaceId.value, "detail", updatedCompany.id],
+    updatedCompany,
+  );
   isEditing.value = false;
   editError.value = "";
 
-  await queryClient.invalidateQueries({ queryKey: ["companies"] });
+  await queryClient.invalidateQueries({ queryKey: ["companies", activeWorkspaceId.value] });
   emit("saved", updatedCompany);
 }
 

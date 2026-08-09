@@ -1,11 +1,18 @@
 from typing import Annotated, cast
 
-from fastapi import APIRouter, Body, HTTPException, Path, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from sqlalchemy import String, case, func, or_, select
 from sqlalchemy.dialects.postgresql import aggregate_order_by, array
 from sqlalchemy.orm import selectinload
 
-from app.models import Company, Product, ProductSupplier, Supplier, Tag
+from app.models import (
+    Company,
+    Product,
+    ProductSupplier,
+    Supplier,
+    Tag,
+    WorkspaceMembership,
+)
 from app.schemas import (
     PaginatedResponse,
     ProductAtomicCreate,
@@ -17,7 +24,7 @@ from app.schemas import (
     ProductSupplierUpdate,
     ProductUpdate,
 )
-from helpers.dependencies import DbSession
+from helpers.dependencies import DbSession, require_workspace_membership
 from helpers.pagination import aggr_paginate
 from helpers.transactions import (
     commit_or_raise,
@@ -32,7 +39,7 @@ from helpers.update_helpers import (
 )
 from helpers.pricing import calculate_floor_price
 
-router = APIRouter(prefix="/products", tags=["products"])
+router = APIRouter(prefix="/workspaces/{workspace_id}/products", tags=["products"])
 
 
 @router.get(
@@ -42,6 +49,7 @@ router = APIRouter(prefix="/products", tags=["products"])
 )
 def get_products_by_name(
     db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
     search: Annotated[str | None, Query(min_length=2, max_length=100)] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -127,6 +135,7 @@ def get_products_by_name(
             ).label("stock_status"),
         )
         .select_from(Product)
+        .where(Product.workspace_id == membership.workspace_id)
         .join(Product.company)
         .outerjoin(tag_summary, tag_summary.c.product_id == Product.id)
         .outerjoin(supplier_summary, supplier_summary.c.product_id == Product.id)
@@ -137,7 +146,11 @@ def get_products_by_name(
         .order_by(Product.id)
     )
 
-    count_statement = select(func.count(Product.id)).select_from(Product)
+    count_statement = (
+        select(func.count(Product.id))
+        .select_from(Product)
+        .where(Product.workspace_id == membership.workspace_id)
+    )
 
     if search and (search := search.strip()):
         search_condition = or_(
@@ -158,21 +171,25 @@ def get_products_by_name(
 
 
 @router.get(
-    "/{id}",
+    "/{product_id}",
     response_model=ProductResponse,
     status_code=status.HTTP_200_OK,
 )
 def get_product_by_id(
     db: DbSession,
-    id: Annotated[int, Path(gt=0)],
-):
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    product_id: Annotated[int, Path(gt=0)],
+) -> Product:
     statement = (
         select(Product)
         .options(
             selectinload(Product.company),
             selectinload(Product.supplier_links).selectinload(ProductSupplier.supplier),
         )
-        .where(Product.id == id)
+        .where(
+            Product.id == product_id,
+            Product.workspace_id == membership.workspace_id,
+        )
     )
 
     product = db.scalars(statement).one_or_none()
@@ -193,15 +210,45 @@ def get_product_by_id(
 )
 def app_product(
     db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
     product_data: ProductCreate,
-):
-    tags = get_or_create_tags(db, product_data.tags)
+) -> Product:
+    tags = get_or_create_tags(
+        db=db,
+        membership=membership,
+        tag_names=product_data.tags,
+    )
+
+    company = db.scalar(
+        select(Company).where(
+            Company.id == product_data.company_id,
+            Company.workspace_id == membership.workspace_id,
+        )
+    )
+
+    if company is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="COmpany with such id is not found for this workspace",
+        )
+
+    product_schema = {
+        "name": product_data.name,
+        "company_id": company.id,
+        "low_stock_threshold": product_data.low_stock_threshold,
+        "quantity_unit": product_data.quantity_unit,
+        "workspace_id": membership.workspace_id,
+    }
+
+    check_unique_constraints(
+        db=db,
+        model=Product,
+        constraint_name="uq_products_workspace_name_company_unit",
+        values=product_schema,
+    )
 
     product = Product(
-        name=product_data.name,
-        company_id=product_data.company_id,
-        low_stock_threshold=product_data.low_stock_threshold,
-        quantity_unit=product_data.quantity_unit,
+        **product_schema,
         tags=tags,
     )
 
@@ -219,10 +266,14 @@ def app_product(
 )
 def add_supplier_links(
     db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
     supplier_links_data: Annotated[list[ProductSupplierCreate], Body(min_length=1)],
     product_id: Annotated[int, Path(gt=0)],
 ):
-    statement = select(Product).where(Product.id == product_id)
+    statement = select(Product).where(
+        Product.id == product_id,
+        Product.workspace_id == membership.workspace_id,
+    )
     product = db.execute(statement).scalar_one_or_none()
 
     if product is None:
@@ -238,7 +289,12 @@ def add_supplier_links(
             detail="Each supplier may be linked to a product only once per request.",
         )
 
-    suppliers = db.scalars(select(Supplier).where(Supplier.id.in_(supplier_ids))).all()
+    suppliers = db.scalars(
+        select(Supplier).where(
+            Supplier.id.in_(supplier_ids),
+            Supplier.workspace_id == membership.workspace_id,
+        )
+    ).all()
     suppliers_by_id = {supplier.id: supplier for supplier in suppliers}
 
     missing_supplier_ids = sorted(set(supplier_ids) - suppliers_by_id.keys())
@@ -260,14 +316,28 @@ def add_supplier_links(
                 margin_percent=supplier_link_data.margin_percent,
             )
 
+        supplier_link_schema = {
+            "product_id": product.id,
+            "supplier_id": supplier_link_data.supplier_id,
+            "purchase_price": supplier_link_data.purchase_price,
+            "margin_percent": supplier_link_data.margin_percent,
+            "sale_price": sale_price,
+            "quantity": supplier_link_data.quantity,
+            "workspace_id": membership.workspace_id,
+        }
+
+        check_unique_constraints(
+            db=db,
+            model=ProductSupplier,
+            constraint_name="uq_product_suppliers_product_supplier_workspace",
+            values=supplier_link_schema,
+        )
+
         supplier_links.append(
             ProductSupplier(
+                **supplier_link_schema,
                 product=product,
                 supplier=suppliers_by_id[supplier_link_data.supplier_id],
-                purchase_price=supplier_link_data.purchase_price,
-                margin_percent=supplier_link_data.margin_percent,
-                sale_price=sale_price,
-                quantity=supplier_link_data.quantity,
             )
         )
 
@@ -281,7 +351,10 @@ def add_supplier_links(
             selectinload(ProductSupplier.product),
             selectinload(ProductSupplier.supplier),
         )
-        .where(ProductSupplier.id.in_(supplier_link_ids))
+        .where(
+            ProductSupplier.id.in_(supplier_link_ids),
+            ProductSupplier.workspace_id == membership.workspace_id,
+        )
         .order_by(ProductSupplier.id)
     ).all()
 
@@ -295,15 +368,21 @@ def add_supplier_links(
 )
 def add_product_atomic(
     db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
     data: ProductAtomicCreate,
 ) -> Product:
-    company_id = create_or_resolve_company(data, db)
+    company_id = create_or_resolve_company(
+        db=db,
+        membership=membership,
+        data=data,
+    )
 
     product_schema = {
         "company_id": company_id,
         "name": data.product_name,
         "quantity_unit": data.quantity_unit,
         "low_stock_threshold": data.low_stock_threshold,
+        "workspace_id": membership.workspace_id,
     }
 
     check_unique_constraints(
@@ -313,7 +392,11 @@ def add_product_atomic(
         values=product_schema,
     )
 
-    tags = get_or_create_tags(db, data.tags)
+    tags = get_or_create_tags(
+        db=db,
+        membership=membership,
+        tag_names=data.tags,
+    )
 
     product = Product(
         **product_schema,
@@ -324,7 +407,11 @@ def add_product_atomic(
     flush_or_raise(db)
 
     for product_link in data.product_links:
-        supplier_id = create_or_resolve_supplier(product_link, db)
+        supplier_id = create_or_resolve_supplier(
+            db=db,
+            membership=membership,
+            product_link=product_link,
+        )
         sale_price = (
             product_link.sale_price
             if product_link.sale_price
@@ -341,6 +428,7 @@ def add_product_atomic(
             "margin_percent": product_link.margin_percent,
             "sale_price": sale_price,
             "quantity": product_link.quantity,
+            "workspace_id": membership.workspace_id,
         }
 
         check_unique_constraints(
@@ -362,7 +450,10 @@ def add_product_atomic(
             selectinload(Product.tags),
             selectinload(Product.supplier_links).selectinload(ProductSupplier.supplier),
         )
-        .where(Product.id == product.id)
+        .where(
+            Product.id == product.id,
+            Product.workspace_id == membership.workspace_id,
+        )
     )
 
     response = db.scalars(statement).one()
@@ -371,22 +462,26 @@ def add_product_atomic(
 
 
 @router.patch(
-    "/{id}",
+    "/{product_id}",
     response_model=ProductResponse,
     status_code=status.HTTP_200_OK,
 )
 def patch_product(
     db: DbSession,
-    id: Annotated[int, Path(gt=0)],
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    product_id: Annotated[int, Path(gt=0)],
     patch_data: ProductUpdate,
-):
+) -> Product:
     statement = (
         select(Product)
         .options(
             selectinload(Product.company),
             selectinload(Product.supplier_links).selectinload(ProductSupplier.supplier),
         )
-        .where(Product.id == id)
+        .where(
+            Product.id == product_id,
+            Product.workspace_id == membership.workspace_id,
+        )
     )
 
     product = db.scalars(statement).one_or_none()
@@ -401,6 +496,7 @@ def patch_product(
         dict[str, object],
         patch_data.model_dump(exclude_unset=True),
     )
+    update_data["workspace_id"] = membership.workspace_id
 
     validate_update(
         db=db,
@@ -413,21 +509,27 @@ def patch_product(
     tag_names = cast(list[str], update_data.pop("tags", None))
 
     if "company_id" in update_data:
-        company = db.get(
-            Company,
-            update_data["company_id"],
+        company = db.scalar(
+            select(Company).where(
+                Company.id == update_data["company_id"],
+                Company.workspace_id == membership.workspace_id,
+            )
         )
         if company is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Company with such id does not exist.",
+                detail="Company with such id does not exist for this workspace",
             )
 
     for field, value in update_data.items():
         setattr(product, field, value)
 
     if tag_names is not None:
-        product.tags = get_or_create_tags(db, tag_names)
+        product.tags = get_or_create_tags(
+            db=db,
+            membership=membership,
+            tag_names=tag_names,
+        )
 
     commit_or_raise(db)
     db.refresh(product)
@@ -442,11 +544,20 @@ def patch_product(
 )
 def patch_product_links(
     db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
     patch_data: ProductSupplierUpdate,
     product_id: Annotated[int, Path(gt=0)],
     link_id: Annotated[int, Path(gt=0)],
-):
-    if db.get(Product, product_id) is None:
+) -> ProductSupplier:
+    if (
+        db.scalar(
+            select(Product).where(
+                Product.id == product_id,
+                Product.workspace_id == membership.workspace_id,
+            )
+        )
+        is None
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="product with this id is not found.",
@@ -458,7 +569,10 @@ def patch_product_links(
             selectinload(ProductSupplier.product),
             selectinload(ProductSupplier.supplier),
         )
-        .where(ProductSupplier.id == link_id)
+        .where(
+            ProductSupplier.id == link_id,
+            ProductSupplier.workspace_id == membership.workspace_id,
+        )
     )
     product_supplier = db.scalars(statement).one_or_none()
     if product_supplier is None:
@@ -476,11 +590,16 @@ def patch_product_links(
         dict[str, object],
         patch_data.model_dump(exclude_unset=True),
     )
+    update_data["workspace_id"] = membership.workspace_id
 
     if "supplier_id" in update_data:
         supplier_id = cast(int, update_data["supplier_id"])
-        supplier = db.get(Supplier, supplier_id)
-
+        supplier = db.scalar(
+            select(Supplier).where(
+                Supplier.id == supplier_id,
+                Supplier.workspace_id == membership.workspace_id,
+            )
+        )
         if supplier is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -543,10 +662,19 @@ def patch_product_links(
 )
 def delete_product_link(
     db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
     product_id: Annotated[int, Path(gt=0)],
     link_id: Annotated[int, Path(gt=0)],
 ) -> None:
-    if db.get(Product, product_id) is None:
+    if (
+        db.scalar(
+            select(Product).where(
+                Product.id == product_id,
+                Product.workspace_id == membership.workspace_id,
+            )
+        )
+        is None
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Product with such id for the link is not found",
@@ -558,7 +686,10 @@ def delete_product_link(
             selectinload(ProductSupplier.product),
             selectinload(ProductSupplier.supplier),
         )
-        .where(ProductSupplier.id == link_id)
+        .where(
+            ProductSupplier.id == link_id,
+            ProductSupplier.workspace_id == membership.workspace_id,
+        )
     )
     product_supplier = db.scalars(statement).one_or_none()
 

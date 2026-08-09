@@ -22,6 +22,7 @@ import {
   getCreateErrorMessage,
   getRequestErrorMessage,
 } from "../lib/format";
+import { activeWorkspaceId } from "../lib/workspaceSession";
 import type {
   CompanyResponse,
   PaginatedResponse,
@@ -106,6 +107,7 @@ const currentPage = computed(() => currentPageFromRoute());
 const productsQuery = useQuery({
   queryKey: computed(() => [
     "products",
+    activeWorkspaceId.value,
     currentSearch.value,
     currentPage.value,
     DEFAULT_PAGE_SIZE,
@@ -115,17 +117,20 @@ const productsQuery = useQuery({
     page: currentPage.value,
     pageSize: DEFAULT_PAGE_SIZE,
   }),
+  enabled: computed(() => Boolean(activeWorkspaceId.value)),
 });
 const popularTagsQuery = useQuery({
-  queryKey: ["tags", "popular", POPULAR_TAGS_LIMIT],
+  queryKey: computed(() => ["tags", activeWorkspaceId.value, "popular", POPULAR_TAGS_LIMIT]),
   queryFn: () => getTags({
     page: FIRST_PAGE,
     pageSize: POPULAR_TAGS_LIMIT,
   }),
+  enabled: computed(() => Boolean(activeWorkspaceId.value)),
 });
 const companyLookupQuery = useQuery({
   queryKey: computed(() => [
     "companies",
+    activeWorkspaceId.value,
     "lookup",
     companyLookupTerm.value,
     COMPANY_LOOKUP_PAGE_SIZE,
@@ -136,7 +141,8 @@ const companyLookupQuery = useQuery({
     pageSize: COMPANY_LOOKUP_PAGE_SIZE,
   }),
   enabled: computed(() => (
-    isCreateModalOpen.value
+    Boolean(activeWorkspaceId.value)
+      && isCreateModalOpen.value
       && productCreateForm.companyMode === "existing"
       && companyLookupTerm.value.length >= 2
   )),
@@ -144,6 +150,7 @@ const companyLookupQuery = useQuery({
 const supplierLookupQuery = useQuery({
   queryKey: computed(() => [
     "suppliers",
+    activeWorkspaceId.value,
     "lookup",
     supplierLookupTerm.value,
     SUPPLIER_LOOKUP_PAGE_SIZE,
@@ -154,7 +161,8 @@ const supplierLookupQuery = useQuery({
     pageSize: SUPPLIER_LOOKUP_PAGE_SIZE,
   }),
   enabled: computed(() => (
-    isCreateModalOpen.value
+    Boolean(activeWorkspaceId.value)
+      && isCreateModalOpen.value
       && productCreateForm.linkEnabled
       && productCreateForm.supplierMode === "existing"
       && supplierLookupTerm.value.length >= 2
@@ -458,11 +466,11 @@ async function handleProductCreateSuccess(product: ProductResponse) {
   });
 
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["products"] }),
-    queryClient.invalidateQueries({ queryKey: ["tags"] }),
+    queryClient.invalidateQueries({ queryKey: ["products", activeWorkspaceId.value] }),
+    queryClient.invalidateQueries({ queryKey: ["tags", activeWorkspaceId.value] }),
     queryClient.invalidateQueries({ queryKey: ["summaries"] }),
-    queryClient.invalidateQueries({ queryKey: ["companies"] }),
-    queryClient.invalidateQueries({ queryKey: ["suppliers"] }),
+    queryClient.invalidateQueries({ queryKey: ["companies", activeWorkspaceId.value] }),
+    queryClient.invalidateQueries({ queryKey: ["suppliers", activeWorkspaceId.value] }),
   ]);
 }
 

@@ -1,10 +1,10 @@
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from app.models import Product, ProductSupplier, Supplier
+from app.models import Product, ProductSupplier, Supplier, WorkspaceMembership
 from app.schemas import (
     PaginatedResponse,
     SupplierCreate,
@@ -12,15 +12,16 @@ from app.schemas import (
     SupplierSummaryResponse,
     SupplierUpdate,
 )
-from helpers.dependencies import DbSession
+from helpers.dependencies import DbSession, require_workspace_membership
 from helpers.pagination import aggr_paginate
 from helpers.transactions import commit_or_raise
 from helpers.update_helpers import (
+    check_unique_constraints,
     validate_update,
 )
 
 
-router = APIRouter(prefix="/suppliers", tags=["suppliers"])
+router = APIRouter(prefix="/workspaces/{workspace_id}/suppliers", tags=["suppliers"])
 
 
 @router.get(
@@ -30,10 +31,11 @@ router = APIRouter(prefix="/suppliers", tags=["suppliers"])
 )
 def get_suppliers(
     db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     search: Annotated[str | None, Query(max_length=100)] = None,
-):
+) -> PaginatedResponse[SupplierSummaryResponse]:
     statement = (
         select(
             Supplier.id.label("id"),
@@ -42,11 +44,16 @@ def get_suppliers(
             func.count(ProductSupplier.id).label("product_links_count"),
         )
         .select_from(Supplier)
+        .where(Supplier.workspace_id == membership.workspace_id)
         .outerjoin(Supplier.product_links)
         .group_by(Supplier.id)
         .order_by(Supplier.id)
     )
-    count_statement = select(func.count(Supplier.id)).select_from(Supplier)
+    count_statement = (
+        select(func.count(Supplier.id))
+        .select_from(Supplier)
+        .where(Supplier.workspace_id == membership.workspace_id)
+    )
 
     if search and (search := search.strip()):
         condition = Supplier.name.ilike(f"%{search}%")
@@ -65,13 +72,14 @@ def get_suppliers(
 
 
 @router.get(
-    "/{id}",
+    "/{supplier_id}",
     response_model=SupplierResponse,
     status_code=status.HTTP_200_OK,
 )
 def get_supplier_by_id(
     db: DbSession,
-    id: Annotated[int, Path(gt=0)],
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    supplier_id: Annotated[int, Path(gt=0)],
 ) -> Supplier:
     statement = (
         select(Supplier)
@@ -80,7 +88,10 @@ def get_supplier_by_id(
             .selectinload(ProductSupplier.product)
             .selectinload(Product.company),
         )
-        .where(Supplier.id == id)
+        .where(
+            Supplier.id == supplier_id,
+            Supplier.workspace_id == membership.workspace_id,
+        )
     )
 
     supplier = db.scalars(statement).one_or_none()
@@ -99,8 +110,28 @@ def get_supplier_by_id(
     response_model=SupplierResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def add_supplier(db: DbSession, supplier_data: SupplierCreate):
-    supplier = Supplier(**supplier_data.model_dump())
+def add_supplier(
+    db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    supplier_data: SupplierCreate,
+) -> Supplier:
+    supplier_schema = supplier_data.model_dump()
+    supplier_schema["workspace_id"] = membership.workspace_id
+
+    check_unique_constraints(
+        db=db,
+        model=Supplier,
+        constraint_name="uq_suppliers_workspace_name",
+        values=supplier_schema,
+    )
+    check_unique_constraints(
+        db=db,
+        model=Supplier,
+        constraint_name="uq_suppliers_workspace_phone_number",
+        values=supplier_schema,
+    )
+
+    supplier = Supplier(**supplier_schema)
 
     db.add(supplier)
     commit_or_raise(db)
@@ -110,14 +141,25 @@ def add_supplier(db: DbSession, supplier_data: SupplierCreate):
 
 
 @router.patch(
-    "/{id}",
+    "/{supplier_id}",
     response_model=SupplierResponse,
     status_code=status.HTTP_200_OK,
 )
 def patch_supplier(
-    db: DbSession, patch_data: SupplierUpdate, id: Annotated[int, Path(gt=0)]
+    db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    patch_data: SupplierUpdate,
+    supplier_id: Annotated[
+        int,
+        Path(gt=0),
+    ],
 ) -> Supplier:
-    supplier = db.get(Supplier, id)
+    supplier = db.scalar(
+        select(Supplier).where(
+            Supplier.id == supplier_id,
+            Supplier.workspace_id == membership.workspace_id,
+        )
+    )
 
     if supplier is None:
         raise HTTPException(
@@ -126,6 +168,7 @@ def patch_supplier(
         )
 
     update_data = patch_data.model_dump(exclude_unset=True)
+    update_data["workspace_id"] = membership.workspace_id
 
     validate_update(
         db=db,

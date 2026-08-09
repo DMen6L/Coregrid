@@ -1,12 +1,13 @@
 from typing import Annotated
 
-from fastapi import FastAPI, Query, status
+from fastapi import Depends, FastAPI, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.models import WorkspaceMembership
 from app.schemas import SummariesResponse
 from app.type_definitions import BestSalesMode
 
-from helpers.dependencies import DbSession
+from helpers.dependencies import DbSession, require_workspace_membership
 from helpers.services import build_summaries
 from routers import (
     companies,
@@ -52,17 +53,19 @@ def read_root() -> dict[str, str]:
 
 
 @app.get(
-    "/summaries",
+    "/workspaces/{workspace_id}/summaries",
     response_model=SummariesResponse,
     status_code=status.HTTP_200_OK,
 )
 def get_summaries(
     db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
     days: Annotated[int, Query(ge=7, le=365)] = 7,
     best_sales_mode: Annotated[BestSalesMode, Query] = "quantity",
 ) -> SummariesResponse:
     return build_summaries(
         db=db,
+        membership=membership,
         days=days,
         best_sales_mode=best_sales_mode,
     )

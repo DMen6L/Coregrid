@@ -10,6 +10,7 @@ import {
   formatShortDate,
   getRequestErrorMessage,
 } from "../lib/format";
+import { activeWorkspaceId } from "../lib/workspaceSession";
 import type {
   BestSalesMode,
   DailySalesResponse,
@@ -62,10 +63,12 @@ const dashboardParams = ref({
 const dashboardQuery = useQuery({
   queryKey: computed(() => [
     "summaries",
+    activeWorkspaceId.value,
     dashboardParams.value.days,
     dashboardParams.value.bestSalesMode,
   ]),
   queryFn: () => getSummaries(dashboardParams.value),
+  enabled: computed(() => Boolean(activeWorkspaceId.value)),
 });
 
 const dashboardData = computed(() => dashboardQuery.data.value || EMPTY_DASHBOARD_DATA);

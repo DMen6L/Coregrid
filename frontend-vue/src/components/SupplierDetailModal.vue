@@ -9,6 +9,7 @@ import {
   getCreateErrorMessage,
   getRequestErrorMessage,
 } from "../lib/format";
+import { activeWorkspaceId } from "../lib/workspaceSession";
 import type { StockStatus, SupplierResponse, SupplierUpdatePayload } from "../types/api";
 
 type ProductStockStatus = StockStatus | "none";
@@ -40,9 +41,9 @@ const editForm = reactive({
 
 const detailId = computed(() => Number(props.supplierId || 0));
 const supplierQuery = useQuery({
-  queryKey: computed(() => ["suppliers", "detail", detailId.value]),
+  queryKey: computed(() => ["suppliers", activeWorkspaceId.value, "detail", detailId.value]),
   queryFn: () => getSupplier(detailId.value),
-  enabled: computed(() => props.isOpen && detailId.value > 0),
+  enabled: computed(() => Boolean(activeWorkspaceId.value) && props.isOpen && detailId.value > 0),
 });
 const updateSupplierMutation = useMutation({
   mutationFn: updateSupplierFromForm,
@@ -123,13 +124,16 @@ function updateSupplierFromForm() {
 }
 
 async function handleSupplierUpdateSuccess(updatedSupplier: SupplierResponse) {
-  queryClient.setQueryData(["suppliers", "detail", updatedSupplier.id], updatedSupplier);
+  queryClient.setQueryData(
+    ["suppliers", activeWorkspaceId.value, "detail", updatedSupplier.id],
+    updatedSupplier,
+  );
   isEditing.value = false;
   editError.value = "";
 
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["suppliers"] }),
-    queryClient.invalidateQueries({ queryKey: ["products"] }),
+    queryClient.invalidateQueries({ queryKey: ["suppliers", activeWorkspaceId.value] }),
+    queryClient.invalidateQueries({ queryKey: ["products", activeWorkspaceId.value] }),
     queryClient.invalidateQueries({ queryKey: ["summaries"] }),
   ]);
   emit("saved", updatedSupplier);

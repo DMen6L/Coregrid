@@ -64,7 +64,7 @@ async function submitAuthForm() {
       });
 
       saveAuthToken(token);
-      await router.push("/dashboard");
+      await router.push(getSafeRedirectPath());
       return;
     }
 
@@ -136,6 +136,23 @@ function getErrorDetail(data: unknown) {
   }
 
   return "";
+}
+
+function getSafeRedirectPath() {
+  const rawRedirect = Array.isArray(route.query.redirect)
+    ? route.query.redirect[0]
+    : route.query.redirect;
+
+  if (
+    typeof rawRedirect === "string"
+    && rawRedirect.startsWith("/")
+    && !rawRedirect.startsWith("//")
+    && !rawRedirect.startsWith("/auth")
+  ) {
+    return rawRedirect;
+  }
+
+  return "/dashboard";
 }
 </script>
 

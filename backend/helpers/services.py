@@ -2,7 +2,14 @@ from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import func, select
 
-from app.models import Product, ProductSupplier, Sale, SaleLine, Supplier
+from app.models import (
+    Product,
+    ProductSupplier,
+    Sale,
+    SaleLine,
+    Supplier,
+    WorkspaceMembership,
+)
 from app.schemas import (
     DailySalesResponse,
     SummariesResponse,
@@ -15,7 +22,10 @@ from utils import get_best_sales_expr
 
 
 def build_summaries(
-    db: DbSession, days: int, best_sales_mode: BestSalesMode
+    db: DbSession,
+    membership: WorkspaceMembership,
+    days: int,
+    best_sales_mode: BestSalesMode,
 ) -> SummariesResponse:
     # Essential dates for queries
     today = date.today()
@@ -32,12 +42,20 @@ def build_summaries(
             )
         )
         .join(SaleLine.sale)
-        .where(Sale.created_at >= start_of_today, Sale.created_at < start_of_tomorrow)
+        .where(
+            Sale.created_at >= start_of_today,
+            Sale.created_at < start_of_tomorrow,
+            Sale.workspace_id == membership.workspace_id,
+        )
         .scalar_subquery()
     )
     dashboard_sales_count_subquery = (
         select(func.count(func.distinct(Sale.id)))
-        .where(Sale.created_at >= start_of_today, Sale.created_at < start_of_tomorrow)
+        .where(
+            Sale.created_at >= start_of_today,
+            Sale.created_at < start_of_tomorrow,
+            Sale.workspace_id == membership.workspace_id,
+        )
         .scalar_subquery()
     )
 
@@ -48,6 +66,7 @@ def build_summaries(
                 "total_quantity"
             ),
         )
+        .where(ProductSupplier.workspace_id == membership.workspace_id)
         .group_by(ProductSupplier.product_id)
         .subquery()
     )
@@ -62,6 +81,7 @@ def build_summaries(
         .where(
             total_quantity > 0,
             total_quantity <= Product.low_stock_threshold,
+            Product.workspace_id == membership.workspace_id,
         )
         .scalar_subquery()
     )
@@ -72,7 +92,10 @@ def build_summaries(
             product_stock_summary,
             product_stock_summary.c.product_id == Product.id,
         )
-        .where(total_quantity == 0)
+        .where(
+            total_quantity == 0,
+            Product.workspace_id == membership.workspace_id,
+        )
         .scalar_subquery()
     )
 
@@ -104,6 +127,7 @@ def build_summaries(
         .where(
             Sale.created_at >= start_of_period,
             Sale.created_at < start_of_tomorrow,
+            Sale.workspace_id == membership.workspace_id,
         )
         .group_by(sale_date)
         .order_by(sale_date)
@@ -121,6 +145,7 @@ def build_summaries(
         .where(
             Sale.created_at >= start_of_period,
             Sale.created_at < start_of_tomorrow,
+            Sale.workspace_id == membership.workspace_id,
         )
         .group_by(
             Product.id,
@@ -136,6 +161,7 @@ def build_summaries(
             func.count(ProductSupplier.product_id).label("supplied_products"),
         )
         .select_from(Supplier)
+        .where(Supplier.workspace_id == membership.workspace_id)
         .join(Supplier.product_links)
         .group_by(Supplier.id, Supplier.name)
         .order_by(func.count(ProductSupplier.product_id).desc())

@@ -1,5 +1,6 @@
 import { getBaseApi } from "./apiBase";
 import { getAuthToken } from "./authSession";
+import { requireActiveWorkspaceId } from "./workspaceSession";
 import type {
   BestSalesMode,
   CompanyCreatePayload,
@@ -30,6 +31,8 @@ import type {
   UserCreatePayload,
   UserLoginPayload,
   UserResponse,
+  WorkspaceCreatePayload,
+  WorkspaceResponse,
 } from "../types/api";
 
 export const FIRST_PAGE = 1;
@@ -86,6 +89,21 @@ export function loginUser(payload: UserLoginPayload) {
   });
 }
 
+export function getWorkspaces() {
+  return request<WorkspaceResponse[]>("/workspaces");
+}
+
+export function getWorkspace(workspaceId: number) {
+  return request<WorkspaceResponse>(`/workspaces/${workspaceId}`);
+}
+
+export function createWorkspace(payload: WorkspaceCreatePayload) {
+  return request<WorkspaceResponse>("/workspaces", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getSummaries({
   days = 7,
   bestSalesMode = "quantity",
@@ -98,7 +116,7 @@ export function getSummaries({
   params.set("days", String(days));
   params.set("best_sales_mode", bestSalesMode);
 
-  return request<SummariesResponse>(`/summaries?${params.toString()}`);
+  return request<SummariesResponse>(workspacePath(`/summaries?${params.toString()}`));
 }
 
 export function getProducts({
@@ -111,7 +129,7 @@ export function getProducts({
   pageSize?: number;
 } = {}) {
   return request<PaginatedResponse<ProductSummaryResponse>>(
-    buildListPath("/products", search, page, pageSize),
+    buildListPath(workspacePath("/products"), search, page, pageSize),
   );
 }
 
@@ -127,19 +145,19 @@ export function getRestocks({
   pageSize?: number;
 } = {}) {
   return request<PaginatedResponse<RestockSummaryResponse>>(
-    buildDateListPath("/restocks", dateFrom, dateTo, page, pageSize),
+    buildDateListPath(workspacePath("/restocks"), dateFrom, dateTo, page, pageSize),
   );
 }
 
 export function createRestock(payload: RestockCreatePayload) {
-  return request<RestockResponse>("/restocks", {
+  return request<RestockResponse>(workspacePath("/restocks"), {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
 export function getRestock(restockId: number) {
-  return request<RestockResponse>(`/restocks/${restockId}`);
+  return request<RestockResponse>(workspacePath(`/restocks/${restockId}`));
 }
 
 export function getSales({
@@ -154,41 +172,41 @@ export function getSales({
   pageSize?: number;
 } = {}) {
   return request<PaginatedResponse<SaleSummaryResponse>>(
-    buildDateListPath("/sales", dateFrom, dateTo, page, pageSize),
+    buildDateListPath(workspacePath("/sales"), dateFrom, dateTo, page, pageSize),
   );
 }
 
 export function createSale(payload: SaleCreatePayload) {
-  return request<SaleResponse>("/sales", {
+  return request<SaleResponse>(workspacePath("/sales"), {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
 export function getSale(saleId: number) {
-  return request<SaleResponse>(`/sales/${saleId}`);
+  return request<SaleResponse>(workspacePath(`/sales/${saleId}`));
 }
 
 export function createProduct(payload: ProductCreatePayload) {
-  return request<ProductResponse>("/products", {
+  return request<ProductResponse>(workspacePath("/products"), {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
 export function createProductAtomic(payload: ProductAtomicCreatePayload) {
-  return request<ProductResponse>("/products/full", {
+  return request<ProductResponse>(workspacePath("/products/full"), {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
 export function getProduct(productId: number) {
-  return request<ProductResponse>(`/products/${productId}`);
+  return request<ProductResponse>(workspacePath(`/products/${productId}`));
 }
 
 export function patchProduct(productId: number, payload: ProductUpdatePayload) {
-  return request<ProductResponse>(`/products/${productId}`, {
+  return request<ProductResponse>(workspacePath(`/products/${productId}`), {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
@@ -198,7 +216,7 @@ export function createProductSupplierLinks(
   productId: number,
   payload: ProductSupplierCreatePayload[],
 ) {
-  return request<ProductSupplierResponse[]>(`/products/${productId}/links`, {
+  return request<ProductSupplierResponse[]>(workspacePath(`/products/${productId}/links`), {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -209,14 +227,17 @@ export function patchProductSupplierLink(
   linkId: number,
   payload: ProductSupplierUpdatePayload,
 ) {
-  return request<ProductSupplierResponse>(`/products/${productId}/links/${linkId}`, {
-    method: "PATCH",
-    body: JSON.stringify(payload),
-  });
+  return request<ProductSupplierResponse>(
+    workspacePath(`/products/${productId}/links/${linkId}`),
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export function deleteProductSupplierLink(productId: number, linkId: number) {
-  return request<void>(`/products/${productId}/links/${linkId}`, {
+  return request<void>(workspacePath(`/products/${productId}/links/${linkId}`), {
     method: "DELETE",
   });
 }
@@ -231,7 +252,7 @@ export function getTags({
   pageSize?: number;
 } = {}) {
   return request<PaginatedResponse<TagSummaryResponse>>(
-    buildListPath("/tags", search, page, pageSize),
+    buildListPath(workspacePath("/tags"), search, page, pageSize),
   );
 }
 
@@ -245,23 +266,23 @@ export function getCompanies({
   pageSize?: number;
 } = {}) {
   return request<PaginatedResponse<CompanyResponse>>(
-    buildListPath("/companies", search, page, pageSize),
+    buildListPath(workspacePath("/companies"), search, page, pageSize),
   );
 }
 
 export function createCompany(payload: CompanyCreatePayload) {
-  return request<CompanyResponse>("/companies", {
+  return request<CompanyResponse>(workspacePath("/companies"), {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
 export function getCompany(companyId: number) {
-  return request<CompanyResponse>(`/companies/${companyId}`);
+  return request<CompanyResponse>(workspacePath(`/companies/${companyId}`));
 }
 
 export function patchCompany(companyId: number, payload: CompanyUpdatePayload) {
-  return request<CompanyResponse>(`/companies/${companyId}`, {
+  return request<CompanyResponse>(workspacePath(`/companies/${companyId}`), {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
@@ -277,26 +298,30 @@ export function getSuppliers({
   pageSize?: number;
 } = {}) {
   return request<PaginatedResponse<SupplierSummaryResponse>>(
-    buildListPath("/suppliers", search, page, pageSize),
+    buildListPath(workspacePath("/suppliers"), search, page, pageSize),
   );
 }
 
 export function createSupplier(payload: SupplierCreatePayload) {
-  return request<SupplierResponse>("/suppliers", {
+  return request<SupplierResponse>(workspacePath("/suppliers"), {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
 export function getSupplier(supplierId: number) {
-  return request<SupplierResponse>(`/suppliers/${supplierId}`);
+  return request<SupplierResponse>(workspacePath(`/suppliers/${supplierId}`));
 }
 
 export function patchSupplier(supplierId: number, payload: SupplierUpdatePayload) {
-  return request<SupplierResponse>(`/suppliers/${supplierId}`, {
+  return request<SupplierResponse>(workspacePath(`/suppliers/${supplierId}`), {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+}
+
+function workspacePath(path: string) {
+  return `/workspaces/${requireActiveWorkspaceId()}${path}`;
 }
 
 function buildListPath(basePath: string, search: string, page: number, pageSize: number) {

@@ -11,6 +11,7 @@ import {
   formatQuantity,
   getRequestErrorMessage,
 } from "../lib/format";
+import { activeWorkspaceId } from "../lib/workspaceSession";
 import type {
   RestockLineResponse,
   RestockResponse,
@@ -33,13 +34,13 @@ const emit = defineEmits<{
 
 const detailId = computed(() => Number(props.movementId || 0));
 const detailQuery = useQuery<MovementResponse>({
-  queryKey: computed(() => [props.kind, "detail", detailId.value]),
+  queryKey: computed(() => [props.kind, activeWorkspaceId.value, "detail", detailId.value]),
   queryFn: () => (
     props.kind === "restock"
       ? getRestock(detailId.value)
       : getSale(detailId.value)
   ),
-  enabled: computed(() => props.isOpen && detailId.value > 0),
+  enabled: computed(() => Boolean(activeWorkspaceId.value) && props.isOpen && detailId.value > 0),
 });
 
 const movement = computed(() => detailQuery.data.value || null);

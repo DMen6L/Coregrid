@@ -1,11 +1,12 @@
-from typing import cast
+from typing import Annotated, cast
 
-from fastapi import HTTPException, status
+from fastapi import Depends, HTTPException, status
 from psycopg.errors import CheckViolation, ForeignKeyViolation, UniqueViolation
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Company, Supplier, Tag
+from app.models import Company, Supplier, Tag, WorkspaceMembership
 from app.schemas import ProductAtomicCreate, ProductSupplierAtomicCreate
 from helpers.update_helpers import check_unique_constraints
 from utils import normalize_tag_names
@@ -45,11 +46,17 @@ def commit_or_raise(db: Session) -> None:
 
 
 def create_or_resolve_company(
-    data: ProductAtomicCreate,
     db: Session,
+    membership: WorkspaceMembership,
+    data: ProductAtomicCreate,
 ) -> int:
     if data.company_id is not None:
-        company = db.get(Company, data.company_id)
+        company = db.scalar(
+            select(Company).where(
+                Company.id == data.company_id,
+                Company.workspace_id == membership.workspace_id,
+            )
+        )
         if company is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -62,6 +69,7 @@ def create_or_resolve_company(
             dict[str, object],
             data.company.model_dump(),
         )
+        company_data["workspace_id"] = membership.workspace_id
 
         check_unique_constraints(
             db=db,
@@ -88,11 +96,17 @@ def create_or_resolve_company(
 
 
 def create_or_resolve_supplier(
-    product_link: ProductSupplierAtomicCreate,
     db: Session,
+    membership: WorkspaceMembership,
+    product_link: ProductSupplierAtomicCreate,
 ) -> int:
     if product_link.supplier_id is not None:
-        supplier = db.get(Supplier, product_link.supplier_id)
+        supplier = db.scalar(
+            select(Supplier).where(
+                Supplier.id == product_link.supplier_id,
+                Supplier.workspace_id == membership.workspace_id,
+            )
+        )
         if supplier is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -105,6 +119,7 @@ def create_or_resolve_supplier(
             dict[str, object],
             product_link.supplier.model_dump(),
         )
+        supplier_data["workspace_id"] = membership.workspace_id
 
         check_unique_constraints(
             db=db,
@@ -130,18 +145,31 @@ def create_or_resolve_supplier(
     )
 
 
-def get_or_create_tags(db: Session, tag_names: list[str]) -> list[Tag]:
+def get_or_create_tags(
+    db: Session,
+    membership: WorkspaceMembership,
+    tag_names: list[str],
+) -> list[Tag]:
     normalized_names = normalize_tag_names(tag_names)
 
     if not normalized_names:
         return []
 
     existing_tags = (
-        db.query(Tag).filter(Tag.name.in_(normalized_names)).order_by(Tag.name).all()
+        db.query(Tag)
+        .filter(
+            Tag.name.in_(normalized_names),
+            Tag.workspace_id == membership.workspace_id,
+        )
+        .order_by(Tag.name)
+        .all()
     )
     existing_tags_by_name = {tag.name: tag for tag in existing_tags}
     new_tags = [
-        Tag(name=tag_name)
+        Tag(
+            name=tag_name,
+            workspace_id=membership.workspace_id,
+        )
         for tag_name in normalized_names
         if tag_name not in existing_tags_by_name
     ]

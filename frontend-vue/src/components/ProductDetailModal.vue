@@ -22,6 +22,7 @@ import {
   getDeleteErrorMessage,
   getRequestErrorMessage,
 } from "../lib/format";
+import { activeWorkspaceId } from "../lib/workspaceSession";
 import type {
   CompanyResponse,
   ProductResponse,
@@ -107,13 +108,14 @@ const editForm = reactive({
 
 const detailId = computed(() => Number(props.productId || 0));
 const productQuery = useQuery({
-  queryKey: computed(() => ["products", "detail", detailId.value]),
+  queryKey: computed(() => ["products", activeWorkspaceId.value, "detail", detailId.value]),
   queryFn: () => getProduct(detailId.value),
-  enabled: computed(() => props.isOpen && detailId.value > 0),
+  enabled: computed(() => Boolean(activeWorkspaceId.value) && props.isOpen && detailId.value > 0),
 });
 const companyLookupQuery = useQuery({
   queryKey: computed(() => [
     "companies",
+    activeWorkspaceId.value,
     "product-detail-lookup",
     companyLookupTerm.value,
     COMPANY_LOOKUP_PAGE_SIZE,
@@ -124,7 +126,8 @@ const companyLookupQuery = useQuery({
     pageSize: COMPANY_LOOKUP_PAGE_SIZE,
   }),
   enabled: computed(() => (
-    props.isOpen
+    Boolean(activeWorkspaceId.value)
+      && props.isOpen
       && isEditing.value
       && !editForm.selectedCompany
       && companyLookupTerm.value.length >= 2
@@ -452,7 +455,10 @@ async function deleteProductSupplierLinkFromModal({
 }
 
 async function handleProductUpdateSuccess(updatedProduct: ProductResponse) {
-  queryClient.setQueryData(["products", "detail", updatedProduct.id], updatedProduct);
+  queryClient.setQueryData(
+    ["products", activeWorkspaceId.value, "detail", updatedProduct.id],
+    updatedProduct,
+  );
   isEditing.value = false;
   editError.value = "";
   companyLookupTerm.value = "";
@@ -460,10 +466,10 @@ async function handleProductUpdateSuccess(updatedProduct: ProductResponse) {
   resetLinkEditValues();
 
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["products"] }),
-    queryClient.invalidateQueries({ queryKey: ["suppliers"] }),
+    queryClient.invalidateQueries({ queryKey: ["products", activeWorkspaceId.value] }),
+    queryClient.invalidateQueries({ queryKey: ["suppliers", activeWorkspaceId.value] }),
     queryClient.invalidateQueries({ queryKey: ["summaries"] }),
-    queryClient.invalidateQueries({ queryKey: ["tags"] }),
+    queryClient.invalidateQueries({ queryKey: ["tags", activeWorkspaceId.value] }),
   ]);
   emit("saved", updatedProduct);
 }
@@ -472,13 +478,16 @@ async function handleProductSupplierLinkDeleteSuccess({
   product: updatedProduct,
   linkId,
 }: DeleteLinkResult) {
-  queryClient.setQueryData(["products", "detail", updatedProduct.id], updatedProduct);
+  queryClient.setQueryData(
+    ["products", activeWorkspaceId.value, "detail", updatedProduct.id],
+    updatedProduct,
+  );
   delete linkEditValues[linkId];
   editError.value = "";
 
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["products"] }),
-    queryClient.invalidateQueries({ queryKey: ["suppliers"] }),
+    queryClient.invalidateQueries({ queryKey: ["products", activeWorkspaceId.value] }),
+    queryClient.invalidateQueries({ queryKey: ["suppliers", activeWorkspaceId.value] }),
     queryClient.invalidateQueries({ queryKey: ["summaries"] }),
   ]);
   emit("saved", updatedProduct);

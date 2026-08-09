@@ -1,4 +1,5 @@
 import type { TokenResponse } from "../types/api";
+import { clearWorkspaceSession } from "./workspaceSession";
 
 const AUTH_TOKEN_STORAGE_KEY = "coregrid.authToken";
 export const AUTH_SESSION_CHANGE_EVENT = "coregrid-auth-session-change";
@@ -14,5 +15,6 @@ export function saveAuthToken(token: TokenResponse) {
 
 export function clearAuthToken() {
   localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  clearWorkspaceSession();
   window.dispatchEvent(new Event(AUTH_SESSION_CHANGE_EVENT));
 }

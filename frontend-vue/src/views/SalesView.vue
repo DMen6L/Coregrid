@@ -12,6 +12,7 @@ import {
   formatDateTime,
   getRequestErrorMessage,
 } from "../lib/format";
+import { activeWorkspaceId } from "../lib/workspaceSession";
 import type { PaginatedResponse, SaleSummaryResponse } from "../types/api";
 
 const EMPTY_SALES_PAGE: PaginatedResponse<SaleSummaryResponse> = {
@@ -42,6 +43,7 @@ const currentPage = computed(() => currentPageFromRoute());
 const salesQuery = useQuery({
   queryKey: computed(() => [
     "sales",
+    activeWorkspaceId.value,
     "list",
     currentDateFrom.value,
     currentDateTo.value,
@@ -54,6 +56,7 @@ const salesQuery = useQuery({
     page: currentPage.value,
     pageSize: DEFAULT_PAGE_SIZE,
   }),
+  enabled: computed(() => Boolean(activeWorkspaceId.value)),
 });
 
 const salesPage = computed(() => salesQuery.data.value || EMPTY_SALES_PAGE);
@@ -158,8 +161,8 @@ async function handleSaleCreated() {
   });
 
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["sales"] }),
-    queryClient.invalidateQueries({ queryKey: ["products"] }),
+    queryClient.invalidateQueries({ queryKey: ["sales", activeWorkspaceId.value] }),
+    queryClient.invalidateQueries({ queryKey: ["products", activeWorkspaceId.value] }),
     queryClient.invalidateQueries({ queryKey: ["summaries"] }),
   ]);
 }

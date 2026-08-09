@@ -217,7 +217,11 @@ class Supplier(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("workspace_id", "name", name="uq_suppliers_workspace_name"),
+        UniqueConstraint(
+            "workspace_id",
+            "name",
+            name="uq_suppliers_workspace_name",
+        ),
         UniqueConstraint(
             "workspace_id",
             "phone_number",
@@ -591,6 +595,12 @@ class User(Base):
         nullable=False,
     )
 
+    workspace_memberships: Mapped[list["WorkspaceMembership"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
     __table_args__ = (
         CheckConstraint(
             "char_length(email) > 0",
@@ -624,6 +634,12 @@ class Workspace(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         server_default=func.now(),
+    )
+
+    memberships: Mapped[list["WorkspaceMembership"]] = relationship(
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     __table_args__ = (
@@ -665,6 +681,13 @@ class WorkspaceMembership(Base):
     role: Mapped[str] = mapped_column(
         String(30),
         nullable=False,
+    )
+
+    workspace: Mapped["Workspace"] = relationship(
+        back_populates="memberships",
+    )
+    user: Mapped["User"] = relationship(
+        back_populates="workspace_memberships",
     )
 
     __table_args__ = (

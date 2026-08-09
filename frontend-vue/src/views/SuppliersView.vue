@@ -6,6 +6,7 @@ import { useRoute, useRouter } from "vue-router";
 import SupplierDetailModal from "../components/SupplierDetailModal.vue";
 import { createSupplier, DEFAULT_PAGE_SIZE, FIRST_PAGE, getSuppliers } from "../lib/api";
 import { formatCount, getCreateErrorMessage, getRequestErrorMessage } from "../lib/format";
+import { activeWorkspaceId } from "../lib/workspaceSession";
 import type {
   PaginatedResponse,
   SupplierCreatePayload,
@@ -43,6 +44,7 @@ const currentPage = computed(() => currentPageFromRoute());
 const suppliersQuery = useQuery({
   queryKey: computed(() => [
     "suppliers",
+    activeWorkspaceId.value,
     "list",
     currentSearch.value,
     currentPage.value,
@@ -53,6 +55,7 @@ const suppliersQuery = useQuery({
     page: currentPage.value,
     pageSize: DEFAULT_PAGE_SIZE,
   }),
+  enabled: computed(() => Boolean(activeWorkspaceId.value)),
 });
 const createSupplierMutation = useMutation({
   mutationFn: createSupplierFromForm,
@@ -162,7 +165,7 @@ async function handleSupplierCreateSuccess(supplier: SupplierResponse) {
   });
 
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["suppliers"] }),
+    queryClient.invalidateQueries({ queryKey: ["suppliers", activeWorkspaceId.value] }),
     queryClient.invalidateQueries({ queryKey: ["summaries"] }),
   ]);
 }

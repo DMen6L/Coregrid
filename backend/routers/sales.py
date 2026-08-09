@@ -1,18 +1,18 @@
 from datetime import date, datetime, time, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from app.models import ProductSupplier, Sale, SaleLine
+from app.models import ProductSupplier, Sale, SaleLine, WorkspaceMembership
 from app.schemas import PaginatedResponse, SaleCreate, SaleResponse, SaleSummaryResponse
-from helpers.dependencies import DbSession
+from helpers.dependencies import DbSession, require_workspace_membership
 from helpers.pagination import aggr_paginate
 from helpers.transactions import commit_or_raise
 
 
-router = APIRouter(prefix="/sales", tags=["sales"])
+router = APIRouter(prefix="/workspaces/{workspace_id}/sales", tags=["sales"])
 
 
 @router.get(
@@ -22,6 +22,7 @@ router = APIRouter(prefix="/sales", tags=["sales"])
 )
 def get_sales(
     db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
     date_from: Annotated[date | None, Query(alias="from")] = None,
     date_to: Annotated[date | None, Query(alias="to")] = None,
     page: Annotated[int, Query(ge=1)] = 1,
@@ -39,11 +40,16 @@ def get_sales(
             func.count(SaleLine.id).label("lines_count"),
         )
         .select_from(Sale)
+        .where(Sale.workspace_id == membership.workspace_id)
         .join(Sale.lines)
         .group_by(Sale.id, Sale.note, Sale.created_at)
         .order_by(Sale.created_at.desc(), Sale.id.desc())
     )
-    count_statement = select(func.count(Sale.id)).select_from(Sale)
+    count_statement = (
+        select(func.count(Sale.id))
+        .select_from(Sale)
+        .where(Sale.workspace_id == membership.workspace_id)
+    )
 
     if date_from is not None:
         start_datetime = datetime.combine(date_from, time.min)
@@ -78,7 +84,11 @@ def get_sales(
     response_model=SaleResponse,
     status_code=status.HTTP_200_OK,
 )
-def get_sale_by_id(db: DbSession, sale_id: Annotated[int, Path(gt=0)]):
+def get_sale_by_id(
+    db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    sale_id: Annotated[int, Path(gt=0)],
+):
     statement = (
         select(Sale)
         .options(
@@ -89,7 +99,10 @@ def get_sale_by_id(db: DbSession, sale_id: Annotated[int, Path(gt=0)]):
             .selectinload(SaleLine.product_supplier)
             .selectinload(ProductSupplier.supplier),
         )
-        .where(Sale.id == sale_id)
+        .where(
+            Sale.id == sale_id,
+            Sale.workspace_id == membership.workspace_id,
+        )
     )
 
     sale = db.scalars(statement).one_or_none()
@@ -104,14 +117,21 @@ def get_sale_by_id(db: DbSession, sale_id: Annotated[int, Path(gt=0)]):
 
 
 @router.post("", response_model=SaleResponse, status_code=201)
-def add_sale(db: DbSession, sale_data: SaleCreate):
+def add_sale(
+    db: DbSession,
+    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    sale_data: SaleCreate,
+) -> Sale:
     product_supplier_ids = {line.product_supplier_id for line in sale_data.lines}
 
     product_suppliers = list(
         db.scalars(
             select(ProductSupplier)
             .options(selectinload(ProductSupplier.product))
-            .where(ProductSupplier.id.in_(product_supplier_ids))
+            .where(
+                ProductSupplier.id.in_(product_supplier_ids),
+                ProductSupplier.workspace_id == membership.workspace_id,
+            )
             .with_for_update()
         ).all()
     )
@@ -131,7 +151,10 @@ def add_sale(db: DbSession, sale_data: SaleCreate):
             },
         )
 
-    sale = Sale(note=sale_data.note)
+    sale = Sale(
+        note=sale_data.note,
+        workspace_id=membership.workspace_id,
+    )
 
     for line_data in sale_data.lines:
         product_supplier = product_suppliers_by_id[line_data.product_supplier_id]
@@ -156,13 +179,25 @@ def add_sale(db: DbSession, sale_data: SaleCreate):
                 unit_cost_snapshot=product_supplier.purchase_price,
                 unit_sale_price_snapshot=product_supplier.sale_price,
                 quantity_unit_snapshot=product_supplier.product.quantity_unit,
+                workspace_id=membership.workspace_id,
             )
         )
 
     db.add(sale)
     commit_or_raise(db)
 
-    db.refresh(sale)
-    db.refresh(sale, attribute_names=["lines"])
-
-    return sale
+    return db.scalars(
+        select(Sale)
+        .options(
+            selectinload(Sale.lines)
+            .selectinload(SaleLine.product_supplier)
+            .selectinload(ProductSupplier.product),
+            selectinload(Sale.lines)
+            .selectinload(SaleLine.product_supplier)
+            .selectinload(ProductSupplier.supplier),
+        )
+        .where(
+            Sale.id == sale.id,
+            Sale.workspace_id == membership.workspace_id,
+        )
+    ).one()
