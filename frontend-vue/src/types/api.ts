@@ -1,5 +1,7 @@
 export type BestSalesMode = "quantity" | "revenue" | "gross_profit";
 export type StockStatus = "available" | "low" | "out";
+export type WorkspaceRole = "owner" | "admin" | "manager" | "operator" | "viewer";
+export type WorkspaceInvitationRole = Exclude<WorkspaceRole, "owner">;
 
 export interface PaginatedResponse<T> {
   items: T[];
@@ -63,11 +65,28 @@ export interface TokenResponse {
 export interface WorkspaceResponse {
   id: number;
   name: string;
-  role: string;
+  role: WorkspaceRole;
 }
 
 export interface WorkspaceCreatePayload {
   name: string;
+}
+
+export interface WorkspaceInvitationCreatePayload {
+  email: string;
+  role: WorkspaceInvitationRole;
+}
+
+export interface WorkspaceInvitationResponse {
+  id: string;
+  workspace_id: number;
+  inviter_user_id: number | null;
+  email: string;
+  role: WorkspaceInvitationRole;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+  revoked_at: string | null;
 }
 
 export interface ProductSummaryResponse {

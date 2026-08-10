@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from typing import Annotated, ClassVar, Generic, Literal, TypeVar
+from uuid import UUID
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -251,6 +252,16 @@ class UserCreate(BaseModel):
 
 class WorkspaceCreate(BaseModel):
     name: Name
+
+
+class WorkspaceInvitationCreate(BaseModel):
+    email: EmailStr
+    role: Literal["admin", "manager", "operator", "viewer"]
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, email: str) -> str:
+        return email.casefold()
 
 
 # =====================
@@ -529,6 +540,20 @@ class WorkspaceResponse(BaseModel):
     id: int
     name: str
     role: str
+
+
+class WorkspaceInvitationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    workspace_id: int
+    inviter_user_id: int | None
+    email: str
+    role: str
+    created_at: datetime
+    expires_at: datetime
+    accepted_at: datetime | None
+    revoked_at: datetime | None
 
 
 # Other Response Schemas

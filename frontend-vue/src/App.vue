@@ -1,14 +1,22 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
-import { useQueryClient } from "@tanstack/vue-query";
+import { useQuery, useQueryClient } from "@tanstack/vue-query";
 import { RouterView, useRoute, useRouter } from "vue-router";
 
-import { ApiRequestError, createWorkspace, getWorkspaces } from "./lib/api";
+import MyInvitationsModal from "./components/MyInvitationsModal.vue";
+import WorkspaceInvitationsModal from "./components/WorkspaceInvitationsModal.vue";
+import {
+  ApiRequestError,
+  createWorkspace,
+  getMyInvitations,
+  getWorkspaces,
+} from "./lib/api";
 import {
   AUTH_SESSION_CHANGE_EVENT,
   clearAuthToken,
   getAuthToken,
 } from "./lib/authSession";
+import { canManageMembers } from "./lib/permissions";
 import {
   activeWorkspace,
   clearWorkspaceSession,
@@ -27,6 +35,8 @@ const authToken = ref(getAuthToken());
 const workspaceCreateFormElement = ref<HTMLFormElement | null>(null);
 const isWorkspaceLoading = ref(false);
 const isWorkspaceCreateModalOpen = ref(false);
+const isMyInvitationsModalOpen = ref(false);
+const isWorkspaceInvitationsModalOpen = ref(false);
 const isWorkspaceCreateSubmitting = ref(false);
 const workspaceError = ref("");
 const workspaceCreateError = ref("");
@@ -44,11 +54,20 @@ const isStockRouteActive = computed(() =>
   stockRouteNames.has(String(route.name ?? "")),
 );
 const isAuthenticated = computed(() => Boolean(authToken.value));
+const myInvitationsQuery = useQuery({
+  queryKey: ["me", "invitations"],
+  queryFn: getMyInvitations,
+  enabled: computed(() => isAuthenticated.value),
+});
 const requiresWorkspace = computed(() => Boolean(route.meta.requiresWorkspace));
 const shouldShowWorkspaceGate = computed(() => (
   isAuthenticated.value
     && requiresWorkspace.value
     && (!activeWorkspace.value || isWorkspaceLoading.value || Boolean(workspaceError.value))
+));
+const myInvitationsCount = computed(() => myInvitationsQuery.data.value?.length || 0);
+const canManageCurrentWorkspaceMembers = computed(() => (
+  canManageMembers(activeWorkspace.value?.role)
 ));
 const workspaceCreateTitle = computed(() => (
   workspaces.value.length === 0
@@ -73,24 +92,38 @@ function syncAuthSession() {
 }
 
 async function signOut() {
+  closeWorkspaceModals();
   clearAuthToken();
   queryClient.clear();
   await router.push({ path: "/auth", query: { mode: "login" } });
 }
 
-async function loadWorkspaces() {
+async function loadWorkspaces(preferredWorkspaceId: number | null = null) {
   if (!getAuthToken()) {
     clearWorkspaceSession();
     return;
   }
+
+  const nextPreferredWorkspaceId = typeof preferredWorkspaceId === "number"
+    ? preferredWorkspaceId
+    : null;
 
   isWorkspaceLoading.value = true;
   workspaceError.value = "";
 
   try {
     const nextWorkspaces = await getWorkspaces();
+    const preferredWorkspaceExists = Boolean(
+      nextPreferredWorkspaceId
+        && nextWorkspaces.some((workspace) => workspace.id === nextPreferredWorkspaceId),
+    );
+
     setWorkspaces(nextWorkspaces);
-    setActiveWorkspaceId(selectInitialWorkspace(nextWorkspaces));
+    setActiveWorkspaceId(
+      preferredWorkspaceExists
+        ? nextPreferredWorkspaceId
+        : selectInitialWorkspace(nextWorkspaces),
+    );
   } catch (error) {
     setWorkspaces([]);
     setActiveWorkspaceId(null);
@@ -105,11 +138,14 @@ function selectWorkspace(workspace: WorkspaceResponse) {
     return;
   }
 
+  isWorkspaceInvitationsModalOpen.value = false;
   setActiveWorkspaceId(workspace.id);
   void queryClient.invalidateQueries();
 }
 
 function openWorkspaceCreateModal() {
+  isMyInvitationsModalOpen.value = false;
+  isWorkspaceInvitationsModalOpen.value = false;
   workspaceCreateForm.name = "";
   workspaceCreateError.value = "";
   isWorkspaceCreateModalOpen.value = true;
@@ -136,12 +172,8 @@ async function submitWorkspaceCreate() {
     const workspace = await createWorkspace({
       name: normalizeText(workspaceCreateForm.name),
     });
-    const nextWorkspaces = [
-      ...workspaces.value.filter((item) => item.id !== workspace.id),
-      workspace,
-    ].sort((left, right) => left.name.localeCompare(right.name));
 
-    setWorkspaces(nextWorkspaces);
+    upsertWorkspace(workspace);
     setActiveWorkspaceId(workspace.id);
     workspaceCreateForm.name = "";
     isWorkspaceCreateModalOpen.value = false;
@@ -152,6 +184,60 @@ async function submitWorkspaceCreate() {
   } finally {
     isWorkspaceCreateSubmitting.value = false;
   }
+}
+
+function openMyInvitationsModal() {
+  isWorkspaceCreateModalOpen.value = false;
+  isWorkspaceInvitationsModalOpen.value = false;
+  isMyInvitationsModalOpen.value = true;
+  void myInvitationsQuery.refetch();
+}
+
+function closeMyInvitationsModal() {
+  isMyInvitationsModalOpen.value = false;
+}
+
+function openWorkspaceInvitationsModal() {
+  if (!canManageCurrentWorkspaceMembers.value) {
+    return;
+  }
+
+  isWorkspaceCreateModalOpen.value = false;
+  isMyInvitationsModalOpen.value = false;
+  isWorkspaceInvitationsModalOpen.value = true;
+}
+
+function closeWorkspaceInvitationsModal() {
+  isWorkspaceInvitationsModalOpen.value = false;
+}
+
+async function handleInvitationAccepted(workspace: WorkspaceResponse) {
+  upsertWorkspace(workspace);
+  setActiveWorkspaceId(workspace.id);
+  isMyInvitationsModalOpen.value = false;
+  workspaceError.value = "";
+
+  await loadWorkspaces(workspace.id);
+  await queryClient.invalidateQueries();
+}
+
+function handleWorkspaceInvitationsChanged() {
+  void myInvitationsQuery.refetch();
+}
+
+function closeWorkspaceModals() {
+  isWorkspaceCreateModalOpen.value = false;
+  isMyInvitationsModalOpen.value = false;
+  isWorkspaceInvitationsModalOpen.value = false;
+}
+
+function upsertWorkspace(workspace: WorkspaceResponse) {
+  const nextWorkspaces = [
+    ...workspaces.value.filter((item) => item.id !== workspace.id),
+    workspace,
+  ].sort((left, right) => left.name.localeCompare(right.name));
+
+  setWorkspaces(nextWorkspaces);
 }
 
 function handleStorageEvent() {
@@ -317,12 +403,30 @@ onUnmounted(() => {
               </li>
               <li><hr class="dropdown-divider"></li>
               <li>
+                <button
+                  class="dropdown-item d-flex align-items-center justify-content-between gap-3"
+                  type="button"
+                  @click="openMyInvitationsModal"
+                >
+                  <span>Мои приглашения</span>
+                  <span v-if="myInvitationsCount > 0" class="badge rounded-pill text-bg-primary">
+                    {{ myInvitationsCount }}
+                  </span>
+                </button>
+              </li>
+              <li v-if="canManageCurrentWorkspaceMembers">
+                <button class="dropdown-item" type="button" @click="openWorkspaceInvitationsModal">
+                  Управление приглашениями
+                </button>
+              </li>
+              <li><hr class="dropdown-divider"></li>
+              <li>
                 <button class="dropdown-item" type="button" @click="openWorkspaceCreateModal">
                   Создать рабочее пространство
                 </button>
               </li>
               <li v-if="workspaceError">
-                <button class="dropdown-item" type="button" @click="loadWorkspaces">
+                <button class="dropdown-item" type="button" @click="loadWorkspaces()">
                   Повторить загрузку
                 </button>
               </li>
@@ -378,11 +482,17 @@ onUnmounted(() => {
             <button class="btn btn-primary" type="button" @click="openWorkspaceCreateModal">
               Создать рабочее пространство
             </button>
+            <button class="btn btn-outline-primary" type="button" @click="openMyInvitationsModal">
+              Мои приглашения
+              <span v-if="myInvitationsCount > 0" class="badge rounded-pill text-bg-primary ms-1">
+                {{ myInvitationsCount }}
+              </span>
+            </button>
             <button
               v-if="workspaceError"
               class="btn btn-outline-secondary"
               type="button"
-              @click="loadWorkspaces"
+              @click="loadWorkspaces()"
             >
               Повторить
             </button>
@@ -449,4 +559,15 @@ onUnmounted(() => {
     </div>
   </div>
   <div v-if="isWorkspaceCreateModalOpen" class="modal-backdrop fade show"></div>
+
+  <MyInvitationsModal
+    :is-open="isMyInvitationsModalOpen"
+    @close="closeMyInvitationsModal"
+    @accepted="handleInvitationAccepted"
+  />
+  <WorkspaceInvitationsModal
+    :is-open="isWorkspaceInvitationsModalOpen"
+    @close="closeWorkspaceInvitationsModal"
+    @changed="handleWorkspaceInvitationsChanged"
+  />
 </template>

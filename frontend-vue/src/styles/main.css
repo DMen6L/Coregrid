@@ -106,6 +106,65 @@ body {
   gap: 0.5rem;
 }
 
+.invitation-create-form {
+  padding: 1rem;
+  background: var(--bs-tertiary-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.5rem;
+}
+
+.invitation-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.invitation-list-item {
+  padding: 1rem;
+  background: #fff;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.5rem;
+}
+
+.invitation-list-header,
+.invitation-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.invitation-title {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.invitation-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  color: var(--bs-secondary-color);
+  font-size: 0.875rem;
+}
+
+.invitation-actions {
+  align-items: center;
+  flex-shrink: 0;
+}
+
+@media (max-width: 575.98px) {
+  .invitation-list-header {
+    flex-direction: column;
+  }
+
+  .invitation-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+}
+
 .dashboard-blocked {
   width: min(100%, 42rem);
   padding: 1.25rem;

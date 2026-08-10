@@ -1,4 +1,5 @@
 from datetime import datetime
+from uuid import UUID, uuid4
 
 from sqlalchemy import (
     Column,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 
 from app.db import Base
 from app.type_definitions import DEFAULT_QUANTITY_UNIT, QUANTITY_UNIT_MAX_LENGTH
@@ -583,7 +585,7 @@ class User(Base):
         primary_key=True,
     )
     email: Mapped[str] = mapped_column(
-        String(100),
+        String(254),
         nullable=False,
     )
     password_hash: Mapped[str] = mapped_column(
@@ -699,5 +701,88 @@ class WorkspaceMembership(Base):
             "user_id",
             "workspace_id",
             name="uq_workspace_memberships_user_workspace",
+        ),
+    )
+
+
+class WorkspaceInvitation(Base):
+    __tablename__ = "workspace_invitations"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+    )
+    email: Mapped[str] = mapped_column(
+        String(254),
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+    workspace_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "workspaces.id",
+            name="fk_workspace_invitations_workspace_id_workspaces",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    inviter_user_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey(
+            "users.id",
+            name="fk_workspace_invitations_inviter_user_id_users",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+    )
+    accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "token_hash",
+            name="uq_workspace_invitations_token_hash",
+        ),
+        CheckConstraint(
+            "role in ('admin', 'manager', 'operator', 'viewer')",
+            name="ck_workspace_invitations_role",
+        ),
+        CheckConstraint(
+            "char_length(email) > 0",
+            name="ck_workspace_invitations_email_not_empty",
+        ),
+        CheckConstraint(
+            "char_length(token_hash) > 0",
+            name="ck_workspace_invitations_token_hash_not_empty",
+        ),
+        CheckConstraint(
+            "expires_at > created_at",
+            name="ck_workspace_invitations_expires_after_created",
+        ),
+        CheckConstraint(
+            "accepted_at is null or revoked_at is null",
+            name="ck_workspace_invitations_not_accepted_and_revoked",
         ),
     )

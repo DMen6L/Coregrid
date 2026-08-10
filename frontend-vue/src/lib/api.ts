@@ -32,6 +32,8 @@ import type {
   UserLoginPayload,
   UserResponse,
   WorkspaceCreatePayload,
+  WorkspaceInvitationCreatePayload,
+  WorkspaceInvitationResponse,
   WorkspaceResponse,
 } from "../types/api";
 
@@ -101,6 +103,36 @@ export function createWorkspace(payload: WorkspaceCreatePayload) {
   return request<WorkspaceResponse>("/workspaces", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function getMyInvitations() {
+  return request<WorkspaceInvitationResponse[]>("/me/invitations");
+}
+
+export function acceptMyInvitation(invitationId: string) {
+  return request<WorkspaceResponse>(
+    `/me/invitations/accept/${encodeURIComponent(invitationId)}`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function getWorkspaceInvitations() {
+  return request<WorkspaceInvitationResponse[]>(workspacePath("/invitations"));
+}
+
+export function createWorkspaceInvitation(payload: WorkspaceInvitationCreatePayload) {
+  return request<WorkspaceInvitationResponse>(workspacePath("/invitations"), {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteWorkspaceInvitation(invitationId: string) {
+  return request<void>(workspacePath(`/invitations/${encodeURIComponent(invitationId)}`), {
+    method: "DELETE",
   });
 }
 
