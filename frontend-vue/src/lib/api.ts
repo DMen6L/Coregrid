@@ -91,6 +91,10 @@ export function loginUser(payload: UserLoginPayload) {
   });
 }
 
+export function getCurrentUser() {
+  return request<UserResponse>("/auth/me");
+}
+
 export function getWorkspaces() {
   return request<WorkspaceResponse[]>("/workspaces");
 }

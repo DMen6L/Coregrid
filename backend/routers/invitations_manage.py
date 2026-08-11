@@ -4,7 +4,7 @@ from secrets import token_urlsafe
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy import select
 
 from app.models import User, WorkspaceInvitation, WorkspaceMembership
@@ -30,10 +30,15 @@ def get_sent_invitations(
         WorkspaceMembership,
         Depends(require_workspace_permission("members.manage")),
     ],
+    search: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
 ):
     statement = select(WorkspaceInvitation).where(
         WorkspaceInvitation.workspace_id == membership.workspace_id
     )
+
+    if search is not None:
+        condition = WorkspaceInvitation.email.ilike(f"%{search}%")
+        statement = statement.where(condition)
 
     return db.scalars(statement).all()
 

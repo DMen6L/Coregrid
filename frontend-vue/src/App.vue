@@ -8,6 +8,7 @@ import WorkspaceInvitationsModal from "./components/WorkspaceInvitationsModal.vu
 import {
   ApiRequestError,
   createWorkspace,
+  getCurrentUser,
   getMyInvitations,
   getWorkspaces,
 } from "./lib/api";
@@ -26,7 +27,7 @@ import {
   syncActiveWorkspaceFromStorage,
   workspaces,
 } from "./lib/workspaceSession";
-import type { WorkspaceResponse } from "./types/api";
+import type { UserResponse, WorkspaceResponse } from "./types/api";
 
 const route = useRoute();
 const router = useRouter();
@@ -54,6 +55,11 @@ const isStockRouteActive = computed(() =>
   stockRouteNames.has(String(route.name ?? "")),
 );
 const isAuthenticated = computed(() => Boolean(authToken.value));
+const currentUserQuery = useQuery({
+  queryKey: ["auth", "me"],
+  queryFn: getCurrentUser,
+  enabled: computed(() => isAuthenticated.value),
+});
 const myInvitationsQuery = useQuery({
   queryKey: ["me", "invitations"],
   queryFn: getMyInvitations,
@@ -69,6 +75,10 @@ const myInvitationsCount = computed(() => myInvitationsQuery.data.value?.length 
 const canManageCurrentWorkspaceMembers = computed(() => (
   canManageMembers(activeWorkspace.value?.role)
 ));
+const currentUser = computed(() => currentUserQuery.data.value || null);
+const accountDisplayName = computed(() => getAccountDisplayName(currentUser.value));
+const accountSecondaryText = computed(() => currentUser.value?.email || "Аккаунт Coregrid");
+const accountInitials = computed(() => getAccountInitials(currentUser.value));
 const workspaceCreateTitle = computed(() => (
   workspaces.value.length === 0
     ? "Создать первое рабочее пространство"
@@ -249,6 +259,24 @@ function normalizeText(value: string) {
   return String(value || "").trim();
 }
 
+function getAccountDisplayName(user: UserResponse | null) {
+  return user?.name || user?.email || "Аккаунт";
+}
+
+function getAccountInitials(user: UserResponse | null) {
+  const source = user?.name || user?.email || "A";
+  const parts = source
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toLocaleUpperCase("ru-KZ");
+  }
+
+  return source.slice(0, 1).toLocaleUpperCase("ru-KZ");
+}
+
 function getWorkspaceErrorMessage(error: unknown) {
   if (!(error instanceof ApiRequestError)) {
     return "Не удалось загрузить рабочие пространства.";
@@ -402,24 +430,11 @@ onUnmounted(() => {
                 <span class="dropdown-item-text text-danger">{{ workspaceError }}</span>
               </li>
               <li><hr class="dropdown-divider"></li>
-              <li>
-                <button
-                  class="dropdown-item d-flex align-items-center justify-content-between gap-3"
-                  type="button"
-                  @click="openMyInvitationsModal"
-                >
-                  <span>Мои приглашения</span>
-                  <span v-if="myInvitationsCount > 0" class="badge rounded-pill text-bg-primary">
-                    {{ myInvitationsCount }}
-                  </span>
-                </button>
-              </li>
               <li v-if="canManageCurrentWorkspaceMembers">
                 <button class="dropdown-item" type="button" @click="openWorkspaceInvitationsModal">
                   Управление приглашениями
                 </button>
               </li>
-              <li><hr class="dropdown-divider"></li>
               <li>
                 <button class="dropdown-item" type="button" @click="openWorkspaceCreateModal">
                   Создать рабочее пространство
@@ -433,14 +448,50 @@ onUnmounted(() => {
             </ul>
           </div>
 
-          <button
-            v-if="isAuthenticated"
-            class="btn btn-outline-secondary btn-sm"
-            type="button"
-            @click="signOut"
-          >
-            Выйти
-          </button>
+          <div v-if="isAuthenticated" class="dropdown navbar-account">
+            <button
+              id="coregrid-account-dropdown"
+              class="btn btn-outline-secondary btn-sm dropdown-toggle account-menu-button"
+              type="button"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+            >
+              <span class="account-avatar" aria-hidden="true">{{ accountInitials }}</span>
+              <span class="account-menu-name">{{ accountDisplayName }}</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-lg-end account-menu" aria-labelledby="coregrid-account-dropdown">
+              <li>
+                <div class="dropdown-item-text account-menu-header">
+                  <span class="account-avatar account-avatar-lg" aria-hidden="true">
+                    {{ accountInitials }}
+                  </span>
+                  <span class="account-menu-user">
+                    <span class="account-menu-user-name">{{ accountDisplayName }}</span>
+                    <span class="account-menu-user-email">{{ accountSecondaryText }}</span>
+                  </span>
+                </div>
+              </li>
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <button
+                  class="dropdown-item d-flex align-items-center justify-content-between gap-3"
+                  type="button"
+                  @click="openMyInvitationsModal"
+                >
+                  <span>Мои приглашения</span>
+                  <span v-if="myInvitationsCount > 0" class="badge rounded-pill text-bg-primary">
+                    {{ myInvitationsCount }}
+                  </span>
+                </button>
+              </li>
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <button class="dropdown-item text-danger" type="button" @click="signOut">
+                  Выйти
+                </button>
+              </li>
+            </ul>
+          </div>
           <div v-else class="navbar-auth-actions">
             <RouterLink
               class="btn btn-outline-primary btn-sm"
@@ -481,12 +532,6 @@ onUnmounted(() => {
           <div class="workspace-gate-actions">
             <button class="btn btn-primary" type="button" @click="openWorkspaceCreateModal">
               Создать рабочее пространство
-            </button>
-            <button class="btn btn-outline-primary" type="button" @click="openMyInvitationsModal">
-              Мои приглашения
-              <span v-if="myInvitationsCount > 0" class="badge rounded-pill text-bg-primary ms-1">
-                {{ myInvitationsCount }}
-              </span>
             </button>
             <button
               v-if="workspaceError"
