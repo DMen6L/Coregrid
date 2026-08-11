@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from "@tanstack/vue-query";
 import { RouterView, useRoute, useRouter } from "vue-router";
 
 import MyInvitationsModal from "./components/MyInvitationsModal.vue";
-import WorkspaceInvitationsModal from "./components/WorkspaceInvitationsModal.vue";
 import {
   ApiRequestError,
   createWorkspace,
@@ -17,6 +16,7 @@ import {
   clearAuthToken,
   getAuthToken,
 } from "./lib/authSession";
+import { closeOpenDropdowns } from "./lib/dropdowns";
 import { canManageMembers } from "./lib/permissions";
 import {
   activeWorkspace,
@@ -37,7 +37,6 @@ const workspaceCreateFormElement = ref<HTMLFormElement | null>(null);
 const isWorkspaceLoading = ref(false);
 const isWorkspaceCreateModalOpen = ref(false);
 const isMyInvitationsModalOpen = ref(false);
-const isWorkspaceInvitationsModalOpen = ref(false);
 const isWorkspaceCreateSubmitting = ref(false);
 const workspaceError = ref("");
 const workspaceCreateError = ref("");
@@ -54,6 +53,13 @@ const isListRouteActive = computed(() =>
 const isStockRouteActive = computed(() =>
   stockRouteNames.has(String(route.name ?? "")),
 );
+const isMembersRouteActive = computed(() => String(route.name ?? "") === "members");
+const isMembersListRouteActive = computed(() => (
+  isMembersRouteActive.value && route.query.tab !== "invitations"
+));
+const isMembersInvitationsRouteActive = computed(() => (
+  isMembersRouteActive.value && route.query.tab === "invitations"
+));
 const isAuthenticated = computed(() => Boolean(authToken.value));
 const currentUserQuery = useQuery({
   queryKey: ["auth", "me"],
@@ -102,6 +108,7 @@ function syncAuthSession() {
 }
 
 async function signOut() {
+  closeOpenDropdowns();
   closeWorkspaceModals();
   clearAuthToken();
   queryClient.clear();
@@ -144,18 +151,19 @@ async function loadWorkspaces(preferredWorkspaceId: number | null = null) {
 }
 
 function selectWorkspace(workspace: WorkspaceResponse) {
+  closeOpenDropdowns();
+
   if (activeWorkspace.value?.id === workspace.id) {
     return;
   }
 
-  isWorkspaceInvitationsModalOpen.value = false;
   setActiveWorkspaceId(workspace.id);
   void queryClient.invalidateQueries();
 }
 
 function openWorkspaceCreateModal() {
+  closeOpenDropdowns();
   isMyInvitationsModalOpen.value = false;
-  isWorkspaceInvitationsModalOpen.value = false;
   workspaceCreateForm.name = "";
   workspaceCreateError.value = "";
   isWorkspaceCreateModalOpen.value = true;
@@ -197,28 +205,14 @@ async function submitWorkspaceCreate() {
 }
 
 function openMyInvitationsModal() {
+  closeOpenDropdowns();
   isWorkspaceCreateModalOpen.value = false;
-  isWorkspaceInvitationsModalOpen.value = false;
   isMyInvitationsModalOpen.value = true;
   void myInvitationsQuery.refetch();
 }
 
 function closeMyInvitationsModal() {
   isMyInvitationsModalOpen.value = false;
-}
-
-function openWorkspaceInvitationsModal() {
-  if (!canManageCurrentWorkspaceMembers.value) {
-    return;
-  }
-
-  isWorkspaceCreateModalOpen.value = false;
-  isMyInvitationsModalOpen.value = false;
-  isWorkspaceInvitationsModalOpen.value = true;
-}
-
-function closeWorkspaceInvitationsModal() {
-  isWorkspaceInvitationsModalOpen.value = false;
 }
 
 async function handleInvitationAccepted(workspace: WorkspaceResponse) {
@@ -231,14 +225,19 @@ async function handleInvitationAccepted(workspace: WorkspaceResponse) {
   await queryClient.invalidateQueries();
 }
 
-function handleWorkspaceInvitationsChanged() {
-  void myInvitationsQuery.refetch();
-}
-
 function closeWorkspaceModals() {
   isWorkspaceCreateModalOpen.value = false;
   isMyInvitationsModalOpen.value = false;
-  isWorkspaceInvitationsModalOpen.value = false;
+}
+
+function retryWorkspaceLoadFromDropdown() {
+  closeOpenDropdowns();
+  void loadWorkspaces();
+}
+
+function openMembersSection(tab: "members" | "invitations") {
+  closeOpenDropdowns();
+  void router.push({ name: "members", query: { tab } });
 }
 
 function upsertWorkspace(workspace: WorkspaceResponse) {
@@ -253,6 +252,12 @@ function upsertWorkspace(workspace: WorkspaceResponse) {
 function handleStorageEvent() {
   syncActiveWorkspaceFromStorage();
   syncAuthSession();
+}
+
+function handleDropdownShow(event: Event) {
+  const nextToggle = event.target instanceof HTMLElement ? event.target : null;
+
+  closeOpenDropdowns(nextToggle);
 }
 
 function normalizeText(value: string) {
@@ -310,6 +315,7 @@ function getErrorDetail(data: unknown) {
 }
 
 onMounted(() => {
+  document.addEventListener("show.bs.dropdown", handleDropdownShow);
   window.addEventListener(AUTH_SESSION_CHANGE_EVENT, syncAuthSession);
   window.addEventListener("storage", handleStorageEvent);
 
@@ -319,6 +325,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  document.removeEventListener("show.bs.dropdown", handleDropdownShow);
   window.removeEventListener(AUTH_SESSION_CHANGE_EVENT, syncAuthSession);
   window.removeEventListener("storage", handleStorageEvent);
 });
@@ -345,7 +352,44 @@ onUnmounted(() => {
 
       <div class="collapse navbar-collapse" id="coregrid-vue-navbar">
         <div class="navbar-nav nav nav-pills coregrid-navbar-tabs" role="navigation">
-          <RouterLink class="nav-link" to="/dashboard">Дэшборд</RouterLink>
+          <RouterLink class="nav-link" to="/dashboard" @click="closeOpenDropdowns">
+            Дэшборд
+          </RouterLink>
+          <div v-if="canManageCurrentWorkspaceMembers" class="nav-item dropdown">
+            <button
+              id="coregrid-members-dropdown"
+              class="nav-link dropdown-toggle"
+              :class="{ active: isMembersRouteActive }"
+              type="button"
+              data-bs-toggle="dropdown"
+              :aria-current="isMembersRouteActive ? 'page' : undefined"
+              aria-expanded="false"
+            >
+              Участники
+            </button>
+            <ul class="dropdown-menu" aria-labelledby="coregrid-members-dropdown">
+              <li>
+                <button
+                  class="dropdown-item"
+                  :class="{ active: isMembersListRouteActive }"
+                  type="button"
+                  @click="openMembersSection('members')"
+                >
+                  Список участников
+                </button>
+              </li>
+              <li>
+                <button
+                  class="dropdown-item"
+                  :class="{ active: isMembersInvitationsRouteActive }"
+                  type="button"
+                  @click="openMembersSection('invitations')"
+                >
+                  Приглашения
+                </button>
+              </li>
+            </ul>
+          </div>
 
           <div class="nav-item dropdown">
             <button
@@ -361,13 +405,19 @@ onUnmounted(() => {
             </button>
             <ul class="dropdown-menu" aria-labelledby="coregrid-list-dropdown">
               <li>
-                <RouterLink class="dropdown-item" to="/products">Товары</RouterLink>
+                <RouterLink class="dropdown-item" to="/products" @click="closeOpenDropdowns">
+                  Товары
+                </RouterLink>
               </li>
               <li>
-                <RouterLink class="dropdown-item" to="/companies">Компании</RouterLink>
+                <RouterLink class="dropdown-item" to="/companies" @click="closeOpenDropdowns">
+                  Компании
+                </RouterLink>
               </li>
               <li>
-                <RouterLink class="dropdown-item" to="/suppliers">Поставщики</RouterLink>
+                <RouterLink class="dropdown-item" to="/suppliers" @click="closeOpenDropdowns">
+                  Поставщики
+                </RouterLink>
               </li>
             </ul>
           </div>
@@ -386,68 +436,20 @@ onUnmounted(() => {
             </button>
             <ul class="dropdown-menu" aria-labelledby="coregrid-stock-dropdown">
               <li>
-                <RouterLink class="dropdown-item" to="/restocks">Пополнения</RouterLink>
+                <RouterLink class="dropdown-item" to="/restocks" @click="closeOpenDropdowns">
+                  Пополнения
+                </RouterLink>
               </li>
               <li>
-                <RouterLink class="dropdown-item" to="/sales">Продажи</RouterLink>
+                <RouterLink class="dropdown-item" to="/sales" @click="closeOpenDropdowns">
+                  Продажи
+                </RouterLink>
               </li>
             </ul>
           </div>
         </div>
 
         <div class="navbar-session ms-lg-auto mt-3 mt-lg-0">
-          <div v-if="isAuthenticated" class="dropdown navbar-workspace">
-            <button
-              id="coregrid-workspace-dropdown"
-              class="btn btn-outline-secondary btn-sm dropdown-toggle workspace-selector-button"
-              type="button"
-              data-bs-toggle="dropdown"
-              aria-expanded="false"
-            >
-              <span class="workspace-selector-name">
-                {{ activeWorkspace?.name || "Рабочее пространство" }}
-              </span>
-              <span v-if="activeWorkspace" class="workspace-selector-role">
-                {{ activeWorkspace.role }}
-              </span>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-lg-end" aria-labelledby="coregrid-workspace-dropdown">
-              <li v-if="isWorkspaceLoading">
-                <span class="dropdown-item-text text-secondary">Загрузка...</span>
-              </li>
-              <li v-for="workspace in workspaces" :key="workspace.id">
-                <button
-                  class="dropdown-item"
-                  :class="{ active: activeWorkspace?.id === workspace.id }"
-                  type="button"
-                  @click="selectWorkspace(workspace)"
-                >
-                  <span>{{ workspace.name }}</span>
-                  <span class="workspace-dropdown-role">{{ workspace.role }}</span>
-                </button>
-              </li>
-              <li v-if="workspaceError">
-                <span class="dropdown-item-text text-danger">{{ workspaceError }}</span>
-              </li>
-              <li><hr class="dropdown-divider"></li>
-              <li v-if="canManageCurrentWorkspaceMembers">
-                <button class="dropdown-item" type="button" @click="openWorkspaceInvitationsModal">
-                  Управление приглашениями
-                </button>
-              </li>
-              <li>
-                <button class="dropdown-item" type="button" @click="openWorkspaceCreateModal">
-                  Создать рабочее пространство
-                </button>
-              </li>
-              <li v-if="workspaceError">
-                <button class="dropdown-item" type="button" @click="loadWorkspaces()">
-                  Повторить загрузку
-                </button>
-              </li>
-            </ul>
-          </div>
-
           <div v-if="isAuthenticated" class="dropdown navbar-account">
             <button
               id="coregrid-account-dropdown"
@@ -470,6 +472,37 @@ onUnmounted(() => {
                     <span class="account-menu-user-email">{{ accountSecondaryText }}</span>
                   </span>
                 </div>
+              </li>
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <span class="dropdown-header">Рабочие пространства</span>
+              </li>
+              <li v-if="isWorkspaceLoading">
+                <span class="dropdown-item-text text-secondary">Загрузка...</span>
+              </li>
+              <li v-for="workspace in workspaces" :key="workspace.id">
+                <button
+                  class="dropdown-item account-workspace-option"
+                  :class="{ active: activeWorkspace?.id === workspace.id }"
+                  type="button"
+                  @click="selectWorkspace(workspace)"
+                >
+                  <span class="account-workspace-name">{{ workspace.name }}</span>
+                  <span class="workspace-dropdown-role">{{ workspace.role }}</span>
+                </button>
+              </li>
+              <li v-if="workspaceError">
+                <span class="dropdown-item-text text-danger">{{ workspaceError }}</span>
+              </li>
+              <li>
+                <button class="dropdown-item" type="button" @click="openWorkspaceCreateModal">
+                  Создать рабочее пространство
+                </button>
+              </li>
+              <li v-if="workspaceError">
+                <button class="dropdown-item" type="button" @click="retryWorkspaceLoadFromDropdown">
+                  Повторить загрузку
+                </button>
               </li>
               <li><hr class="dropdown-divider"></li>
               <li>
@@ -609,10 +642,5 @@ onUnmounted(() => {
     :is-open="isMyInvitationsModalOpen"
     @close="closeMyInvitationsModal"
     @accepted="handleInvitationAccepted"
-  />
-  <WorkspaceInvitationsModal
-    :is-open="isWorkspaceInvitationsModalOpen"
-    @close="closeWorkspaceInvitationsModal"
-    @changed="handleWorkspaceInvitationsChanged"
   />
 </template>

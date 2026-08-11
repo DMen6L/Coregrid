@@ -123,8 +123,23 @@ export function acceptMyInvitation(invitationId: string) {
   );
 }
 
-export function getWorkspaceInvitations() {
-  return request<WorkspaceInvitationResponse[]>(workspacePath("/invitations"));
+export function getWorkspaceInvitations({
+  search = "",
+}: {
+  search?: string;
+} = {}) {
+  const params = new URLSearchParams();
+  const trimmedSearch = String(search || "").trim();
+
+  if (trimmedSearch) {
+    params.set("search", trimmedSearch);
+  }
+
+  const query = params.toString();
+
+  return request<WorkspaceInvitationResponse[]>(
+    workspacePath(`/invitations${query ? `?${query}` : ""}`),
+  );
 }
 
 export function createWorkspaceInvitation(payload: WorkspaceInvitationCreatePayload) {
