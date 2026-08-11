@@ -89,6 +89,17 @@ export interface WorkspaceInvitationResponse {
   revoked_at: string | null;
 }
 
+export interface WorkspaceMembershipSummaryResponse {
+  id: number;
+  name: string;
+  email: string;
+  role: WorkspaceRole;
+}
+
+export interface WorkspaceMembershipResponse extends WorkspaceMembershipSummaryResponse {
+  user_id: number;
+}
+
 export interface ProductSummaryResponse {
   id: number;
   name: string;

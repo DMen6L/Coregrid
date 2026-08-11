@@ -34,6 +34,8 @@ import type {
   WorkspaceCreatePayload,
   WorkspaceInvitationCreatePayload,
   WorkspaceInvitationResponse,
+  WorkspaceMembershipResponse,
+  WorkspaceMembershipSummaryResponse,
   WorkspaceResponse,
 } from "../types/api";
 
@@ -153,6 +155,26 @@ export function deleteWorkspaceInvitation(invitationId: string) {
   return request<void>(workspacePath(`/invitations/${encodeURIComponent(invitationId)}`), {
     method: "DELETE",
   });
+}
+
+export function getWorkspaceMembers({
+  search = "",
+  page = FIRST_PAGE,
+  pageSize = DEFAULT_PAGE_SIZE,
+}: {
+  search?: string;
+  page?: number;
+  pageSize?: number;
+} = {}) {
+  return request<PaginatedResponse<WorkspaceMembershipSummaryResponse>>(
+    buildListPath(workspacePath("/members"), search, page, pageSize),
+  );
+}
+
+export function getWorkspaceMember(memberId: number) {
+  return request<WorkspaceMembershipResponse>(
+    workspacePath(`/members/${encodeURIComponent(String(memberId))}`),
+  );
 }
 
 export function getSummaries({

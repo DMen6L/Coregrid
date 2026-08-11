@@ -14,8 +14,9 @@ from helpers.dependencies import (
 from helpers.services import build_summaries
 from routers import (
     companies,
-    invitations_manage,
+    invitations,
     me,
+    members,
     products,
     restocks,
     sales,
@@ -50,7 +51,8 @@ app.include_router(sales.router)
 app.include_router(tags.router)
 app.include_router(auth.router)
 app.include_router(workspaces.router)
-app.include_router(invitations_manage.router)
+app.include_router(members.router)
+app.include_router(invitations.router)
 app.include_router(me.router)
 
 

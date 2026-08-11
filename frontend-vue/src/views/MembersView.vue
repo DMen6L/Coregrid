@@ -3,10 +3,14 @@ import { computed, reactive, ref, watch } from "vue";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { useRoute, useRouter } from "vue-router";
 
+import MemberDetailModal from "../components/MemberDetailModal.vue";
 import {
   createWorkspaceInvitation,
+  DEFAULT_PAGE_SIZE,
   deleteWorkspaceInvitation,
+  FIRST_PAGE,
   getWorkspaceInvitations,
+  getWorkspaceMembers,
 } from "../lib/api";
 import {
   formatCount,
@@ -18,9 +22,11 @@ import {
 import { canManageMembers, formatWorkspaceRole } from "../lib/permissions";
 import { activeWorkspace, activeWorkspaceId } from "../lib/workspaceSession";
 import type {
+  PaginatedResponse,
   WorkspaceInvitationCreatePayload,
   WorkspaceInvitationResponse,
   WorkspaceInvitationRole,
+  WorkspaceMembershipSummaryResponse,
 } from "../types/api";
 
 type InvitationStatus = "pending" | "accepted" | "revoked" | "expired";
@@ -33,12 +39,24 @@ const ROLE_OPTIONS: { value: WorkspaceInvitationRole; label: string }[] = [
   { value: "admin", label: "Администратор" },
 ];
 
+const EMPTY_MEMBERS_PAGE: PaginatedResponse<WorkspaceMembershipSummaryResponse> = {
+  items: [],
+  page: FIRST_PAGE,
+  page_size: DEFAULT_PAGE_SIZE,
+  total: 0,
+  total_pages: 0,
+  has_next: false,
+  has_previous: false,
+};
+
 const route = useRoute();
 const router = useRouter();
 const queryClient = useQueryClient();
 const searchForm = ref<HTMLFormElement | null>(null);
 const createFormElement = ref<HTMLFormElement | null>(null);
 const searchDraft = ref(currentSearchFromRoute());
+const isMemberDetailModalOpen = ref(false);
+const selectedMemberId = ref<number | null>(null);
 const createError = ref("");
 const deleteError = ref("");
 const deletingInvitationId = ref("");
@@ -49,9 +67,30 @@ const invitationForm = reactive({
 
 const currentSearch = computed(() => currentSearchFromRoute());
 const currentTab = computed(() => currentTabFromRoute());
+const currentPage = computed(() => currentPageFromRoute());
 const canManageCurrentWorkspaceMembers = computed(() => (
   canManageMembers(activeWorkspace.value?.role)
 ));
+const membersQuery = useQuery({
+  queryKey: computed(() => [
+    "workspace-members",
+    activeWorkspaceId.value,
+    "list",
+    currentSearch.value,
+    currentPage.value,
+    DEFAULT_PAGE_SIZE,
+  ]),
+  queryFn: () => getWorkspaceMembers({
+    search: currentSearch.value,
+    page: currentPage.value,
+    pageSize: DEFAULT_PAGE_SIZE,
+  }),
+  enabled: computed(() => (
+    Boolean(activeWorkspaceId.value)
+      && canManageCurrentWorkspaceMembers.value
+      && currentTab.value === "members"
+  )),
+});
 const invitationsQuery = useQuery({
   queryKey: computed(() => [
     "workspace-invitations",
@@ -84,6 +123,29 @@ const deleteInvitationMutation = useMutation({
   },
 });
 
+const membersPage = computed(() => membersQuery.data.value || EMPTY_MEMBERS_PAGE);
+const membersError = computed(() => (
+  membersQuery.error.value
+    ? getRequestErrorMessage(membersQuery.error.value, "участников")
+    : ""
+));
+const hasMembers = computed(() => membersPage.value.items.length > 0);
+const shouldShowMembersTable = computed(() => (
+  hasMembers.value
+    && !membersQuery.isLoading.value
+    && !membersError.value
+));
+const shouldShowMembersEmpty = computed(() => (
+  !membersQuery.isLoading.value
+    && !membersError.value
+    && membersPage.value.items.length === 0
+));
+const shouldShowMembersPagination = computed(() => (
+  membersPage.value.total > 0
+    && !membersQuery.isLoading.value
+    && !membersError.value
+));
+const totalMemberPages = computed(() => Math.max(membersPage.value.total_pages, 1));
 const invitations = computed(() => sortInvitations(invitationsQuery.data.value || []));
 const invitationsError = computed(() => (
   invitationsQuery.error.value
@@ -106,12 +168,38 @@ function submitSearch() {
     return;
   }
 
-  navigateMembers({ tab: "invitations", search: searchDraft.value });
+  navigateMembers({
+    tab: currentTab.value,
+    search: searchDraft.value,
+    page: FIRST_PAGE,
+  });
 }
 
 function clearSearch() {
   searchDraft.value = "";
-  navigateMembers({ tab: "invitations", search: "" });
+  navigateMembers({
+    tab: currentTab.value,
+    search: "",
+    page: FIRST_PAGE,
+  });
+}
+
+function goToMembersPage(page: number) {
+  navigateMembers({
+    tab: "members",
+    search: currentSearch.value,
+    page,
+  });
+}
+
+function openMemberDetail(member: WorkspaceMembershipSummaryResponse) {
+  selectedMemberId.value = member.id;
+  isMemberDetailModalOpen.value = true;
+}
+
+function closeMemberDetail() {
+  isMemberDetailModalOpen.value = false;
+  selectedMemberId.value = null;
 }
 
 function submitInvitationCreate() {
@@ -220,12 +308,25 @@ function resetCreateForm() {
   createError.value = "";
 }
 
-function navigateMembers({ tab, search }: { tab: MembersTab; search: string }) {
+function navigateMembers({
+  tab,
+  search,
+  page = FIRST_PAGE,
+}: {
+  tab: MembersTab;
+  search: string;
+  page?: number;
+}) {
   const trimmedSearch = normalizeText(search);
+  const nextPage = Math.max(Number(page) || FIRST_PAGE, FIRST_PAGE);
   const query: Record<string, string> = { tab };
 
-  if (tab === "invitations" && trimmedSearch) {
+  if (trimmedSearch) {
     query.search = trimmedSearch;
+  }
+
+  if (tab === "members" && nextPage > FIRST_PAGE) {
+    query.page = String(nextPage);
   }
 
   void router.push({ name: "members", query });
@@ -239,6 +340,15 @@ function currentTabFromRoute(): MembersTab {
   return normalizeRouteString(route.query.tab) === "invitations"
     ? "invitations"
     : "members";
+}
+
+function currentPageFromRoute() {
+  const routePage = Array.isArray(route.query.page)
+    ? route.query.page[0]
+    : route.query.page;
+  const page = Number(routePage || FIRST_PAGE);
+
+  return Number.isFinite(page) && page >= FIRST_PAGE ? Math.trunc(page) : FIRST_PAGE;
 }
 
 function normalizeRouteString(value: unknown) {
@@ -268,7 +378,13 @@ function getTime(value: string) {
         </p>
       </div>
       <span
-        v-if="canManageCurrentWorkspaceMembers && currentTab === 'invitations'"
+        v-if="canManageCurrentWorkspaceMembers && currentTab === 'members'"
+        class="badge text-bg-secondary members-count"
+      >
+        {{ formatCount(membersPage.total) }} участников
+      </span>
+      <span
+        v-else-if="canManageCurrentWorkspaceMembers && currentTab === 'invitations'"
         class="badge text-bg-secondary members-count"
       >
         {{ formatCount(invitations.length) }} приглашений
@@ -290,10 +406,105 @@ function getTime(value: string) {
             <h2 class="fs-5 mb-1">Участники рабочего пространства</h2>
             <p class="text-secondary mb-0">Роли и доступ текущих пользователей.</p>
           </div>
+          <form ref="searchForm" class="members-search" role="search" @submit.prevent="submitSearch">
+            <label class="form-label" for="members-search-input">Поиск участника</label>
+            <div class="input-group">
+              <input
+                id="members-search-input"
+                v-model="searchDraft"
+                class="form-control"
+                name="search"
+                type="search"
+                maxlength="100"
+                placeholder="имя или email"
+                autocomplete="off"
+              >
+              <button
+                v-if="currentSearch"
+                class="btn btn-outline-secondary"
+                type="button"
+                :disabled="membersQuery.isFetching.value"
+                @click="clearSearch"
+              >
+                Сбросить
+              </button>
+              <button class="btn btn-primary" type="submit" :disabled="membersQuery.isFetching.value">
+                Поиск
+              </button>
+            </div>
+          </form>
         </div>
-        <div class="alert alert-light border mb-0" role="status">
-          Список участников, изменение ролей и удаление пользователей ждут backend endpoints для memberships.
+
+        <div v-if="membersQuery.isLoading.value" class="text-secondary py-4" aria-live="polite">
+          Загрузка участников...
         </div>
+        <div v-else-if="membersError" class="alert alert-danger" role="alert">
+          {{ membersError }}
+        </div>
+        <div v-else-if="shouldShowMembersEmpty" class="alert alert-light border mb-0" role="status">
+          {{ currentSearch ? "По запросу ничего не найдено." : "Участников пока нет." }}
+        </div>
+
+        <div v-if="shouldShowMembersTable" class="table-responsive members-table">
+          <table class="table table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th scope="col">Участник</th>
+                <th scope="col">Email</th>
+                <th scope="col">Роль</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="member in membersPage.items"
+                :key="member.id"
+                class="member-summary-row"
+                tabindex="0"
+                role="button"
+                :aria-label="`Открыть участника ${member.name || member.email || `#${formatCount(member.id)}`}`"
+                @click="openMemberDetail(member)"
+                @keydown.enter.prevent="openMemberDetail(member)"
+              >
+                <td class="member-name-cell">
+                  <div class="fw-semibold">{{ member.name || "Без имени" }}</div>
+                  <div class="member-meta">Membership ID {{ formatCount(member.id) }}</div>
+                </td>
+                <td class="member-email">{{ member.email || "Не указан" }}</td>
+                <td>
+                  <span class="badge text-bg-light border">
+                    {{ formatWorkspaceRole(member.role) }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <nav
+          v-if="shouldShowMembersPagination"
+          class="members-pagination mt-3"
+          aria-label="Пагинация участников"
+        >
+          <button
+            class="btn btn-outline-primary"
+            type="button"
+            :disabled="!membersPage.has_previous || membersQuery.isFetching.value"
+            @click="goToMembersPage(membersPage.page - 1)"
+          >
+            Назад
+          </button>
+          <span class="members-page-summary">
+            Страница {{ formatCount(membersPage.page) }} из {{ formatCount(totalMemberPages) }}
+          </span>
+          <button
+            class="btn btn-outline-primary"
+            type="button"
+            :disabled="!membersPage.has_next || membersQuery.isFetching.value"
+            @click="goToMembersPage(membersPage.page + 1)"
+          >
+            Вперед
+          </button>
+        </nav>
       </section>
 
       <section
@@ -437,5 +648,11 @@ function getTime(value: string) {
         </div>
       </section>
     </template>
+
+    <MemberDetailModal
+      :member-id="selectedMemberId"
+      :is-open="isMemberDetailModalOpen"
+      @close="closeMemberDetail"
+    />
   </section>
 </template>

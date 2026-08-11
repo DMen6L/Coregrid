@@ -542,6 +542,19 @@ class WorkspaceResponse(BaseModel):
     role: str
 
 
+class WorkspaceMembershipSummaryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    email: str
+    role: str
+
+
+class WorkspaceMembershipResponse(WorkspaceMembershipSummaryResponse):
+    user_id: int
+
+
 class WorkspaceInvitationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

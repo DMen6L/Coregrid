@@ -645,6 +645,7 @@ body {
   border-radius: 0.5rem;
 }
 
+.members-table,
 .companies-table,
 .suppliers-table,
 .restocks-table,
@@ -664,6 +665,10 @@ body {
   min-width: 980px;
 }
 
+.members-table table {
+  min-width: 620px;
+}
+
 .companies-table table,
 .suppliers-table table {
   min-width: 520px;
@@ -676,6 +681,7 @@ body {
   gap: 0.75rem;
 }
 
+.members-pagination,
 .companies-pagination,
 .suppliers-pagination,
 .restocks-pagination,
@@ -692,6 +698,7 @@ body {
   font-weight: 600;
 }
 
+.members-page-summary,
 .companies-page-summary,
 .suppliers-page-summary,
 .restocks-page-summary,
@@ -705,6 +712,7 @@ body {
   min-width: 13rem;
 }
 
+.member-name-cell,
 .company-name-cell,
 .supplier-name-cell {
   min-width: 12rem;
@@ -716,10 +724,15 @@ body {
 }
 
 .product-meta,
+.member-meta,
 .company-meta,
 .supplier-meta {
   color: var(--bs-secondary-color);
   font-size: 0.875rem;
+}
+
+.member-email {
+  overflow-wrap: anywhere;
 }
 
 .product-tags {
@@ -903,6 +916,7 @@ body {
 }
 
 .product-summary-row,
+.member-summary-row,
 .company-summary-row,
 .supplier-summary-row,
 .restock-summary-row,
@@ -911,6 +925,7 @@ body {
 }
 
 .product-summary-row:focus-visible,
+.member-summary-row:focus-visible,
 .company-summary-row:focus-visible,
 .supplier-summary-row:focus-visible,
 .restock-summary-row:focus-visible,
@@ -920,6 +935,7 @@ body {
 }
 
 .product-detail-summary,
+.member-detail-summary,
 .company-detail-summary,
 .supplier-detail-summary,
 .stock-movement-detail-summary {
@@ -941,6 +957,7 @@ body {
 }
 
 .product-detail-summary > div,
+.member-detail-summary > div,
 .company-detail-summary > div,
 .supplier-detail-summary > div,
 .stock-movement-detail-summary > div {
@@ -952,6 +969,7 @@ body {
 }
 
 .company-detail-label,
+.member-detail-label,
 .supplier-detail-label,
 .stock-movement-detail-label {
   color: var(--bs-secondary-color);
@@ -1117,6 +1135,7 @@ body {
   }
 
   .products-search .input-group,
+  .members-search .input-group,
   .companies-search .input-group,
   .suppliers-search .input-group,
   .restocks-filter-controls,
@@ -1127,12 +1146,15 @@ body {
   }
 
   .products-search .input-group > .form-control,
+  .members-search .input-group > .form-control,
+  .members-search .input-group > .btn,
   .products-search .input-group > .btn {
     width: 100%;
     border-radius: var(--bs-border-radius) !important;
   }
 
-  .products-pagination {
+  .products-pagination,
+  .members-pagination {
     align-items: stretch;
     justify-content: space-between;
   }
@@ -1164,6 +1186,10 @@ body {
   }
 
   .stock-movement-detail-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .member-detail-summary {
     grid-template-columns: 1fr;
   }
 
