@@ -1,17 +1,53 @@
 # Coregrid Backend
 
-FastAPI backend for Coregrid inventory, supplier, company, restock, sale, tag,
-and dashboard workflows.
+FastAPI backend for Coregrid inventory, workspace, authentication, member,
+invitation, supplier, company, restock, sale, tag, and dashboard workflows.
 
 > [!NOTE]
 > Table structures are documented in [`docs/DATABASE.md`](../docs/DATABASE.md).
 
-## Current endpoints
+## Request model
 
-Collection endpoints use pagination query parameters unless noted otherwise:
+Public endpoints:
 
-- `page`: page number, defaults to `1`, minimum `1`
-- `page_size`: rows per page, defaults to `20`, maximum `100`
+- `GET /`
+- `POST /auth/register`
+- `POST /auth/login`
+
+Authenticated endpoints require:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+Inventory and member-management endpoints are workspace-scoped:
+
+```text
+/workspaces/{workspace_id}/...
+```
+
+The backend first checks that the current user has a
+`workspace_memberships` row for the requested `workspace_id`, then checks the
+required permission for the endpoint.
+
+## Roles and permissions
+
+Current permissions are defined in `backend/app/type_definitions.py`.
+
+| Role | Permissions |
+| --- | --- |
+| `owner` | `inventory.read`, `catalog.write`, `stock_movement.create`, `members.manage`, `workspace.manage`, `workspace.delete` |
+| `admin` | `inventory.read`, `catalog.write`, `stock_movement.create`, `members.manage`, `workspace.manage` |
+| `manager` | `inventory.read`, `catalog.write`, `stock_movement.create` |
+| `operator` | `inventory.read`, `stock_movement.create` |
+| `viewer` | `inventory.read` |
+
+## Pagination
+
+Collection endpoints that paginate use:
+
+- `page`: page number, default `1`, minimum `1`
+- `page_size`: rows per page, default `20`, maximum `100`
 
 Paginated responses use:
 
@@ -27,15 +63,127 @@ Paginated responses use:
 }
 ```
 
+## Current endpoints
+
 ### Health
 
 #### `GET /`
 
 - Simple health/testing endpoint.
 
+### Auth
+
+#### `POST /auth/register`
+
+- Creates a user.
+- Requires `email`, `name`, and `password`.
+- Passwords must be at least 12 characters and pass basic strength checks.
+- Duplicate emails return `409 Conflict`.
+- Returns the created user without password data.
+
+#### `POST /auth/login`
+
+- Accepts `email` and `password`.
+- Returns a bearer token response:
+
+```json
+{
+  "access_token": "...",
+  "token_type": "bearer"
+}
+```
+
+#### `GET /auth/me`
+
+- Returns the current authenticated user.
+
+### Workspaces
+
+#### `GET /workspaces`
+
+- Returns workspaces where the current user is a member.
+- Each row includes `id`, `name`, and the user's `role`.
+
+#### `GET /workspaces/{workspace_id}`
+
+- Returns one workspace membership view for the current user.
+- Requires membership in that workspace.
+
+#### `POST /workspaces`
+
+- Creates a workspace.
+- Creates an `owner` membership for the current user.
+- Duplicate workspace names return `409 Conflict`.
+
+### Personal Invitations
+
+#### `GET /me/invitations`
+
+- Returns active pending invitations for the current user's email.
+- Excludes accepted, revoked, and expired invitations.
+
+#### `POST /me/invitations/accept/{invitation_id}`
+
+- Accepts one invitation for the current user's email.
+- Creates a workspace membership with the invitation role.
+- Marks the invitation as accepted.
+- Returns the accepted workspace.
+- Missing or email-mismatched invitations return `404`.
+- Expired, revoked, already accepted, or duplicate-membership invitations return
+  `409 Conflict`.
+
+### Workspace Members
+
+Requires `members.manage`.
+
+#### `GET /workspaces/{workspace_id}/members`
+
+- Returns a paginated member summary list.
+- Supports `search` by member name or email.
+- Summary rows include membership `id`, user `name`, user `email`, and `role`.
+
+#### `GET /workspaces/{workspace_id}/members/{member_id}`
+
+- Returns one member detail row.
+- Detail rows include membership `id`, user `id`, user `name`, user `email`,
+  and `role`.
+- Returns `404` if the membership id is not inside the workspace.
+
+### Workspace Invitations
+
+Requires `members.manage`.
+
+#### `GET /workspaces/{workspace_id}/invitations`
+
+- Returns sent invitations for the workspace.
+- Supports `search` by invited email.
+- Response includes invitation id, workspace id, inviter user id, email, role,
+  created time, expiry time, accepted time, and revoked time.
+- The stored token hash is not exposed.
+
+#### `POST /workspaces/{workspace_id}/invitations`
+
+- Creates an invitation for `email` and role `admin`, `manager`, `operator`, or
+  `viewer`.
+- Invitation ids are UUIDs.
+- Invitations currently expire after 7 days.
+- Raw email-token delivery is not implemented yet; the app accepts invitations
+  by UUID for in-app pending invitations.
+- Existing workspace members and duplicate active invitations return
+  `409 Conflict`.
+
+#### `DELETE /workspaces/{workspace_id}/invitations/{invitation_id}`
+
+- Deletes a pending invitation from the workspace.
+- Returns `204 No Content` on success.
+- Returns `404` if the invitation does not exist in the workspace or has already
+  been accepted.
+
 ### Dashboard
 
-#### `GET /summaries`
+Requires `inventory.read`.
+
+#### `GET /workspaces/{workspace_id}/summaries`
 
 - Returns dashboard totals and rankings.
 - Query parameters:
@@ -46,57 +194,66 @@ Paginated responses use:
 
 ### Companies
 
-#### `GET /companies`
+Read endpoints require `inventory.read`; create/update endpoints require
+`catalog.write`.
+
+#### `GET /workspaces/{workspace_id}/companies`
 
 - Returns a paginated company list.
 - Supports `search` by company name.
 
-#### `GET /companies/{id}`
+#### `GET /workspaces/{workspace_id}/companies/{id}`
 
-- Returns one company by id.
+- Returns one company by id inside the workspace.
 
-#### `POST /companies`
+#### `POST /workspaces/{workspace_id}/companies`
 
-- Creates a company.
+- Creates a company inside the workspace.
 - Requires `name`.
 - Accepts nullable `iin`.
 
-#### `PATCH /companies/{id}`
+#### `PATCH /workspaces/{workspace_id}/companies/{id}`
 
 - Updates company fields.
 - Empty update bodies are rejected.
 - `iin` may be set to `null`.
-- Duplicate `name` or duplicate non-null `iin` returns `409 Conflict`.
+- Duplicate workspace-local `name` or non-null `iin` returns `409 Conflict`.
 
 ### Suppliers
 
-#### `GET /suppliers`
+Read endpoints require `inventory.read`; create/update endpoints require
+`catalog.write`.
+
+#### `GET /workspaces/{workspace_id}/suppliers`
 
 - Returns a paginated supplier list.
 - Supports `search` by supplier name.
 - Summary rows include `product_links_count`.
 
-#### `GET /suppliers/{id}`
+#### `GET /workspaces/{workspace_id}/suppliers/{id}`
 
-- Returns one supplier by id.
+- Returns one supplier by id inside the workspace.
 - Includes linked product-supplier rows.
 
-#### `POST /suppliers`
+#### `POST /workspaces/{workspace_id}/suppliers`
 
 - Creates a supplier.
 - Requires `name`.
 - Requires `phone_number` in `8XXXXXXXXXX` or `+7XXXXXXXXXX` format.
 
-#### `PATCH /suppliers/{id}`
+#### `PATCH /workspaces/{workspace_id}/suppliers/{id}`
 
 - Updates supplier fields.
 - Empty update bodies are rejected.
 - `null` update values are rejected.
-- Duplicate `name` or `phone_number` returns `409 Conflict`.
+- Duplicate workspace-local `name` or `phone_number` returns `409 Conflict`.
 
 ### Products
 
-#### `GET /products`
+Read endpoints require `inventory.read`; create/update/delete-link endpoints
+require `catalog.write`.
+
+#### `GET /workspaces/{workspace_id}/products`
 
 - Returns a paginated product summary list.
 - Supports `search` by product name or tag name.
@@ -108,21 +265,30 @@ Paginated responses use:
   - cheapest available supplier pricing fields
   - calculated `stock_status`
 
-#### `GET /products/{id}`
+#### `GET /workspaces/{workspace_id}/products/{id}`
 
-- Returns one product by id.
+- Returns one product by id inside the workspace.
 - Includes company data, tags, and product-supplier links.
 
-#### `POST /products`
+#### `POST /workspaces/{workspace_id}/products`
 
 - Creates a catalog product.
 - Requires `name` and `company_id`.
 - Accepts `quantity_unit`, defaulting to `шт`.
 - Accepts `low_stock_threshold`, defaulting to `5`.
 - Accepts `tags` as tag-name strings.
-- Does not create supplier links; use `POST /products/{product_id}/links`.
+- Does not create supplier links; use
+  `POST /workspaces/{workspace_id}/products/{product_id}/links`.
 
-#### `PATCH /products/{id}`
+#### `POST /workspaces/{workspace_id}/products/full`
+
+- Atomically creates one product with tags, company selection or inline company
+  creation, and optional product-supplier links.
+- The company source must be exactly one of `company_id` or `company`.
+- Each supplier link source must be exactly one of `supplier_id` or `supplier`.
+- Rolls back the whole operation if any child creation or validation fails.
+
+#### `PATCH /workspaces/{workspace_id}/products/{id}`
 
 - Updates product metadata.
 - Can update `name`, `company_id`, `quantity_unit`, `low_stock_threshold`, and
@@ -130,9 +296,10 @@ Paginated responses use:
 - Omit `tags` to keep existing tags.
 - Send `tags: []` to clear all tags.
 - Empty update bodies are rejected.
-- Duplicate `(name, company_id, quantity_unit)` returns `409 Conflict`.
+- Duplicate workspace-local `(name, company_id, quantity_unit)` returns
+  `409 Conflict`.
 
-#### `POST /products/{product_id}/links`
+#### `POST /workspaces/{workspace_id}/products/{product_id}/links`
 
 - Creates one or more product-supplier links for an existing product.
 - Body is a non-empty list.
@@ -143,7 +310,7 @@ Paginated responses use:
 - Missing suppliers return `404`.
 - Existing duplicate product-supplier links return `409`.
 
-#### `PATCH /products/{product_id}/links/{link_id}`
+#### `PATCH /workspaces/{workspace_id}/products/{product_id}/links/{link_id}`
 
 - Updates one product-supplier link.
 - Can update `supplier_id`, `purchase_price`, `margin_percent`, `sale_price`,
@@ -151,14 +318,14 @@ Paginated responses use:
 - Empty update bodies are rejected.
 - `null` update values are rejected.
 - Missing product, link, or supplier references return `404`.
-- Duplicate `(product_id, supplier_id)` returns `409 Conflict`.
+- Duplicate `(product_id, supplier_id, workspace_id)` returns `409 Conflict`.
 - `sale_price` below calculated floor price returns `422`.
 
-#### `DELETE /products/{product_id}/links/{link_id}`
+#### `DELETE /workspaces/{workspace_id}/products/{product_id}/links/{link_id}`
 
 - Deletes a product-supplier link.
 - Returns `404` when the product or link is missing, or when the link belongs to
-  a different product.
+  a different product/workspace.
 - Returns `409 Conflict` when the link has stock or restock/sale history.
 - Returns `204 No Content` on successful deletion.
 
@@ -170,21 +337,26 @@ Product `stock_status` values:
 
 ### Tags
 
-#### `GET /tags`
+List requires `inventory.read`; delete requires `catalog.write`.
+
+#### `GET /workspaces/{workspace_id}/tags`
 
 - Returns a paginated list of tags ordered by usage count, then name.
 - Supports `search` by tag name.
 - Returns only tags attached to at least one product.
 
-#### `DELETE /tags/{id}`
+#### `DELETE /workspaces/{workspace_id}/tags/{id}`
 
 - Deletes a tag.
 - Product-tag join rows are removed by database cascade.
-- Returns `404` when the tag does not exist.
+- Returns `404` when the tag does not exist in the workspace.
 
 ### Restocks
 
-#### `GET /restocks`
+Read endpoints require `inventory.read`; create requires
+`stock_movement.create`.
+
+#### `GET /workspaces/{workspace_id}/restocks`
 
 - Returns a paginated restock summary list.
 - Supports date filters:
@@ -192,11 +364,11 @@ Product `stock_status` values:
   - `to=YYYY-MM-DD`
 - Ordered newest first.
 
-#### `GET /restocks/{restock_id}`
+#### `GET /workspaces/{workspace_id}/restocks/{restock_id}`
 
-- Returns one restock with line details.
+- Returns one restock with line details inside the workspace.
 
-#### `POST /restocks`
+#### `POST /workspaces/{workspace_id}/restocks`
 
 - Creates one restock with one or more lines.
 - Each line references `product_supplier_id`.
@@ -206,7 +378,10 @@ Product `stock_status` values:
 
 ### Sales
 
-#### `GET /sales`
+Read endpoints require `inventory.read`; create requires
+`stock_movement.create`.
+
+#### `GET /workspaces/{workspace_id}/sales`
 
 - Returns a paginated sale summary list.
 - Supports date filters:
@@ -214,11 +389,11 @@ Product `stock_status` values:
   - `to=YYYY-MM-DD`
 - Ordered newest first.
 
-#### `GET /sales/{sale_id}`
+#### `GET /workspaces/{workspace_id}/sales/{sale_id}`
 
-- Returns one sale with line details.
+- Returns one sale with line details inside the workspace.
 
-#### `POST /sales`
+#### `POST /workspaces/{workspace_id}/sales`
 
 - Creates one sale with one or more lines.
 - Each line references `product_supplier_id`.
@@ -231,10 +406,7 @@ Product `stock_status` values:
 
 ```bash
 # from backend/
-source .venv/bin/activate
-fastapi dev main.py
-
-# or directly
+uv run alembic upgrade head
 uv run fastapi dev main.py
 ```
 
@@ -243,8 +415,23 @@ uv run fastapi dev main.py
 
 ## Local frontend access
 
-`main.py` allows local browser requests from `http://127.0.0.1:5173` and
-`http://localhost:5173` for the Vue frontend.
+`main.py` allows local browser requests from:
+
+- `http://127.0.0.1:5173`
+- `http://localhost:5173`
+- `http://127.0.0.1:5500`
+- `http://localhost:5500`
 
 If the frontend runs on another local port, update CORS before using the browser
 against that port.
+
+## Tests
+
+```bash
+# from backend/
+uv run pytest -s
+```
+
+> [!NOTE]
+> The current backend tests still need migration to authenticated,
+> workspace-scoped paths and workspace-aware fixtures.

@@ -84,8 +84,8 @@ Product list summaries aggregate all supplier-link quantities into
 
 ## Restocks
 
-`POST /restocks` creates one restock header and one or more restock lines in a
-single transaction.
+`POST /workspaces/{workspace_id}/restocks` creates one restock header and one or
+more restock lines in a single transaction.
 
 Request shape:
 
@@ -112,6 +112,8 @@ Rules:
   price is copied.
 - creating a restock increases `product_suppliers.quantity`.
 - the backend locks affected product-supplier rows while applying the change.
+- the current user must be a member of the workspace and have
+  `stock_movement.create`.
 
 Response shape:
 
@@ -138,8 +140,8 @@ Response shape:
 
 ## Sales
 
-`POST /sales` creates one sale header and one or more sale lines in a single
-transaction.
+`POST /workspaces/{workspace_id}/sales` creates one sale header and one or more
+sale lines in a single transaction.
 
 Request shape:
 
@@ -166,6 +168,8 @@ Rules:
   stock.
 - sale lines snapshot current purchase price, sale price, and quantity unit.
 - the backend locks affected product-supplier rows while applying the change.
+- the current user must be a member of the workspace and have
+  `stock_movement.create`.
 
 Response shape:
 
@@ -196,19 +200,19 @@ Response shape:
 Restocks:
 
 ```http
-GET /restocks?page=1&page_size=20
-GET /restocks?from=2026-07-01&to=2026-07-31&page=1&page_size=20
-GET /restocks/{restock_id}
-POST /restocks
+GET /workspaces/{workspace_id}/restocks?page=1&page_size=20
+GET /workspaces/{workspace_id}/restocks?from=2026-07-01&to=2026-07-31&page=1&page_size=20
+GET /workspaces/{workspace_id}/restocks/{restock_id}
+POST /workspaces/{workspace_id}/restocks
 ```
 
 Sales:
 
 ```http
-GET /sales?page=1&page_size=20
-GET /sales?from=2026-07-01&to=2026-07-31&page=1&page_size=20
-GET /sales/{sale_id}
-POST /sales
+GET /workspaces/{workspace_id}/sales?page=1&page_size=20
+GET /workspaces/{workspace_id}/sales?from=2026-07-01&to=2026-07-31&page=1&page_size=20
+GET /workspaces/{workspace_id}/sales/{sale_id}
+POST /workspaces/{workspace_id}/sales
 ```
 
 List responses are paginated:
@@ -230,7 +234,7 @@ List responses are paginated:
 The dashboard uses:
 
 ```http
-GET /summaries?days=7&best_sales_mode=quantity
+GET /workspaces/{workspace_id}/summaries?days=7&best_sales_mode=quantity
 ```
 
 `best_sales_mode` can be:
@@ -260,12 +264,13 @@ Current rule:
 - current stock and supplier pricing live on `product_suppliers`
 - restocks and sales should be the main way to change quantity
 
-`PATCH /products/{id}` updates product metadata such as name, company, tags,
-quantity unit, and low-stock threshold.
+`PATCH /workspaces/{workspace_id}/products/{id}` updates product metadata such
+as name, company, tags, quantity unit, and low-stock threshold.
 
-`PATCH /products/{product_id}/links/{link_id}` can update supplier-link stock
-and pricing directly. For stricter inventory history later, quantity changes
-should move into dedicated restock, sale, or adjustment workflows.
+`PATCH /workspaces/{workspace_id}/products/{product_id}/links/{link_id}` can
+update supplier-link stock and pricing directly. For stricter inventory history
+later, quantity changes should move into dedicated restock, sale, or adjustment
+workflows.
 
 ## Future stock adjustments
 

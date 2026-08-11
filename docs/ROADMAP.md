@@ -9,18 +9,25 @@ Coregrid currently has the foundation for a small inventory control tool:
 
 - FastAPI backend with PostgreSQL, SQLAlchemy, Pydantic, and Alembic migrations
 - Vue, Vite, TypeScript frontend with Vue Router and TanStack Query
-- Docker Compose setup in progress for backend, frontend, and local PostgreSQL
-- products, companies, suppliers, tags, supplier links, restocks, and sales
+- Docker Compose setup for backend, frontend, and local PostgreSQL
+- JWT authentication, users, workspaces, memberships, static roles, and
+  permission checks
+- workspace invitations with in-app acceptance
+- workspace member list/detail views for users with `members.manage`
+- workspace-scoped products, companies, suppliers, tags, supplier links,
+  restocks, and sales
 - product search that includes product names and tags
 - popular tag display in the product list
 - product detail and edit modal with supplier link add/update/delete behavior
-- product creation with existing or inline-created company and supplier
+- atomic product creation with existing or inline-created company and supplier
 - company and supplier list/create/detail/edit workflows
 - restock and sale list/create/detail workflows
+- user account dropdown with workspace switching, workspace creation,
+  invitations, and sign out
 - dashboard sales, stock-risk, top-product, and top-supplier summaries
 
 The next work should make Coregrid feel less like a CRUD interface and more like
-a daily inventory assistant.
+a daily inventory assistant while hardening the new multi-user layer.
 
 ## Recommended order
 
@@ -33,40 +40,47 @@ Goal: make local setup predictable before cloud deployment.
 - add a backend health endpoint when ready
 - keep `.env.docker` as local-only configuration
 
-### 2. Atomic product save endpoints
+### 2. Finish atomic product update endpoints
 
 Goal: remove frontend partial-failure workflows.
 
-The current frontend sometimes needs multiple requests for one user action:
+Atomic product create exists for product + tags + company + supplier links. The
+remaining multi-request risk is product update:
 
-- create company or supplier
-- create product
-- create product-supplier links
 - update product metadata
 - update/create/delete product-supplier links
 
 Useful backend direction:
 
-- add a composite product create endpoint for product + tags + links + optional
-  inline supplier/company creation
 - add a composite product update endpoint with explicit `create`, `update`, and
   `delete` link operations
 - keep the existing smaller endpoints for direct CRUD and simpler testing
 - commit only once after all related operations succeed
 - roll back if any child operation fails
 
-### 3. Authentication and roles
+### 3. Complete workspace member administration
 
-Goal: make the app safe for real multi-user use.
+Goal: turn current membership visibility and invitations into full member
+administration.
 
-Initial roles:
+Current implemented foundation:
 
-- admin can manage products, companies, suppliers, tags, users, and settings
-- manager can edit inventory records and review reports
-- operator can create restocks and sales
-- viewer can inspect inventory and history
+- users can register, log in, and fetch `/auth/me`
+- users can create and switch workspaces
+- owners/admins can list members, inspect member details, list sent
+  invitations, create invitations, and delete pending invitations
+- invited users can see and accept active invitations from `/me/invitations`
 
-This should happen before a real public production deployment.
+Useful next steps:
+
+- role change endpoint with checks that prevent removing the last owner
+- member removal endpoint with checks that prevent deleting yourself or the last
+  owner
+- invitation revoke behavior using `revoked_at` instead of only hard delete, if
+  auditability matters
+- email delivery for invitation links
+- endpoint tests for auth, workspace membership, permissions, invitations, and
+  member list/detail
 
 ### 4. Audit log
 
@@ -81,7 +95,7 @@ Useful events:
 - restock created
 - sale created
 
-An audit log becomes more valuable after auth exists, because each event can
+An audit log becomes more valuable now that auth exists, because each event can
 include the acting user.
 
 ### 5. Stock adjustment workflow
@@ -167,8 +181,8 @@ Useful reports:
 ## AWS deployment path
 
 Do not connect full AWS production just because Docker now works locally. Treat
-AWS as a staging goal until the app has auth, backups, and clearer production
-configuration.
+AWS as a staging goal until auth flows are hardened, backups exist, endpoint
+tests cover workspace permissions, and production configuration is clearer.
 
 Recommended learning path:
 
@@ -208,3 +222,4 @@ Keep documentation synchronized when these areas change:
 - `backend/README.md` for API endpoint contracts
 - `docs/DATABASE.md` for model and migration changes
 - `docs/STOCK_MOVEMENTS.md` for restock, sale, and future adjustment behavior
+- frontend docs if the Vue module structure or API integration rules change
