@@ -8,6 +8,7 @@ import {
   createWorkspace,
   getMe,
   patchMe,
+  patchMePassword,
 } from "../lib/api";
 import { clearAuthToken } from "../lib/authSession";
 import {
@@ -27,6 +28,7 @@ import {
 import type {
   MeResponse,
   UserInvitationResponse,
+  UserPasswordUpdatePayload,
   UserUpdatePayload,
   WorkspaceCreatePayload,
   WorkspaceResponse,
@@ -35,15 +37,23 @@ import type {
 const router = useRouter();
 const queryClient = useQueryClient();
 const profileFormElement = ref<HTMLFormElement | null>(null);
+const passwordFormElement = ref<HTMLFormElement | null>(null);
 const workspaceCreateFormElement = ref<HTMLFormElement | null>(null);
 const profileError = ref("");
 const profileSuccess = ref("");
+const passwordError = ref("");
+const passwordSuccess = ref("");
 const invitationError = ref("");
 const acceptingInvitationId = ref("");
 const workspaceCreateError = ref("");
 const profileForm = reactive({
   name: "",
   email: "",
+});
+const passwordForm = reactive({
+  currentPassword: "",
+  newPassword: "",
+  confirmPassword: "",
 });
 const workspaceForm = reactive({
   name: "",
@@ -58,6 +68,13 @@ const updateProfileMutation = useMutation({
   onSuccess: handleProfileUpdateSuccess,
   onError: (error) => {
     profileError.value = getCreateErrorMessage(error, "профиль");
+  },
+});
+const updatePasswordMutation = useMutation({
+  mutationFn: updatePasswordFromForm,
+  onSuccess: handlePasswordUpdateSuccess,
+  onError: (error) => {
+    passwordError.value = getCreateErrorMessage(error, "пароль");
   },
 });
 const acceptInvitationMutation = useMutation({
@@ -94,6 +111,12 @@ const canSubmitProfile = computed(() => (
         || normalizeText(profileForm.email) !== user.value?.email
     )
     && !updateProfileMutation.isPending.value
+));
+const canSubmitPassword = computed(() => (
+  Boolean(passwordForm.currentPassword)
+    && Boolean(passwordForm.newPassword)
+    && Boolean(passwordForm.confirmPassword)
+    && !updatePasswordMutation.isPending.value
 ));
 const hasWorkspaces = computed(() => userWorkspaces.value.length > 0);
 
@@ -147,6 +170,46 @@ function handleProfileUpdateSuccess(overview: MeResponse) {
   profileForm.email = overview.user.email;
   profileError.value = "";
   profileSuccess.value = "Данные профиля обновлены.";
+}
+
+function submitPasswordUpdate() {
+  passwordError.value = "";
+  passwordSuccess.value = "";
+
+  if (!passwordFormElement.value?.reportValidity()) {
+    return;
+  }
+
+  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+    passwordError.value = "Новый пароль и подтверждение не совпадают.";
+    return;
+  }
+
+  if (passwordForm.currentPassword === passwordForm.newPassword) {
+    passwordError.value = "Новый пароль должен отличаться от текущего.";
+    return;
+  }
+
+  updatePasswordMutation.mutate();
+}
+
+function updatePasswordFromForm() {
+  const payload: UserPasswordUpdatePayload = {
+    current_password: passwordForm.currentPassword,
+    new_password: passwordForm.newPassword,
+  };
+
+  return patchMePassword(payload);
+}
+
+function handlePasswordUpdateSuccess(overview: MeResponse) {
+  queryClient.setQueryData(["me"], overview);
+  syncWorkspaceSession(overview);
+  passwordForm.currentPassword = "";
+  passwordForm.newPassword = "";
+  passwordForm.confirmPassword = "";
+  passwordError.value = "";
+  passwordSuccess.value = "Пароль обновлен.";
 }
 
 function acceptInvitation(invitation: UserInvitationResponse) {
@@ -334,6 +397,88 @@ function getTime(value: string) {
                 :disabled="!canSubmitProfile"
               >
                 {{ updateProfileMutation.isPending.value ? "Сохранение..." : "Сохранить" }}
+              </button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <section class="me-panel">
+        <div class="me-section-header">
+          <div>
+            <h2 class="fs-5 mb-1">Пароль</h2>
+            <p class="text-secondary mb-0">Смена пароля требует текущий пароль аккаунта.</p>
+          </div>
+        </div>
+
+        <form
+          ref="passwordFormElement"
+          class="me-password-form"
+          @submit.prevent="submitPasswordUpdate"
+        >
+          <div v-if="passwordError" class="alert alert-danger" role="alert">
+            {{ passwordError }}
+          </div>
+          <div v-if="passwordSuccess" class="alert alert-success" role="status">
+            {{ passwordSuccess }}
+          </div>
+
+          <div class="row g-2 align-items-end">
+            <div class="col-12 col-lg-4">
+              <label class="form-label" for="me-current-password">Текущий пароль</label>
+              <input
+                id="me-current-password"
+                v-model="passwordForm.currentPassword"
+                class="form-control"
+                name="current_password"
+                type="password"
+                autocomplete="current-password"
+                maxlength="128"
+                :disabled="updatePasswordMutation.isPending.value"
+                required
+              >
+            </div>
+            <div class="col-12 col-lg-4">
+              <label class="form-label" for="me-new-password">Новый пароль</label>
+              <input
+                id="me-new-password"
+                v-model="passwordForm.newPassword"
+                class="form-control"
+                name="new_password"
+                type="password"
+                autocomplete="new-password"
+                minlength="12"
+                maxlength="128"
+                :disabled="updatePasswordMutation.isPending.value"
+                required
+              >
+            </div>
+            <div class="col-12 col-lg-4">
+              <label class="form-label" for="me-confirm-password">Повторите пароль</label>
+              <input
+                id="me-confirm-password"
+                v-model="passwordForm.confirmPassword"
+                class="form-control"
+                name="confirm_password"
+                type="password"
+                autocomplete="new-password"
+                minlength="12"
+                maxlength="128"
+                :disabled="updatePasswordMutation.isPending.value"
+                required
+              >
+            </div>
+            <div class="col-12 d-flex justify-content-end">
+              <button
+                class="btn btn-outline-primary"
+                type="submit"
+                :disabled="!canSubmitPassword"
+              >
+                {{
+                  updatePasswordMutation.isPending.value
+                    ? "Обновление..."
+                    : "Обновить пароль"
+                }}
               </button>
             </div>
           </div>

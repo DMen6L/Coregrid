@@ -8,14 +8,20 @@ from sqlalchemy import select
 from app.models import User, WorkspaceInvitation, WorkspaceMembership
 from app.schemas import (
     MeResponse,
+    UserPasswordUpdate,
     UserUpdate,
     WorkspaceInvitationResponse,
     WorkspaceResponse,
 )
+from helpers.auth import hash_password, password_hash, verify_password
 from helpers.dependencies import CurrentUser, DbSession
 from helpers.services import get_user_info
 from helpers.transactions import commit_or_raise
-from helpers.update_helpers import check_unique_constraints, validate_update
+from helpers.update_helpers import (
+    check_unique_constraints,
+    password_must_not_include_identity,
+    validate_update,
+)
 
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -161,6 +167,43 @@ def patch_me(
 
     for field_name, value in user_schema.items():
         setattr(current_user, field_name, value)
+
+    commit_or_raise(db)
+    db.refresh(current_user)
+
+    return get_user_info(
+        db=db,
+        user=current_user,
+    )
+
+
+@router.patch(
+    "/password",
+    response_model=MeResponse,
+    status_code=status.HTTP_200_OK,
+)
+def patch_password(
+    db: DbSession,
+    current_user: CurrentUser,
+    password_data: UserPasswordUpdate,
+):
+    if not verify_password(password_data.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Current written password is incorrect",
+        )
+    if password_data.current_password == password_data.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Passwords cannot repeat themselves",
+        )
+    password_must_not_include_identity(
+        password=password_data.new_password,
+        email=current_user.email,
+        name=current_user.name,
+    )
+
+    current_user.password_hash = hash_password(password_data.new_password)
 
     commit_or_raise(db)
     db.refresh(current_user)

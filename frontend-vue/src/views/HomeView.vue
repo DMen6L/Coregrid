@@ -1,14 +1,4 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
-
-import {
-  AUTH_SESSION_CHANGE_EVENT,
-  getAuthToken,
-} from "../lib/authSession";
-
-const authToken = ref(getAuthToken());
-const isAuthenticated = computed(() => Boolean(authToken.value));
-
 const sectionLinks = [
   { label: "Дэшборд", path: "/dashboard", note: "Сводка по продажам и остаткам" },
   { label: "Товары", path: "/products", note: "Список товаров и поставщиков" },
@@ -17,20 +7,6 @@ const sectionLinks = [
   { label: "Пополнения", path: "/restocks", note: "Поступления на склад" },
   { label: "Продажи", path: "/sales", note: "Списания и выручка" },
 ];
-
-function syncAuthSession() {
-  authToken.value = getAuthToken();
-}
-
-onMounted(() => {
-  window.addEventListener(AUTH_SESSION_CHANGE_EVENT, syncAuthSession);
-  window.addEventListener("storage", syncAuthSession);
-});
-
-onUnmounted(() => {
-  window.removeEventListener(AUTH_SESSION_CHANGE_EVENT, syncAuthSession);
-  window.removeEventListener("storage", syncAuthSession);
-});
 </script>
 
 <template>
@@ -48,16 +24,13 @@ onUnmounted(() => {
             class="btn btn-outline-primary"
             :to="{ path: '/auth', query: { mode: 'login' } }"
           >
-            {{ isAuthenticated ? "Открыть вход" : "Войти" }}
+            Войти
           </RouterLink>
           <RouterLink
             class="btn btn-primary"
             :to="{ path: '/auth', query: { mode: 'register' } }"
           >
             Регистрация
-          </RouterLink>
-          <RouterLink class="btn btn-outline-primary" to="/dashboard">
-            Дэшборд
           </RouterLink>
         </div>
       </div>
@@ -67,11 +40,11 @@ onUnmounted(() => {
         <dl class="home-access-list">
           <div>
             <dt>Сессия</dt>
-            <dd>{{ isAuthenticated ? "Токен сохранен" : "Не активна" }}</dd>
+            <dd>Войдите или создайте аккаунт</dd>
           </div>
           <div>
             <dt>Рабочее пространство</dt>
-            <dd>Будет подключено после backend-этапа</dd>
+            <dd>Доступно после входа</dd>
           </div>
           <div>
             <dt>Данные бизнеса</dt>

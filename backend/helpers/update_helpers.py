@@ -110,3 +110,25 @@ def validate_update(
             candidate_values,
             exclude_id=exclude_id,
         )
+
+
+def password_must_not_include_identity(
+    password: str,
+    email: str,
+    name: str,
+) -> None:
+    password = password.casefold()
+    email_local_part = email.split("@", 1)[0].casefold()
+    name = name.casefold()
+
+    if email_local_part and email_local_part in password:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="password cannot include email parts",
+        )
+
+    if name and name in password:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="password cannot include name parts",
+        )

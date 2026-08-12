@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Annotated, ClassVar, Generic, Literal, TypeVar
+from typing import ClassVar, Generic, Literal
 from uuid import UUID
 from pydantic import (
     BaseModel,
@@ -9,58 +9,22 @@ from pydantic import (
     ValidationInfo,
     field_validator,
     model_validator,
-    StringConstraints,
 )
 
-from app.type_definitions import DEFAULT_QUANTITY_UNIT, QUANTITY_UNIT_MAX_LENGTH
+from app.type_definitions import (
+    DEFAULT_QUANTITY_UNIT,
+    IIN,
+    ItemT,
+    Name,
+    NormalizedEmail,
+    PhoneNumber,
+    QuantityUnit,
+    StockStatus,
+    StrongPassword,
+    TagName,
+)
 from helpers.pricing import calculate_floor_price
 
-# ======
-# FIELDS
-# ======
-
-IIN = Annotated[
-    str,
-    StringConstraints(strip_whitespace=True, pattern=r"^\d{12}$"),
-]
-Name = Annotated[
-    str,
-    StringConstraints(strip_whitespace=True, min_length=1, max_length=255),
-]
-PhoneNumber = Annotated[
-    str,
-    StringConstraints(strip_whitespace=True, pattern=r"^(8\d{10}|\+7\d{10})$"),
-]
-TagName = Annotated[
-    str,
-    StringConstraints(strip_whitespace=True, min_length=1, max_length=50),
-]
-QuantityUnit = Annotated[
-    str,
-    StringConstraints(
-        strip_whitespace=True,
-        min_length=1,
-        max_length=QUANTITY_UNIT_MAX_LENGTH,
-    ),
-]
-StockStatus = Literal["available", "low", "out"]
-
-ItemT = TypeVar("ItemT")
-
-WEAK_PASSWORDS = frozenset(
-    {
-        "123456789012",
-        "adminadmin",
-        "changeme",
-        "letmein",
-        "password",
-        "password1",
-        "password123",
-        "qwertyuiop",
-        "welcome",
-        "welcome123",
-    }
-)
 
 # ===============
 # VALIDATOR CLASS
@@ -195,59 +159,9 @@ class SaleCreate(BaseModel):
 
 
 class UserCreate(BaseModel):
-    email: EmailStr = Field(max_length=254)
+    email: NormalizedEmail
     name: Name
-    password: str = Field(min_length=12, max_length=128)
-
-    @field_validator("email")
-    @classmethod
-    def normalize_email(cls, email: str) -> str:
-        return email.casefold()
-
-    @field_validator("password")
-    @classmethod
-    def validate_password_strength(cls, password: str) -> str:
-        if password != password.strip():
-            raise ValueError("password cannot start or end with whitespace")
-
-        if any(ord(char) < 32 or ord(char) == 127 for char in password):
-            raise ValueError("password cannot contain control characters")
-
-        normalized_password = "".join(password.casefold().split())
-        if normalized_password in WEAK_PASSWORDS:
-            raise ValueError("password is too common")
-
-        if password.isdigit():
-            raise ValueError("password cannot contain only digits")
-
-        character_groups = [
-            any(char.islower() for char in password),
-            any(char.isupper() for char in password),
-            any(char.isdigit() for char in password),
-            any(not char.isalnum() and char != " " for char in password),
-        ]
-
-        if len(password) < 16 and sum(character_groups) < 3:
-            raise ValueError(
-                "passwords under 16 characters must include at least three of: "
-                "lowercase letters, uppercase letters, digits, symbols"
-            )
-
-        return password
-
-    @model_validator(mode="after")
-    def password_must_not_include_identity(self):
-        password = self.password.casefold()
-        email_local_part = self.email.split("@", 1)[0].casefold()
-        name = self.name.casefold()
-
-        if email_local_part and email_local_part in password:
-            raise ValueError("password cannot contain the email username")
-
-        if name and name in password:
-            raise ValueError("password cannot contain the user's name")
-
-        return self
+    password: StrongPassword
 
 
 class WorkspaceCreate(BaseModel):
@@ -255,13 +169,8 @@ class WorkspaceCreate(BaseModel):
 
 
 class WorkspaceInvitationCreate(BaseModel):
-    email: EmailStr
+    email: NormalizedEmail
     role: Literal["admin", "manager", "operator", "viewer"]
-
-    @field_validator("email")
-    @classmethod
-    def normalize_email(cls, email: str) -> str:
-        return email.casefold()
 
 
 # =====================
@@ -375,12 +284,12 @@ class ProductSupplierUpdate(UpdateValidator):
 
 class UserUpdate(UpdateValidator):
     name: Name | None = None
-    email: EmailStr | None = Field(default=None, max_length=254)
+    email: NormalizedEmail | None = None
 
-    @field_validator("email")
-    @classmethod
-    def normalize_email(cls, email: str) -> str:
-        return email.casefold()
+
+class UserPasswordUpdate(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: StrongPassword
 
 
 # Response schemas
@@ -541,7 +450,7 @@ class UserResponse(BaseModel):
 
     id: int
     name: str
-    email: str
+    email: EmailStr
 
 
 class WorkspaceResponse(BaseModel):
@@ -557,7 +466,7 @@ class WorkspaceMembershipSummaryResponse(BaseModel):
 
     id: int
     name: str
-    email: str
+    email: EmailStr
     role: str
 
 
@@ -571,7 +480,7 @@ class WorkspaceInvitationResponse(BaseModel):
     id: UUID
     workspace_id: int
     inviter_user_id: int | None
-    email: str
+    email: EmailStr
     role: str
     created_at: datetime
     expires_at: datetime
@@ -587,7 +496,7 @@ class UserInvitationResponse(BaseModel):
     workspace_name: str
     inviter_user_id: int | None
     inviter_user_name: str | None
-    inviter_user_email: str | None
+    inviter_user_email: EmailStr | None
     role: str
     created_at: datetime
     accepted_at: datetime | None

@@ -31,6 +31,7 @@ import type {
   TokenResponse,
   UserCreatePayload,
   UserLoginPayload,
+  UserPasswordUpdatePayload,
   UserResponse,
   UserUpdatePayload,
   WorkspaceCreatePayload,
@@ -106,6 +107,13 @@ export function getMe() {
 
 export function patchMe(payload: UserUpdatePayload) {
   return request<MeResponse>("/me", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function patchMePassword(payload: UserPasswordUpdatePayload) {
+  return request<MeResponse>("/me/password", {
     method: "PATCH",
     body: JSON.stringify(payload),
   });

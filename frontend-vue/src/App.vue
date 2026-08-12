@@ -10,6 +10,7 @@ import {
 } from "./lib/api";
 import {
   AUTH_SESSION_CHANGE_EVENT,
+  clearAuthToken,
   getAuthToken,
 } from "./lib/authSession";
 import { closeOpenDropdowns } from "./lib/dropdowns";
@@ -64,10 +65,11 @@ const meQuery = useQuery({
 });
 const requiresWorkspace = computed(() => Boolean(route.meta.requiresWorkspace));
 const shouldShowWorkspaceGate = computed(() => (
-  isAuthenticated.value
+  hasVerifiedAccount.value
     && requiresWorkspace.value
     && (!activeWorkspace.value || isWorkspaceLoading.value || Boolean(workspaceError.value))
 ));
+const hasVerifiedAccount = computed(() => Boolean(isAuthenticated.value && currentUser.value));
 const canManageCurrentWorkspaceMembers = computed(() => (
   canManageMembers(activeWorkspace.value?.role)
 ));
@@ -120,6 +122,11 @@ async function refreshMeOverview(preferredWorkspaceId: number | null = null) {
       applyUserOverview(result.data, nextPreferredWorkspaceId);
     }
   } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 401) {
+      await resetInvalidSession();
+      return;
+    }
+
     setWorkspaces([]);
     setActiveWorkspaceId(null);
     workspaceError.value = getWorkspaceErrorMessage(error);
@@ -194,6 +201,28 @@ function openMembersSection(tab: "members" | "invitations") {
   void router.push({ name: "members", query: { tab } });
 }
 
+async function signOut() {
+  closeOpenDropdowns();
+  clearAuthToken();
+  clearWorkspaceSession();
+  queryClient.clear();
+
+  if (route.name !== "home") {
+    await router.push({ name: "home" });
+  }
+}
+
+async function resetInvalidSession() {
+  clearAuthToken();
+  clearWorkspaceSession();
+  queryClient.clear();
+  workspaceError.value = "";
+
+  if (route.meta.requiresAuth) {
+    await router.replace({ name: "home" });
+  }
+}
+
 function upsertWorkspace(workspace: WorkspaceResponse) {
   const nextWorkspaces = [
     ...workspaces.value.filter((item) => item.id !== workspace.id),
@@ -225,11 +254,15 @@ function normalizeText(value: string) {
 }
 
 function getAccountDisplayName(user: UserResponse | null) {
-  return user?.name || user?.email || "Аккаунт";
+  return user?.name || user?.email || "";
 }
 
 function getAccountInitials(user: UserResponse | null) {
-  const source = user?.name || user?.email || "A";
+  const source = user?.name || user?.email || "";
+  if (!source) {
+    return "";
+  }
+
   const parts = source
     .split(/\s+/)
     .map((part) => part.trim())
@@ -312,9 +345,11 @@ onUnmounted(() => {
 
       <div class="collapse navbar-collapse" id="coregrid-vue-navbar">
         <div class="navbar-nav nav nav-pills coregrid-navbar-tabs" role="navigation">
-          <RouterLink class="nav-link" to="/dashboard" @click="closeOpenDropdowns">
-            Дэшборд
-          </RouterLink>
+          <template v-if="hasVerifiedAccount">
+            <RouterLink class="nav-link" to="/dashboard" @click="closeOpenDropdowns">
+              Дэшборд
+            </RouterLink>
+          </template>
           <div v-if="canManageCurrentWorkspaceMembers" class="nav-item dropdown">
             <button
               id="coregrid-members-dropdown"
@@ -351,7 +386,7 @@ onUnmounted(() => {
             </ul>
           </div>
 
-          <div class="nav-item dropdown">
+          <div v-if="hasVerifiedAccount" class="nav-item dropdown">
             <button
               id="coregrid-list-dropdown"
               class="nav-link dropdown-toggle"
@@ -382,7 +417,7 @@ onUnmounted(() => {
             </ul>
           </div>
 
-          <div class="nav-item dropdown">
+          <div v-if="hasVerifiedAccount" class="nav-item dropdown">
             <button
               id="coregrid-stock-dropdown"
               class="nav-link dropdown-toggle"
@@ -410,7 +445,7 @@ onUnmounted(() => {
         </div>
 
         <div class="navbar-session ms-lg-auto mt-3 mt-lg-0">
-          <div v-if="isAuthenticated" class="navbar-account">
+          <div v-if="hasVerifiedAccount" class="navbar-account">
             <RouterLink
               class="btn btn-outline-secondary account-menu-button"
               :class="{ active: isAccountRouteActive }"
@@ -462,6 +497,12 @@ onUnmounted(() => {
           <div class="workspace-gate-actions">
             <button class="btn btn-primary" type="button" @click="openWorkspaceCreateModal">
               Создать рабочее пространство
+            </button>
+            <RouterLink class="btn btn-outline-secondary" to="/">
+              На главную
+            </RouterLink>
+            <button class="btn btn-outline-danger" type="button" @click="signOut">
+              Выйти
             </button>
             <button
               v-if="workspaceError"

@@ -91,10 +91,6 @@ router.beforeEach((to) => {
     };
   }
 
-  if (to.name === "auth" && isAuthenticated) {
-    return { path: "/dashboard" };
-  }
-
   return true;
 });
 

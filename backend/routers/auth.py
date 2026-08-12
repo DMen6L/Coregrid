@@ -11,7 +11,10 @@ from helpers.auth import (
 from helpers.dependencies import CurrentUser, DbSession
 
 from helpers.transactions import commit_or_raise
-from helpers.update_helpers import check_unique_constraints
+from helpers.update_helpers import (
+    check_unique_constraints,
+    password_must_not_include_identity,
+)
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -23,6 +26,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     status_code=status.HTTP_201_CREATED,
 )
 def add_user(db: DbSession, user_data: UserCreate):
+    password_must_not_include_identity(
+        password=user_data.password,
+        email=user_data.email,
+        name=user_data.name,
+    )
+
     hashed = hash_password(user_data.password)
 
     user_schema = {
@@ -54,7 +63,10 @@ def add_user(db: DbSession, user_data: UserCreate):
     response_model=TokenResponse,
     status_code=status.HTTP_200_OK,
 )
-def login(db: DbSession, login_data: UserLogin):
+def login(
+    db: DbSession,
+    login_data: UserLogin,
+):
     user = db.scalar(select(User).where(User.email == login_data.email))
 
     if user is None:
