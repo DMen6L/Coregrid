@@ -13,7 +13,8 @@ Coregrid currently has the foundation for a small inventory control tool:
 - JWT authentication, users, workspaces, memberships, static roles, and
   permission checks
 - workspace invitations with in-app acceptance
-- workspace member list/detail views for users with `members.manage`
+- workspace member list/detail, role update, and removal views for users with
+  `members.manage`
 - workspace-scoped products, companies, suppliers, tags, supplier links,
   restocks, and sales
 - product search that includes product names and tags
@@ -22,9 +23,10 @@ Coregrid currently has the foundation for a small inventory control tool:
 - atomic product creation with existing or inline-created company and supplier
 - company and supplier list/create/detail/edit workflows
 - restock and sale list/create/detail workflows
-- user account dropdown with workspace switching, workspace creation,
-  invitations, and sign out
+- personal account page with profile updates, workspace switching, workspace
+  creation, invitations, and sign out
 - dashboard sales, stock-risk, top-product, and top-supplier summaries
+- backend tests for the current authenticated workspace-scoped API paths
 
 The next work should make Coregrid feel less like a CRUD interface and more like
 a daily inventory assistant while hardening the new multi-user layer.
@@ -66,21 +68,22 @@ administration.
 Current implemented foundation:
 
 - users can register, log in, and fetch `/auth/me`
+- users can fetch and update personal account details through `/me`
 - users can create and switch workspaces
 - owners/admins can list members, inspect member details, list sent
   invitations, create invitations, and delete pending invitations
+- owners/admins can change supported member roles and remove supported members
 - invited users can see and accept active invitations from `/me/invitations`
 
 Useful next steps:
 
-- role change endpoint with checks that prevent removing the last owner
-- member removal endpoint with checks that prevent deleting yourself or the last
-  owner
+- owner transfer and last-owner protection across future owner-management
+  workflows
 - invitation revoke behavior using `revoked_at` instead of only hard delete, if
   auditability matters
 - email delivery for invitation links
-- endpoint tests for auth, workspace membership, permissions, invitations, and
-  member list/detail
+- broader endpoint tests for admin edge cases, rejected owner changes, and
+  cross-workspace access attempts
 
 ### 4. Audit log
 

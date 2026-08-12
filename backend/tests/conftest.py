@@ -15,6 +15,10 @@ TABLES_TO_TRUNCATE = (
     "tags",
     "suppliers",
     "companies",
+    "workspace_invitations",
+    "workspace_memberships",
+    "workspaces",
+    "users",
 )
 
 
@@ -38,3 +42,12 @@ def clean_database():
 def db_session():
     with SessionLocal() as session:
         yield session
+
+
+@pytest.fixture
+def client():
+    from fastapi.testclient import TestClient
+    from main import app
+
+    with TestClient(app) as test_client:
+        yield test_client

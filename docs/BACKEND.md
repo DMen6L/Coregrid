@@ -92,13 +92,25 @@ permissions:
 
 Automated tests use FastAPI `TestClient` and pytest.
 
-> [!NOTE]
-> The current test files still need migration to authenticated,
-> workspace-scoped requests. They predate the user/workspace permission layer and
-> should be updated before using them as a release signal.
+The current suite exercises authenticated, workspace-scoped API behavior:
+
+- registration, login, `/auth/me`, and `/me`
+- profile updates and duplicate email handling
+- workspace creation and workspace access checks
+- invitation creation, duplicate prevention, personal acceptance, and member
+  list/detail
+- member role update and member removal
+- role permission checks for workspace-scoped catalog writes
+- product creation, product search, workspace isolation, product-supplier link
+  changes, restocks, sales, and dashboard summaries
+
+Tests run against the configured local development database and truncate
+Coregrid tables between tests. Apply migrations before running the suite and do
+not use production database settings.
 
 ```bash
 # Run from backend/
+uv run alembic upgrade head
 uv run pytest -s
 ```
 

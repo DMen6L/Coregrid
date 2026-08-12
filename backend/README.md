@@ -133,6 +133,8 @@ Paginated responses use:
 
 - Returns active pending invitations for the current user's email.
 - Excludes accepted, revoked, and expired invitations.
+- For the richer personal invitation view with workspace and inviter names, use
+  `GET /me`.
 
 #### `POST /me/invitations/accept/{invitation_id}`
 
@@ -160,6 +162,24 @@ Requires `members.manage`.
 - Detail rows include membership `id`, user `id`, user `name`, user `email`,
   and `role`.
 - Returns `404` if the membership id is not inside the workspace.
+
+#### `PATCH /workspaces/{workspace_id}/members/{member_id}/role`
+
+- Updates one workspace member's role.
+- Accepts `new_role` as a query parameter.
+- Allowed target roles are `admin`, `manager`, `operator`, and `viewer`.
+- A user cannot update their own role through this endpoint.
+- The `owner` role cannot be assigned or changed through this endpoint.
+- Only owners can grant `admin` or change existing admins.
+- Returns the updated member detail row.
+
+#### `DELETE /workspaces/{workspace_id}/members/{member_id}`
+
+- Removes one member from the workspace.
+- A user cannot remove themself through this endpoint.
+- Owners cannot be removed through this endpoint.
+- Only owners can remove admins.
+- Returns `204 No Content` on success.
 
 ### Workspace Invitations
 
@@ -441,9 +461,11 @@ against that port.
 
 ```bash
 # from backend/
+uv run alembic upgrade head
 uv run pytest -s
 ```
 
 > [!NOTE]
-> The current backend tests still need migration to authenticated,
-> workspace-scoped paths and workspace-aware fixtures.
+> The tests run against the configured local development database and truncate
+> Coregrid tables between tests. Keep migrations applied before running them and
+> never point test configuration at production data.

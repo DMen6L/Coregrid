@@ -10,7 +10,10 @@ App meant for automation of core operations inside businesses.
 - [roadmap and next feature ideas](docs/ROADMAP.md)
 - JWT authentication with user accounts
 - workspace-scoped inventory data with role-based permissions
-- workspace invitations, personal invitation acceptance, and member listing/detail views
+- workspace invitations, personal invitation acceptance, member listing/detail,
+  member role changes, and member removal
+- personal account page for profile updates, invitations, workspace switching,
+  workspace creation, and sign out
 - per-product low-stock thresholds with calculated stock status
 - Vue inventory operations UI for product, supplier, company, member, invitation, and stock movement workflows
 
@@ -109,12 +112,14 @@ Run the scripts
 
 ```bash
 # from backend/
+uv run alembic upgrade head
 uv run pytest -s
 ```
 
 > [!NOTE]
-> Some backend tests still need to be migrated to authenticated,
-> workspace-scoped API requests after the user/workspace permission work.
+> Backend tests use the configured local development database and clean the
+> Coregrid tables before and after each test. Do not point test environment
+> variables at production data.
 
 ### Run locally
 
