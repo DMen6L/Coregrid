@@ -1,6 +1,7 @@
 from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app.models import (
     Product,
@@ -8,6 +9,9 @@ from app.models import (
     Sale,
     SaleLine,
     Supplier,
+    User,
+    Workspace,
+    WorkspaceInvitation,
     WorkspaceMembership,
 )
 from app.schemas import (
@@ -198,3 +202,58 @@ def build_summaries(
         top_products=top_products,
         top_suppliers=top_suppliers,
     )
+
+
+def get_user_info(
+    db: DbSession,
+    user: User,
+):
+    now = datetime.now()
+
+    memberships = db.scalars(
+        select(WorkspaceMembership)
+        .options(selectinload(WorkspaceMembership.workspace))
+        .where(WorkspaceMembership.user_id == user.id)
+    ).all()
+
+    workspaces = [
+        {
+            "id": membership.workspace_id,
+            "name": membership.workspace.name,
+            "role": membership.role,
+        }
+        for membership in memberships
+    ]
+
+    invitations_statement = (
+        select(
+            WorkspaceInvitation.id.label("id"),
+            Workspace.id.label("workspace_id"),
+            Workspace.name.label("workspace_name"),
+            User.id.label("inviter_user_id"),
+            User.name.label("inviter_user_name"),
+            User.email.label("inviter_user_email"),
+            WorkspaceInvitation.role.label("role"),
+            WorkspaceInvitation.created_at.label("created_at"),
+            WorkspaceInvitation.expires_at.label("expires_at"),
+            WorkspaceInvitation.accepted_at.label("accepted_at"),
+            WorkspaceInvitation.revoked_at.label("revoked_at"),
+        )
+        .select_from(WorkspaceInvitation)
+        .join(Workspace, Workspace.id == WorkspaceInvitation.workspace_id)
+        .outerjoin(User, User.id == WorkspaceInvitation.inviter_user_id)
+        .where(
+            WorkspaceInvitation.email == user.email,
+            WorkspaceInvitation.accepted_at.is_(None),
+            WorkspaceInvitation.revoked_at.is_(None),
+            WorkspaceInvitation.expires_at > now,
+        )
+    )
+
+    invitations = db.execute(invitations_statement).mappings().all()
+
+    return {
+        "user": user,
+        "workspaces": workspaces,
+        "invitations": invitations,
+    }

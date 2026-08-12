@@ -15,31 +15,6 @@ router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
 
 @router.get(
-    "",
-    response_model=list[WorkspaceResponse],
-    status_code=status.HTTP_200_OK,
-)
-def get_workspaces(
-    db: DbSession,
-    current_user: CurrentUser,
-):
-    statement = (
-        select(WorkspaceMembership)
-        .options(selectinload(WorkspaceMembership.workspace))
-        .where(WorkspaceMembership.user_id == current_user.id)
-    )
-
-    return [
-        {
-            "id": membership.workspace_id,
-            "name": membership.workspace.name,
-            "role": membership.role,
-        }
-        for membership in db.scalars(statement).all()
-    ]
-
-
-@router.get(
     "/{workspace_id}",
     response_model=WorkspaceResponse,
     status_code=status.HTTP_200_OK,

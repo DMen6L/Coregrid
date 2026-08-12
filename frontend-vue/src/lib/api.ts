@@ -6,6 +6,7 @@ import type {
   CompanyCreatePayload,
   CompanyResponse,
   CompanyUpdatePayload,
+  MeResponse,
   PaginatedResponse,
   ProductAtomicCreatePayload,
   ProductCreatePayload,
@@ -31,6 +32,7 @@ import type {
   UserCreatePayload,
   UserLoginPayload,
   UserResponse,
+  UserUpdatePayload,
   WorkspaceCreatePayload,
   WorkspaceAssignableRole,
   WorkspaceInvitationCreatePayload,
@@ -98,8 +100,15 @@ export function getCurrentUser() {
   return request<UserResponse>("/auth/me");
 }
 
-export function getWorkspaces() {
-  return request<WorkspaceResponse[]>("/workspaces");
+export function getMe() {
+  return request<MeResponse>("/me");
+}
+
+export function patchMe(payload: UserUpdatePayload) {
+  return request<MeResponse>("/me", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getWorkspace(workspaceId: number) {

@@ -5,14 +5,35 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Path, status
 from sqlalchemy import select
 
-from app.models import WorkspaceInvitation, WorkspaceMembership
-from app.schemas import WorkspaceInvitationResponse, WorkspaceResponse
+from app.models import User, WorkspaceInvitation, WorkspaceMembership
+from app.schemas import (
+    MeResponse,
+    UserUpdate,
+    WorkspaceInvitationResponse,
+    WorkspaceResponse,
+)
 from helpers.dependencies import CurrentUser, DbSession
+from helpers.services import get_user_info
 from helpers.transactions import commit_or_raise
-from helpers.update_helpers import check_unique_constraints
+from helpers.update_helpers import check_unique_constraints, validate_update
 
 
 router = APIRouter(prefix="/me", tags=["me"])
+
+
+@router.get(
+    "",
+    response_model=MeResponse,
+    status_code=status.HTTP_200_OK,
+)
+def get_me(
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    return get_user_info(
+        db=db,
+        user=current_user,
+    )
 
 
 @router.get(
@@ -116,3 +137,35 @@ def accept_invitation(
         "name": membership.workspace.name,
         "role": membership.role,
     }
+
+
+@router.patch(
+    "",
+    response_model=MeResponse,
+    status_code=status.HTTP_200_OK,
+)
+def patch_me(
+    db: DbSession,
+    current_user: CurrentUser,
+    user_data: UserUpdate,
+):
+    user_schema = user_data.model_dump(exclude_unset=True)
+
+    validate_update(
+        db=db,
+        model=User,
+        constraint_name="uq_users_email",
+        update_data=user_schema,
+        update_obj=current_user,
+    )
+
+    for field_name, value in user_schema.items():
+        setattr(current_user, field_name, value)
+
+    commit_or_raise(db)
+    db.refresh(current_user)
+
+    return get_user_info(
+        db=db,
+        user=current_user,
+    )

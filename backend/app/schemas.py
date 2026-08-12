@@ -373,6 +373,16 @@ class ProductSupplierUpdate(UpdateValidator):
         return self
 
 
+class UserUpdate(UpdateValidator):
+    name: Name | None = None
+    email: EmailStr | None = Field(default=None, max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, email: str) -> str:
+        return email.casefold()
+
+
 # Response schemas
 
 
@@ -567,6 +577,28 @@ class WorkspaceInvitationResponse(BaseModel):
     expires_at: datetime
     accepted_at: datetime | None
     revoked_at: datetime | None
+
+
+class UserInvitationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    workspace_id: int
+    workspace_name: str
+    inviter_user_id: int | None
+    inviter_user_name: str | None
+    inviter_user_email: str | None
+    role: str
+    created_at: datetime
+    accepted_at: datetime | None
+    expires_at: datetime
+    revoked_at: datetime | None
+
+
+class MeResponse(BaseModel):
+    user: UserResponse
+    workspaces: list[WorkspaceResponse]
+    invitations: list[UserInvitationResponse]
 
 
 # Other Response Schemas

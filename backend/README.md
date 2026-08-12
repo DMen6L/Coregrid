@@ -97,12 +97,24 @@ Paginated responses use:
 
 - Returns the current authenticated user.
 
+### Personal Account
+
+#### `GET /me`
+
+- Returns the current authenticated user's account overview.
+- Response includes:
+  - `user`: current user data.
+  - `workspaces`: workspaces where the user is a member, each with `id`, `name`, and the user's `role`.
+  - `invitations`: active pending invitations for the user's email, including workspace and inviter details.
+
+#### `PATCH /me`
+
+- Updates the current authenticated user's profile.
+- Accepts `name` and `email`.
+- Duplicate emails return `409 Conflict`.
+- Returns the updated account overview.
+
 ### Workspaces
-
-#### `GET /workspaces`
-
-- Returns workspaces where the current user is a member.
-- Each row includes `id`, `name`, and the user's `role`.
 
 #### `GET /workspaces/{workspace_id}`
 

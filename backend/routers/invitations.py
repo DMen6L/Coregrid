@@ -24,7 +24,7 @@ router = APIRouter(
     response_model=list[WorkspaceInvitationResponse],
     status_code=status.HTTP_200_OK,
 )
-def get_sent_invitations(
+def get_invitations(
     db: DbSession,
     membership: Annotated[
         WorkspaceMembership,

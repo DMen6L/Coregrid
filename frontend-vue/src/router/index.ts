@@ -4,6 +4,7 @@ import CompaniesView from "../views/CompaniesView.vue";
 import AuthView from "../views/AuthView.vue";
 import DashboardView from "../views/DashboardView.vue";
 import HomeView from "../views/HomeView.vue";
+import MeView from "../views/MeView.vue";
 import MembersView from "../views/MembersView.vue";
 import ProductsView from "../views/ProductsView.vue";
 import RestocksView from "../views/RestocksView.vue";
@@ -31,6 +32,12 @@ const router = createRouter({
       name: "dashboard",
       component: DashboardView,
       meta: { requiresAuth: true, requiresWorkspace: true },
+    },
+    {
+      path: "/me",
+      name: "me",
+      component: MeView,
+      meta: { requiresAuth: true },
     },
     {
       path: "/products",

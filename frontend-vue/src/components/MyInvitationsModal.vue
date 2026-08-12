@@ -65,7 +65,10 @@ function acceptInvitation(invitation: WorkspaceInvitationResponse) {
 
 async function handleInvitationAccepted(workspace: WorkspaceResponse) {
   acceptError.value = "";
-  await queryClient.invalidateQueries({ queryKey: ["me", "invitations"] });
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["me"] }),
+    queryClient.invalidateQueries({ queryKey: ["me", "invitations"] }),
+  ]);
   emit("accepted", workspace);
 }
 

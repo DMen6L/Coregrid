@@ -58,6 +58,11 @@ export interface UserResponse {
   email: string;
 }
 
+export interface UserUpdatePayload {
+  name: string;
+  email: string;
+}
+
 export interface TokenResponse {
   access_token: string;
   token_type: "bearer";
@@ -88,6 +93,26 @@ export interface WorkspaceInvitationResponse {
   expires_at: string;
   accepted_at: string | null;
   revoked_at: string | null;
+}
+
+export interface UserInvitationResponse {
+  id: string;
+  workspace_id: number;
+  workspace_name: string;
+  inviter_user_id: number | null;
+  inviter_user_name: string | null;
+  inviter_user_email: string | null;
+  role: WorkspaceInvitationRole;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+  revoked_at: string | null;
+}
+
+export interface MeResponse {
+  user: UserResponse;
+  workspaces: WorkspaceResponse[];
+  invitations: UserInvitationResponse[];
 }
 
 export interface WorkspaceMembershipSummaryResponse {

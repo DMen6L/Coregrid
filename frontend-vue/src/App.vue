@@ -1,19 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useQuery, useQueryClient } from "@tanstack/vue-query";
 import { RouterView, useRoute, useRouter } from "vue-router";
 
-import MyInvitationsModal from "./components/MyInvitationsModal.vue";
 import {
   ApiRequestError,
   createWorkspace,
-  getCurrentUser,
-  getMyInvitations,
-  getWorkspaces,
+  getMe,
 } from "./lib/api";
 import {
   AUTH_SESSION_CHANGE_EVENT,
-  clearAuthToken,
   getAuthToken,
 } from "./lib/authSession";
 import { closeOpenDropdowns } from "./lib/dropdowns";
@@ -27,7 +23,7 @@ import {
   syncActiveWorkspaceFromStorage,
   workspaces,
 } from "./lib/workspaceSession";
-import type { UserResponse, WorkspaceResponse } from "./types/api";
+import type { MeResponse, UserResponse, WorkspaceResponse } from "./types/api";
 
 const route = useRoute();
 const router = useRouter();
@@ -36,7 +32,6 @@ const authToken = ref(getAuthToken());
 const workspaceCreateFormElement = ref<HTMLFormElement | null>(null);
 const isWorkspaceLoading = ref(false);
 const isWorkspaceCreateModalOpen = ref(false);
-const isMyInvitationsModalOpen = ref(false);
 const isWorkspaceCreateSubmitting = ref(false);
 const workspaceError = ref("");
 const workspaceCreateError = ref("");
@@ -60,16 +55,12 @@ const isMembersListRouteActive = computed(() => (
 const isMembersInvitationsRouteActive = computed(() => (
   isMembersRouteActive.value && route.query.tab === "invitations"
 ));
+const isAccountRouteActive = computed(() => String(route.name ?? "") === "me");
 const isAuthenticated = computed(() => Boolean(authToken.value));
-const currentUserQuery = useQuery({
-  queryKey: ["auth", "me"],
-  queryFn: getCurrentUser,
-  enabled: computed(() => isAuthenticated.value),
-});
-const myInvitationsQuery = useQuery({
-  queryKey: ["me", "invitations"],
-  queryFn: getMyInvitations,
-  enabled: computed(() => isAuthenticated.value),
+const meQuery = useQuery({
+  queryKey: ["me"],
+  queryFn: getMe,
+  enabled: false,
 });
 const requiresWorkspace = computed(() => Boolean(route.meta.requiresWorkspace));
 const shouldShowWorkspaceGate = computed(() => (
@@ -77,13 +68,11 @@ const shouldShowWorkspaceGate = computed(() => (
     && requiresWorkspace.value
     && (!activeWorkspace.value || isWorkspaceLoading.value || Boolean(workspaceError.value))
 ));
-const myInvitationsCount = computed(() => myInvitationsQuery.data.value?.length || 0);
 const canManageCurrentWorkspaceMembers = computed(() => (
   canManageMembers(activeWorkspace.value?.role)
 ));
-const currentUser = computed(() => currentUserQuery.data.value || null);
+const currentUser = computed(() => meQuery.data.value?.user || null);
 const accountDisplayName = computed(() => getAccountDisplayName(currentUser.value));
-const accountSecondaryText = computed(() => currentUser.value?.email || "Аккаунт Coregrid");
 const accountInitials = computed(() => getAccountInitials(currentUser.value));
 const workspaceCreateTitle = computed(() => (
   workspaces.value.length === 0
@@ -102,20 +91,12 @@ function syncAuthSession() {
     return;
   }
 
-  if (authToken.value !== previousToken || workspaces.value.length === 0) {
-    void loadWorkspaces();
+  if (authToken.value !== previousToken || !meQuery.data.value) {
+    void refreshMeOverview();
   }
 }
 
-async function signOut() {
-  closeOpenDropdowns();
-  closeWorkspaceModals();
-  clearAuthToken();
-  queryClient.clear();
-  await router.push({ path: "/auth", query: { mode: "login" } });
-}
-
-async function loadWorkspaces(preferredWorkspaceId: number | null = null) {
+async function refreshMeOverview(preferredWorkspaceId: number | null = null) {
   if (!getAuthToken()) {
     clearWorkspaceSession();
     return;
@@ -129,18 +110,15 @@ async function loadWorkspaces(preferredWorkspaceId: number | null = null) {
   workspaceError.value = "";
 
   try {
-    const nextWorkspaces = await getWorkspaces();
-    const preferredWorkspaceExists = Boolean(
-      nextPreferredWorkspaceId
-        && nextWorkspaces.some((workspace) => workspace.id === nextPreferredWorkspaceId),
-    );
+    const result = await meQuery.refetch();
 
-    setWorkspaces(nextWorkspaces);
-    setActiveWorkspaceId(
-      preferredWorkspaceExists
-        ? nextPreferredWorkspaceId
-        : selectInitialWorkspace(nextWorkspaces),
-    );
+    if (result.error) {
+      throw result.error;
+    }
+
+    if (result.data) {
+      applyUserOverview(result.data, nextPreferredWorkspaceId);
+    }
   } catch (error) {
     setWorkspaces([]);
     setActiveWorkspaceId(null);
@@ -150,20 +128,26 @@ async function loadWorkspaces(preferredWorkspaceId: number | null = null) {
   }
 }
 
-function selectWorkspace(workspace: WorkspaceResponse) {
-  closeOpenDropdowns();
+function applyUserOverview(
+  overview: MeResponse,
+  preferredWorkspaceId: number | null = null,
+) {
+  const preferredWorkspaceExists = Boolean(
+    preferredWorkspaceId
+      && overview.workspaces.some((workspace) => workspace.id === preferredWorkspaceId),
+  );
 
-  if (activeWorkspace.value?.id === workspace.id) {
-    return;
-  }
-
-  setActiveWorkspaceId(workspace.id);
-  void queryClient.invalidateQueries();
+  setWorkspaces(overview.workspaces);
+  setActiveWorkspaceId(
+    preferredWorkspaceExists
+      ? preferredWorkspaceId
+      : selectInitialWorkspace(overview.workspaces),
+  );
+  workspaceError.value = "";
 }
 
 function openWorkspaceCreateModal() {
   closeOpenDropdowns();
-  isMyInvitationsModalOpen.value = false;
   workspaceCreateForm.name = "";
   workspaceCreateError.value = "";
   isWorkspaceCreateModalOpen.value = true;
@@ -196,43 +180,13 @@ async function submitWorkspaceCreate() {
     workspaceCreateForm.name = "";
     isWorkspaceCreateModalOpen.value = false;
     workspaceError.value = "";
+    await refreshMeOverview(workspace.id);
     await queryClient.invalidateQueries();
   } catch (error) {
     workspaceCreateError.value = getWorkspaceErrorMessage(error);
   } finally {
     isWorkspaceCreateSubmitting.value = false;
   }
-}
-
-function openMyInvitationsModal() {
-  closeOpenDropdowns();
-  isWorkspaceCreateModalOpen.value = false;
-  isMyInvitationsModalOpen.value = true;
-  void myInvitationsQuery.refetch();
-}
-
-function closeMyInvitationsModal() {
-  isMyInvitationsModalOpen.value = false;
-}
-
-async function handleInvitationAccepted(workspace: WorkspaceResponse) {
-  upsertWorkspace(workspace);
-  setActiveWorkspaceId(workspace.id);
-  isMyInvitationsModalOpen.value = false;
-  workspaceError.value = "";
-
-  await loadWorkspaces(workspace.id);
-  await queryClient.invalidateQueries();
-}
-
-function closeWorkspaceModals() {
-  isWorkspaceCreateModalOpen.value = false;
-  isMyInvitationsModalOpen.value = false;
-}
-
-function retryWorkspaceLoadFromDropdown() {
-  closeOpenDropdowns();
-  void loadWorkspaces();
 }
 
 function openMembersSection(tab: "members" | "invitations") {
@@ -259,6 +213,12 @@ function handleDropdownShow(event: Event) {
 
   closeOpenDropdowns(nextToggle);
 }
+
+watch(() => meQuery.data.value, (overview) => {
+  if (overview) {
+    applyUserOverview(overview);
+  }
+});
 
 function normalizeText(value: string) {
   return String(value || "").trim();
@@ -320,7 +280,7 @@ onMounted(() => {
   window.addEventListener("storage", handleStorageEvent);
 
   if (authToken.value) {
-    void loadWorkspaces();
+    void refreshMeOverview();
   }
 });
 
@@ -450,80 +410,17 @@ onUnmounted(() => {
         </div>
 
         <div class="navbar-session ms-lg-auto mt-3 mt-lg-0">
-          <div v-if="isAuthenticated" class="dropdown navbar-account">
-            <button
-              id="coregrid-account-dropdown"
-              class="btn btn-outline-secondary btn-sm dropdown-toggle account-menu-button"
-              type="button"
-              data-bs-toggle="dropdown"
-              aria-expanded="false"
+          <div v-if="isAuthenticated" class="navbar-account">
+            <RouterLink
+              class="btn btn-outline-secondary account-menu-button"
+              :class="{ active: isAccountRouteActive }"
+              to="/me"
+              :aria-current="isAccountRouteActive ? 'page' : undefined"
+              @click="closeOpenDropdowns"
             >
               <span class="account-avatar" aria-hidden="true">{{ accountInitials }}</span>
               <span class="account-menu-name">{{ accountDisplayName }}</span>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-lg-end account-menu" aria-labelledby="coregrid-account-dropdown">
-              <li>
-                <div class="dropdown-item-text account-menu-header">
-                  <span class="account-avatar account-avatar-lg" aria-hidden="true">
-                    {{ accountInitials }}
-                  </span>
-                  <span class="account-menu-user">
-                    <span class="account-menu-user-name">{{ accountDisplayName }}</span>
-                    <span class="account-menu-user-email">{{ accountSecondaryText }}</span>
-                  </span>
-                </div>
-              </li>
-              <li><hr class="dropdown-divider"></li>
-              <li>
-                <span class="dropdown-header">Рабочие пространства</span>
-              </li>
-              <li v-if="isWorkspaceLoading">
-                <span class="dropdown-item-text text-secondary">Загрузка...</span>
-              </li>
-              <li v-for="workspace in workspaces" :key="workspace.id">
-                <button
-                  class="dropdown-item account-workspace-option"
-                  :class="{ active: activeWorkspace?.id === workspace.id }"
-                  type="button"
-                  @click="selectWorkspace(workspace)"
-                >
-                  <span class="account-workspace-name">{{ workspace.name }}</span>
-                  <span class="workspace-dropdown-role">{{ workspace.role }}</span>
-                </button>
-              </li>
-              <li v-if="workspaceError">
-                <span class="dropdown-item-text text-danger">{{ workspaceError }}</span>
-              </li>
-              <li>
-                <button class="dropdown-item" type="button" @click="openWorkspaceCreateModal">
-                  Создать рабочее пространство
-                </button>
-              </li>
-              <li v-if="workspaceError">
-                <button class="dropdown-item" type="button" @click="retryWorkspaceLoadFromDropdown">
-                  Повторить загрузку
-                </button>
-              </li>
-              <li><hr class="dropdown-divider"></li>
-              <li>
-                <button
-                  class="dropdown-item d-flex align-items-center justify-content-between gap-3"
-                  type="button"
-                  @click="openMyInvitationsModal"
-                >
-                  <span>Мои приглашения</span>
-                  <span v-if="myInvitationsCount > 0" class="badge rounded-pill text-bg-primary">
-                    {{ myInvitationsCount }}
-                  </span>
-                </button>
-              </li>
-              <li><hr class="dropdown-divider"></li>
-              <li>
-                <button class="dropdown-item text-danger" type="button" @click="signOut">
-                  Выйти
-                </button>
-              </li>
-            </ul>
+            </RouterLink>
           </div>
           <div v-else class="navbar-auth-actions">
             <RouterLink
@@ -570,7 +467,7 @@ onUnmounted(() => {
               v-if="workspaceError"
               class="btn btn-outline-secondary"
               type="button"
-              @click="loadWorkspaces()"
+              @click="refreshMeOverview()"
             >
               Повторить
             </button>
@@ -637,10 +534,4 @@ onUnmounted(() => {
     </div>
   </div>
   <div v-if="isWorkspaceCreateModalOpen" class="modal-backdrop fade show"></div>
-
-  <MyInvitationsModal
-    :is-open="isMyInvitationsModalOpen"
-    @close="closeMyInvitationsModal"
-    @accepted="handleInvitationAccepted"
-  />
 </template>

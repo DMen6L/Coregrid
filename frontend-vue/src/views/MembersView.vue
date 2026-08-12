@@ -259,6 +259,7 @@ async function invalidateMemberQueries() {
 async function invalidateInvitationQueries() {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ["workspace-invitations", activeWorkspaceId.value] }),
+    queryClient.invalidateQueries({ queryKey: ["me"] }),
     queryClient.invalidateQueries({ queryKey: ["me", "invitations"] }),
   ]);
 }
