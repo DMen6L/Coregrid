@@ -1,7 +1,8 @@
 export type BestSalesMode = "quantity" | "revenue" | "gross_profit";
 export type StockStatus = "available" | "low" | "out";
 export type WorkspaceRole = "owner" | "admin" | "manager" | "operator" | "viewer";
-export type WorkspaceInvitationRole = Exclude<WorkspaceRole, "owner">;
+export type WorkspaceAssignableRole = Exclude<WorkspaceRole, "owner">;
+export type WorkspaceInvitationRole = WorkspaceAssignableRole;
 
 export interface PaginatedResponse<T> {
   items: T[];

@@ -32,6 +32,7 @@ import type {
   UserLoginPayload,
   UserResponse,
   WorkspaceCreatePayload,
+  WorkspaceAssignableRole,
   WorkspaceInvitationCreatePayload,
   WorkspaceInvitationResponse,
   WorkspaceMembershipResponse,
@@ -175,6 +176,24 @@ export function getWorkspaceMember(memberId: number) {
   return request<WorkspaceMembershipResponse>(
     workspacePath(`/members/${encodeURIComponent(String(memberId))}`),
   );
+}
+
+export function patchWorkspaceMemberRole(memberId: number, newRole: WorkspaceAssignableRole) {
+  const params = new URLSearchParams();
+  params.set("new_role", newRole);
+
+  return request<WorkspaceMembershipResponse>(
+    workspacePath(`/members/${encodeURIComponent(String(memberId))}/role?${params.toString()}`),
+    {
+      method: "PATCH",
+    },
+  );
+}
+
+export function deleteWorkspaceMember(memberId: number) {
+  return request<void>(workspacePath(`/members/${encodeURIComponent(String(memberId))}`), {
+    method: "DELETE",
+  });
 }
 
 export function getSummaries({

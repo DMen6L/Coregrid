@@ -1,4 +1,4 @@
-from typing import Literal, TypeVar
+from typing import Literal, TypeAlias, TypeVar
 
 from pydantic import BaseModel
 
@@ -56,4 +56,12 @@ Permissions = Literal[
     "members.manage",
     "workspace.manage",
     "workspace.delete",
+]
+
+Roles: TypeAlias = Literal[
+    "owner",
+    "admin",
+    "manager",
+    "operator",
+    "viewer",
 ]

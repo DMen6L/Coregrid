@@ -978,6 +978,16 @@ body {
   text-transform: uppercase;
 }
 
+.member-danger-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(220, 53, 69, 0.3);
+  border-radius: 0.5rem;
+}
+
 .stock-movement-detail-meta {
   color: var(--bs-secondary-color);
   font-size: 0.875rem;
@@ -1191,6 +1201,11 @@ body {
 
   .member-detail-summary {
     grid-template-columns: 1fr;
+  }
+
+  .member-danger-zone {
+    align-items: stretch;
+    flex-direction: column;
   }
 
 }

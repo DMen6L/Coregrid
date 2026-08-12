@@ -202,6 +202,15 @@ function closeMemberDetail() {
   selectedMemberId.value = null;
 }
 
+async function handleMemberChanged() {
+  await invalidateMemberQueries();
+}
+
+async function handleMemberDeleted() {
+  closeMemberDetail();
+  await invalidateMemberQueries();
+}
+
 function submitInvitationCreate() {
   createError.value = "";
 
@@ -241,6 +250,10 @@ function deleteInvitation(invitation: WorkspaceInvitationResponse) {
 
 async function handleInvitationDeleteSuccess() {
   await invalidateInvitationQueries();
+}
+
+async function invalidateMemberQueries() {
+  await queryClient.invalidateQueries({ queryKey: ["workspace-members", activeWorkspaceId.value] });
 }
 
 async function invalidateInvitationQueries() {
@@ -652,7 +665,9 @@ function getTime(value: string) {
     <MemberDetailModal
       :member-id="selectedMemberId"
       :is-open="isMemberDetailModalOpen"
+      @changed="handleMemberChanged"
       @close="closeMemberDetail"
+      @deleted="handleMemberDeleted"
     />
   </section>
 </template>

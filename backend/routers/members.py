@@ -9,8 +9,10 @@ from app.schemas import (
     WorkspaceMembershipResponse,
     WorkspaceMembershipSummaryResponse,
 )
+from app.type_definitions import Roles
 from helpers.dependencies import DbSession, require_workspace_permission
 from helpers.pagination import aggr_paginate
+from helpers.transactions import commit_or_raise
 
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/members", tags=["members"])
@@ -102,7 +104,136 @@ def get_member_by_id(
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Member not found",
+            detail="Member with given id is not found",
         )
 
     return WorkspaceMembershipResponse.model_validate(dict(result))
+
+
+@router.patch(
+    "/{member_id}/role",
+    response_model=WorkspaceMembershipResponse,
+    status_code=status.HTTP_200_OK,
+)
+def change_member_role(
+    db: DbSession,
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("members.manage")),
+    ],
+    member_id: Annotated[int, Path(gt=0)],
+    new_role: Annotated[Roles, Query()],
+) -> WorkspaceMembershipResponse:
+    member = db.scalar(
+        select(WorkspaceMembership).where(
+            WorkspaceMembership.workspace_id == membership.workspace_id,
+            WorkspaceMembership.id == member_id,
+        )
+    )
+
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member with given id is not found",
+        )
+    if member.id == membership.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot update your own role within the workspace",
+        )
+    if member.role == "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot change owner role, use dedicated endpoint",
+        )
+    if new_role == "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot upgrade user to the owner, use a dedicated endpoint",
+        )
+    if new_role == "admin" and membership.role != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only owner can grant admin",
+        )
+    if member.role == "admin" and membership.role != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only owner can change admins",
+        )
+
+    member.role = new_role
+
+    commit_or_raise(db)
+
+    result = (
+        db.execute(
+            select(
+                WorkspaceMembership.id.label("id"),
+                User.name.label("name"),
+                User.email.label("email"),
+                WorkspaceMembership.role.label("role"),
+                WorkspaceMembership.user_id.label("user_id"),
+            )
+            .select_from(WorkspaceMembership)
+            .join(WorkspaceMembership.user)
+            .where(
+                WorkspaceMembership.id == member_id,
+                WorkspaceMembership.workspace_id == membership.workspace_id,
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member with given id is not found",
+        )
+
+    return WorkspaceMembershipResponse.model_validate(dict(result))
+
+
+@router.delete(
+    "/{member_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_member(
+    db: DbSession,
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("members.manage")),
+    ],
+    member_id: Annotated[int, Path(gt=0)],
+) -> None:
+    member = db.scalar(
+        select(WorkspaceMembership).where(
+            WorkspaceMembership.workspace_id == membership.workspace_id,
+            WorkspaceMembership.id == member_id,
+        )
+    )
+
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member with this id is not found",
+        )
+    if member.id == membership.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot delete yourself, use dedicated endpoint",
+        )
+    if member.role == "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Owner cannot be deleted",
+        )
+    if member.role == "admin" and membership.role != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only owner can delete admins",
+        )
+
+    db.delete(member)
+    commit_or_raise(db)
