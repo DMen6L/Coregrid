@@ -1,8 +1,6 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
 from app.models import Workspace, WorkspaceMembership
 from app.schemas import WorkspaceCreate, WorkspaceResponse
@@ -20,7 +18,10 @@ router = APIRouter(prefix="/workspaces", tags=["workspaces"])
     status_code=status.HTTP_200_OK,
 )
 def get_workspace_by_id(
-    membership: Annotated[WorkspaceMembership, Depends(require_workspace_membership)],
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_membership),
+    ],
 ):
     return {
         "id": membership.workspace_id,

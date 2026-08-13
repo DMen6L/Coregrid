@@ -111,12 +111,15 @@ Permissions: TypeAlias = Literal[
     "workspace.manage",
     "workspace.delete",
 ]
-Roles: TypeAlias = Literal[
-    "owner",
+AssignableRoles: TypeAlias = Literal[
     "admin",
     "manager",
     "operator",
     "viewer",
+]
+Roles: TypeAlias = Literal[
+    "owner",
+    AssignableRoles,
 ]
 
 IIN: TypeAlias = Annotated[

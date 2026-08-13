@@ -5,11 +5,16 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
-from sqlalchemy import select
+from sqlalchemy import Integer, func, select, type_coerce
 
 from app.models import User, WorkspaceInvitation, WorkspaceMembership
-from app.schemas import WorkspaceInvitationCreate, WorkspaceInvitationResponse
+from app.schemas import (
+    PaginatedResponse,
+    WorkspaceInvitationCreate,
+    WorkspaceInvitationResponse,
+)
 from helpers.dependencies import DbSession, require_workspace_permission
+from helpers.pagination import paginate
 from helpers.transactions import commit_or_raise
 from helpers.update_helpers import check_unique_constraints
 
@@ -21,7 +26,7 @@ router = APIRouter(
 
 @router.get(
     "",
-    response_model=list[WorkspaceInvitationResponse],
+    response_model=PaginatedResponse[WorkspaceInvitationResponse],
     status_code=status.HTTP_200_OK,
 )
 def get_invitations(
@@ -30,17 +35,37 @@ def get_invitations(
         WorkspaceMembership,
         Depends(require_workspace_permission("members.manage")),
     ],
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     search: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
-):
-    statement = select(WorkspaceInvitation).where(
-        WorkspaceInvitation.workspace_id == membership.workspace_id
+) -> PaginatedResponse[WorkspaceInvitationResponse]:
+    statement = (
+        select(WorkspaceInvitation)
+        .where(WorkspaceInvitation.workspace_id == membership.workspace_id)
+        .order_by(
+            WorkspaceInvitation.created_at.desc(),
+            WorkspaceInvitation.id.desc(),
+        )
+    )
+    count_statement = (
+        select(type_coerce(func.count(WorkspaceInvitation.id), Integer))
+        .select_from(WorkspaceInvitation)
+        .where(WorkspaceInvitation.workspace_id == membership.workspace_id)
     )
 
     if search is not None:
         condition = WorkspaceInvitation.email.ilike(f"%{search}%")
         statement = statement.where(condition)
+        count_statement = count_statement.where(condition)
 
-    return db.scalars(statement).all()
+    return paginate(
+        db=db,
+        statement=statement,
+        count_statement=count_statement,
+        page=page,
+        page_size=page_size,
+        response_schema=WorkspaceInvitationResponse,
+    )
 
 
 @router.post(
@@ -57,6 +82,7 @@ def post_invitation(
     invite_data: WorkspaceInvitationCreate,
 ) -> WorkspaceInvitation:
     now = datetime.now()
+
     if (
         db.scalar(
             select(WorkspaceMembership).where(
@@ -106,7 +132,9 @@ def post_invitation(
     workspace_invitation_schema["workspace_id"] = membership.workspace_id
     workspace_invitation_schema["expires_at"] = expires_at
 
-    workspace_invitation = WorkspaceInvitation(**workspace_invitation_schema)
+    workspace_invitation = WorkspaceInvitation(
+        **workspace_invitation_schema,
+    )
 
     db.add(workspace_invitation)
     commit_or_raise(db)
@@ -130,7 +158,6 @@ def delete_invitation(
     invitation = db.scalar(
         select(WorkspaceInvitation).where(
             WorkspaceInvitation.id == invitation_id,
-            WorkspaceInvitation.accepted_at.is_(None),
             WorkspaceInvitation.workspace_id == membership.workspace_id,
         )
     )
@@ -138,8 +165,16 @@ def delete_invitation(
     if invitation is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Pending invitation with such id is not found",
+            detail="Invitation with such id is not found",
+        )
+    if invitation.accepted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Accepted invitations cannot be revoked",
         )
 
-    db.delete(invitation)
+    if invitation.revoked_at is not None:
+        return None
+
+    invitation.revoked_at = datetime.now()
     commit_or_raise(db)

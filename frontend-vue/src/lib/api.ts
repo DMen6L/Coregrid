@@ -29,6 +29,7 @@ import type {
   SummariesResponse,
   TagSummaryResponse,
   TokenResponse,
+  UserInvitationResponse,
   UserCreatePayload,
   UserLoginPayload,
   UserPasswordUpdatePayload,
@@ -130,35 +131,38 @@ export function createWorkspace(payload: WorkspaceCreatePayload) {
   });
 }
 
-export function getMyInvitations() {
-  return request<WorkspaceInvitationResponse[]>("/me/invitations");
+export async function getMyInvitations(): Promise<UserInvitationResponse[]> {
+  const overview = await getMe();
+
+  return overview.invitations;
 }
 
 export function acceptMyInvitation(invitationId: string) {
   return request<WorkspaceResponse>(
-    `/me/invitations/accept/${encodeURIComponent(invitationId)}`,
+    `/me/accept/${encodeURIComponent(invitationId)}`,
     {
       method: "POST",
     },
   );
 }
 
+export function leaveMyWorkspace(workspaceId: number) {
+  return request<void>(`/me/workspaces/${encodeURIComponent(String(workspaceId))}`, {
+    method: "DELETE",
+  });
+}
+
 export function getWorkspaceInvitations({
   search = "",
+  page = FIRST_PAGE,
+  pageSize = DEFAULT_PAGE_SIZE,
 }: {
   search?: string;
+  page?: number;
+  pageSize?: number;
 } = {}) {
-  const params = new URLSearchParams();
-  const trimmedSearch = String(search || "").trim();
-
-  if (trimmedSearch) {
-    params.set("search", trimmedSearch);
-  }
-
-  const query = params.toString();
-
-  return request<WorkspaceInvitationResponse[]>(
-    workspacePath(`/invitations${query ? `?${query}` : ""}`),
+  return request<PaginatedResponse<WorkspaceInvitationResponse>>(
+    buildListPath(workspacePath("/invitations"), search, page, pageSize),
   );
 }
 

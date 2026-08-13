@@ -10,10 +10,9 @@ from app.schemas import (
     MeResponse,
     UserPasswordUpdate,
     UserUpdate,
-    WorkspaceInvitationResponse,
     WorkspaceResponse,
 )
-from helpers.auth import hash_password, password_hash, verify_password
+from helpers.auth import hash_password, verify_password
 from helpers.dependencies import CurrentUser, DbSession
 from helpers.services import get_user_info
 from helpers.transactions import commit_or_raise
@@ -42,28 +41,8 @@ def get_me(
     )
 
 
-@router.get(
-    "/invitations",
-    response_model=list[WorkspaceInvitationResponse],
-    status_code=status.HTTP_200_OK,
-)
-def get_invitations(
-    db: DbSession,
-    current_user: CurrentUser,
-):
-    now = datetime.now()
-    statement = select(WorkspaceInvitation).where(
-        WorkspaceInvitation.email == current_user.email,
-        WorkspaceInvitation.accepted_at.is_(None),
-        WorkspaceInvitation.revoked_at.is_(None),
-        WorkspaceInvitation.expires_at > now,
-    )
-
-    return db.scalars(statement).all()
-
-
 @router.post(
-    "/invitations/accept/{invitation_id}",
+    "/accept/{invitation_id}",
     response_model=WorkspaceResponse,
     status_code=status.HTTP_200_OK,
 )
@@ -82,7 +61,7 @@ def accept_invitation(
     if invitation is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No such invitation",
+            detail="No invitation with provided id",
         )
     if invitation.email != current_user.email:
         raise HTTPException(
@@ -212,3 +191,34 @@ def patch_password(
         db=db,
         user=current_user,
     )
+
+
+@router.delete(
+    "/workspaces/{workspace_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def leave_workspace(
+    db: DbSession,
+    current_user: CurrentUser,
+    workspace_id: Annotated[int, Path(gt=0)],
+) -> None:
+    membership = db.scalar(
+        select(WorkspaceMembership).where(
+            WorkspaceMembership.user_id == current_user.id,
+            WorkspaceMembership.workspace_id == workspace_id,
+        )
+    )
+
+    if membership is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User is not part of this workspace",
+        )
+    if membership.role == "owner":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Owner has to transfer ownership before leaving the workspace",
+        )
+
+    db.delete(membership)
+    commit_or_raise(db)

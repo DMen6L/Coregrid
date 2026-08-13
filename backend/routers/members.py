@@ -9,7 +9,7 @@ from app.schemas import (
     WorkspaceMembershipResponse,
     WorkspaceMembershipSummaryResponse,
 )
-from app.type_definitions import Roles
+from app.type_definitions import AssignableRoles
 from helpers.dependencies import DbSession, require_workspace_permission
 from helpers.pagination import aggr_paginate
 from helpers.transactions import commit_or_raise
@@ -122,7 +122,7 @@ def change_member_role(
         Depends(require_workspace_permission("members.manage")),
     ],
     member_id: Annotated[int, Path(gt=0)],
-    new_role: Annotated[Roles, Query()],
+    new_role: Annotated[AssignableRoles, Query()],
 ) -> WorkspaceMembershipResponse:
     member = db.scalar(
         select(WorkspaceMembership).where(
@@ -145,11 +145,6 @@ def change_member_role(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot change owner role, use dedicated endpoint",
-        )
-    if new_role == "owner":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot upgrade user to the owner, use a dedicated endpoint",
         )
     if new_role == "admin" and membership.role != "owner":
         raise HTTPException(

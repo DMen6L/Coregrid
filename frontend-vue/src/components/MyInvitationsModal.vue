@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { acceptMyInvitation, getMyInvitations } from "../lib/api";
 import { formatDateTime, getCreateErrorMessage, getRequestErrorMessage } from "../lib/format";
 import { formatWorkspaceRole } from "../lib/permissions";
-import type { WorkspaceInvitationResponse, WorkspaceResponse } from "../types/api";
+import type { UserInvitationResponse, WorkspaceResponse } from "../types/api";
 
 const props = defineProps<{
   isOpen: boolean;
@@ -57,7 +57,7 @@ function closeModal() {
   emit("close");
 }
 
-function acceptInvitation(invitation: WorkspaceInvitationResponse) {
+function acceptInvitation(invitation: UserInvitationResponse) {
   acceptError.value = "";
   acceptingInvitationId.value = invitation.id;
   acceptInvitationMutation.mutate(invitation.id);
@@ -72,7 +72,7 @@ async function handleInvitationAccepted(workspace: WorkspaceResponse) {
   emit("accepted", workspace);
 }
 
-function sortInvitations(invitations: WorkspaceInvitationResponse[]) {
+function sortInvitations(invitations: UserInvitationResponse[]) {
   return [...invitations].sort((left, right) => (
     getTime(right.created_at) - getTime(left.created_at)
   ));
@@ -136,12 +136,13 @@ function getTime(value: string) {
               >
                 <div class="invitation-list-header">
                   <div>
-                    <h3 class="invitation-title">
-                      Рабочее пространство #{{ invitation.workspace_id }}
-                    </h3>
+                    <h3 class="invitation-title">{{ invitation.workspace_name }}</h3>
                     <div class="invitation-meta">
                       <span>{{ formatWorkspaceRole(invitation.role) }}</span>
                       <span>Истекает: {{ formatDateTime(invitation.expires_at) }}</span>
+                      <span v-if="invitation.inviter_user_name || invitation.inviter_user_email">
+                        Пригласил: {{ invitation.inviter_user_name || invitation.inviter_user_email }}
+                      </span>
                     </div>
                   </div>
                   <button

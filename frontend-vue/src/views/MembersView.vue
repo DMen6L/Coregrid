@@ -49,6 +49,16 @@ const EMPTY_MEMBERS_PAGE: PaginatedResponse<WorkspaceMembershipSummaryResponse> 
   has_previous: false,
 };
 
+const EMPTY_INVITATIONS_PAGE: PaginatedResponse<WorkspaceInvitationResponse> = {
+  items: [],
+  page: FIRST_PAGE,
+  page_size: DEFAULT_PAGE_SIZE,
+  total: 0,
+  total_pages: 0,
+  has_next: false,
+  has_previous: false,
+};
+
 const route = useRoute();
 const router = useRouter();
 const queryClient = useQueryClient();
@@ -97,8 +107,14 @@ const invitationsQuery = useQuery({
     activeWorkspaceId.value,
     "list",
     currentSearch.value,
+    currentPage.value,
+    DEFAULT_PAGE_SIZE,
   ]),
-  queryFn: () => getWorkspaceInvitations({ search: currentSearch.value }),
+  queryFn: () => getWorkspaceInvitations({
+    search: currentSearch.value,
+    page: currentPage.value,
+    pageSize: DEFAULT_PAGE_SIZE,
+  }),
   enabled: computed(() => (
     Boolean(activeWorkspaceId.value)
       && canManageCurrentWorkspaceMembers.value
@@ -146,7 +162,8 @@ const shouldShowMembersPagination = computed(() => (
     && !membersError.value
 ));
 const totalMemberPages = computed(() => Math.max(membersPage.value.total_pages, 1));
-const invitations = computed(() => sortInvitations(invitationsQuery.data.value || []));
+const invitationsPage = computed(() => invitationsQuery.data.value || EMPTY_INVITATIONS_PAGE);
+const invitations = computed(() => invitationsPage.value.items);
 const invitationsError = computed(() => (
   invitationsQuery.error.value
     ? getRequestErrorMessage(invitationsQuery.error.value, "приглашения")
@@ -157,6 +174,12 @@ const shouldShowInvitationsEmpty = computed(() => (
     && !invitationsError.value
     && invitations.value.length === 0
 ));
+const shouldShowInvitationsPagination = computed(() => (
+  invitationsPage.value.total > 0
+    && !invitationsQuery.isLoading.value
+    && !invitationsError.value
+));
+const totalInvitationPages = computed(() => Math.max(invitationsPage.value.total_pages, 1));
 const workspaceLabel = computed(() => activeWorkspace.value?.name || "Рабочее пространство");
 
 watch(currentSearch, (nextSearch) => {
@@ -187,6 +210,14 @@ function clearSearch() {
 function goToMembersPage(page: number) {
   navigateMembers({
     tab: "members",
+    search: currentSearch.value,
+    page,
+  });
+}
+
+function goToInvitationsPage(page: number) {
+  navigateMembers({
+    tab: "invitations",
     search: currentSearch.value,
     page,
   });
@@ -265,7 +296,7 @@ async function invalidateInvitationQueries() {
 }
 
 function canDeleteInvitation(invitation: WorkspaceInvitationResponse) {
-  return !invitation.accepted_at;
+  return getInvitationStatus(invitation) === "pending";
 }
 
 function getInvitationStatus(invitation: WorkspaceInvitationResponse): InvitationStatus {
@@ -310,12 +341,6 @@ function getStatusClass(invitation: WorkspaceInvitationResponse) {
   }
 }
 
-function sortInvitations(invitations: WorkspaceInvitationResponse[]) {
-  return [...invitations].sort((left, right) => (
-    getTime(right.created_at) - getTime(left.created_at)
-  ));
-}
-
 function resetCreateForm() {
   invitationForm.email = "";
   invitationForm.role = "viewer";
@@ -339,7 +364,7 @@ function navigateMembers({
     query.search = trimmedSearch;
   }
 
-  if (tab === "members" && nextPage > FIRST_PAGE) {
+  if (nextPage > FIRST_PAGE) {
     query.page = String(nextPage);
   }
 
@@ -401,7 +426,7 @@ function getTime(value: string) {
         v-else-if="canManageCurrentWorkspaceMembers && currentTab === 'invitations'"
         class="badge text-bg-secondary members-count"
       >
-        {{ formatCount(invitations.length) }} приглашений
+        {{ formatCount(invitationsPage.total) }} приглашений
       </span>
     </div>
 
@@ -654,12 +679,38 @@ function getTime(value: string) {
                   :disabled="deleteInvitationMutation.isPending.value"
                   @click="deleteInvitation(invitation)"
                 >
-                  {{ deletingInvitationId === invitation.id ? "Удаление..." : "Удалить" }}
+                  {{ deletingInvitationId === invitation.id ? "Отзыв..." : "Отозвать" }}
                 </button>
               </div>
             </div>
           </article>
         </div>
+
+        <nav
+          v-if="shouldShowInvitationsPagination"
+          class="members-pagination mt-3"
+          aria-label="Пагинация приглашений"
+        >
+          <button
+            class="btn btn-outline-primary"
+            type="button"
+            :disabled="!invitationsPage.has_previous || invitationsQuery.isFetching.value"
+            @click="goToInvitationsPage(invitationsPage.page - 1)"
+          >
+            Назад
+          </button>
+          <span class="members-page-summary">
+            Страница {{ formatCount(invitationsPage.page) }} из {{ formatCount(totalInvitationPages) }}
+          </span>
+          <button
+            class="btn btn-outline-primary"
+            type="button"
+            :disabled="!invitationsPage.has_next || invitationsQuery.isFetching.value"
+            @click="goToInvitationsPage(invitationsPage.page + 1)"
+          >
+            Вперед
+          </button>
+        </nav>
       </section>
     </template>
 

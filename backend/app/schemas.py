@@ -14,11 +14,13 @@ from pydantic import (
 from app.type_definitions import (
     DEFAULT_QUANTITY_UNIT,
     IIN,
+    AssignableRoles,
     ItemT,
     Name,
     NormalizedEmail,
     PhoneNumber,
     QuantityUnit,
+    Roles,
     StockStatus,
     StrongPassword,
     TagName,
@@ -170,7 +172,7 @@ class WorkspaceCreate(BaseModel):
 
 class WorkspaceInvitationCreate(BaseModel):
     email: NormalizedEmail
-    role: Literal["admin", "manager", "operator", "viewer"]
+    role: AssignableRoles
 
 
 # =====================

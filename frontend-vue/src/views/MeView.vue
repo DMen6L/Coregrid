@@ -7,6 +7,7 @@ import {
   acceptMyInvitation,
   createWorkspace,
   getMe,
+  leaveMyWorkspace,
   patchMe,
   patchMePassword,
 } from "../lib/api";
@@ -15,6 +16,7 @@ import {
   formatCount,
   formatDateTime,
   getCreateErrorMessage,
+  getDeleteErrorMessage,
   getRequestErrorMessage,
 } from "../lib/format";
 import { formatWorkspaceRole } from "../lib/permissions";
@@ -46,6 +48,9 @@ const passwordSuccess = ref("");
 const invitationError = ref("");
 const acceptingInvitationId = ref("");
 const workspaceCreateError = ref("");
+const workspaceLeaveError = ref("");
+const workspaceToLeave = ref<WorkspaceResponse | null>(null);
+const leavingWorkspaceId = ref<number | null>(null);
 const profileForm = reactive({
   name: "",
   email: "",
@@ -92,6 +97,16 @@ const createWorkspaceMutation = useMutation({
   onSuccess: handleWorkspaceCreateSuccess,
   onError: (error) => {
     workspaceCreateError.value = getCreateErrorMessage(error, "рабочее пространство");
+  },
+});
+const leaveWorkspaceMutation = useMutation({
+  mutationFn: (workspaceId: number) => leaveMyWorkspace(workspaceId),
+  onSuccess: (_result, workspaceId) => handleWorkspaceLeaveSuccess(workspaceId),
+  onError: (error) => {
+    workspaceLeaveError.value = getDeleteErrorMessage(error, "участие в рабочем пространстве");
+  },
+  onSettled: () => {
+    leavingWorkspaceId.value = null;
   },
 });
 
@@ -256,6 +271,46 @@ async function handleWorkspaceCreateSuccess(workspace: WorkspaceResponse) {
     await refreshMeOverview(workspace.id);
   } catch (error) {
     workspaceCreateError.value = getRequestErrorMessage(error, "данные аккаунта");
+  }
+}
+
+function openLeaveWorkspaceDialog(workspace: WorkspaceResponse) {
+  if (workspace.role === "owner") {
+    workspaceLeaveError.value = "Владелец должен передать владение перед выходом из пространства.";
+    return;
+  }
+
+  workspaceLeaveError.value = "";
+  workspaceToLeave.value = workspace;
+}
+
+function closeLeaveWorkspaceDialog() {
+  if (leaveWorkspaceMutation.isPending.value) {
+    return;
+  }
+
+  workspaceToLeave.value = null;
+}
+
+function confirmLeaveWorkspace() {
+  if (!workspaceToLeave.value || workspaceToLeave.value.role === "owner") {
+    return;
+  }
+
+  workspaceLeaveError.value = "";
+  leavingWorkspaceId.value = workspaceToLeave.value.id;
+  leaveWorkspaceMutation.mutate(workspaceToLeave.value.id);
+}
+
+async function handleWorkspaceLeaveSuccess(workspaceId: number) {
+  workspaceLeaveError.value = "";
+  workspaceToLeave.value = null;
+
+  try {
+    await refreshMeOverview(activeWorkspaceId.value === workspaceId ? null : activeWorkspaceId.value);
+    await queryClient.invalidateQueries();
+  } catch (error) {
+    workspaceLeaveError.value = getRequestErrorMessage(error, "данные аккаунта");
   }
 }
 
@@ -574,6 +629,13 @@ function getTime(value: string) {
         <div v-if="workspaceCreateError" class="alert alert-danger mt-3" role="alert">
           {{ workspaceCreateError }}
         </div>
+        <div
+          v-if="workspaceLeaveError && !workspaceToLeave"
+          class="alert alert-danger mt-3"
+          role="alert"
+        >
+          {{ workspaceLeaveError }}
+        </div>
         <div v-if="!hasWorkspaces" class="alert alert-light border mt-3 mb-0" role="status">
           Рабочих пространств пока нет.
         </div>
@@ -606,6 +668,15 @@ function getTime(value: string) {
                 >
                   {{ activeWorkspaceId === workspace.id ? "Выбрано" : "Выбрать" }}
                 </button>
+                <button
+                  v-if="workspace.role !== 'owner'"
+                  class="btn btn-outline-danger btn-sm"
+                  type="button"
+                  :disabled="leaveWorkspaceMutation.isPending.value"
+                  @click="openLeaveWorkspaceDialog(workspace)"
+                >
+                  {{ leavingWorkspaceId === workspace.id ? "Выход..." : "Покинуть" }}
+                </button>
               </div>
             </div>
           </article>
@@ -621,6 +692,66 @@ function getTime(value: string) {
           Выйти
         </button>
       </section>
+
+      <Teleport to="body">
+        <div
+          v-if="workspaceToLeave"
+          class="modal fade show d-block"
+          tabindex="-1"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="leave-workspace-modal-title"
+          @click.self="closeLeaveWorkspaceDialog"
+        >
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h2 id="leave-workspace-modal-title" class="modal-title fs-5">
+                  Покинуть пространство
+                </h2>
+                <button
+                  class="btn-close"
+                  type="button"
+                  aria-label="Закрыть"
+                  :disabled="leaveWorkspaceMutation.isPending.value"
+                  @click="closeLeaveWorkspaceDialog"
+                ></button>
+              </div>
+              <div class="modal-body">
+                <div v-if="workspaceLeaveError" class="alert alert-danger" role="alert">
+                  {{ workspaceLeaveError }}
+                </div>
+                <p class="mb-0">
+                  Покинуть «{{ workspaceToLeave.name }}»?
+                </p>
+              </div>
+              <div class="modal-footer">
+                <button
+                  class="btn btn-outline-secondary"
+                  type="button"
+                  :disabled="leaveWorkspaceMutation.isPending.value"
+                  @click="closeLeaveWorkspaceDialog"
+                >
+                  Отмена
+                </button>
+                <button
+                  class="btn btn-danger"
+                  type="button"
+                  :disabled="leaveWorkspaceMutation.isPending.value"
+                  @click="confirmLeaveWorkspace"
+                >
+                  {{
+                    leavingWorkspaceId === workspaceToLeave.id
+                      ? "Выход..."
+                      : "Покинуть"
+                  }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-if="workspaceToLeave" class="modal-backdrop fade show"></div>
+      </Teleport>
     </template>
   </section>
 </template>
