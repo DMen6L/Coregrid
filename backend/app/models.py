@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import (
     Column,
     CheckConstraint,
+    Index,
     Integer,
     String,
     DateTime,
@@ -11,9 +12,10 @@ from sqlalchemy import (
     Table,
     UniqueConstraint,
     func,
+    null,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID as PgUUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PgUUID
 
 from app.db import Base
 from app.type_definitions import DEFAULT_QUANTITY_UNIT, QUANTITY_UNIT_MAX_LENGTH
@@ -784,5 +786,142 @@ class WorkspaceInvitation(Base):
         CheckConstraint(
             "accepted_at is null or revoked_at is null",
             name="ck_workspace_invitations_not_accepted_and_revoked",
+        ),
+    )
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    workspace_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "workspaces.id",
+            name="fk_audit_logs_workspace_id_workspaces",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+
+    actor_user_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey(
+            "users.id",
+            name="fk_audit_logs_actor_user_id_users",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+    actor_name: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    actor_email: Mapped[str | None] = mapped_column(
+        String(254),
+        nullable=True,
+    )
+
+    action: Mapped[str] = mapped_column(
+        String(80),
+        nullable=False,
+    )
+    entity_type: Mapped[str] = mapped_column(
+        String(80),
+        nullable=False,
+    )
+    entity_id: Mapped[str | None] = mapped_column(
+        String(80),
+        nullable=True,
+    )
+    entity_label: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    target_user_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey(
+            "users.id",
+            name="fk_audit_logs_target_user_id_users",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+    target_name: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    target_email: Mapped[str | None] = mapped_column(
+        String(254),
+        nullable=True,
+    )
+
+    changes: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
+    extra_data: Mapped[dict[str, object] | None] = mapped_column(
+        "metadata",
+        JSONB,
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "char_length(actor_name) > 0",
+            name="ck_audit_logs_actor_name_not_empty",
+        ),
+        CheckConstraint(
+            "char_length(actor_email) > 0",
+            name="ck_audit_logs_actor_email_not_empty",
+        ),
+        CheckConstraint(
+            "char_length(action) > 0",
+            name="ck_audit_logs_action_not_empty",
+        ),
+        CheckConstraint(
+            "char_length(entity_type) > 0",
+            name="ck_audit_logs_entity_type_not_empty",
+        ),
+        CheckConstraint(
+            "char_length(entity_label) > 0",
+            name="ck_audit_logs_entity_label_not_empty",
+        ),
+        CheckConstraint(
+            "char_length(target_name) > 0",
+            name="ck_audit_logs_target_name_not_empty",
+        ),
+        CheckConstraint(
+            "char_length(target_email) > 0",
+            name="ck_audit_logs_target_email_not_empty",
+        ),
+        Index(
+            "ix_audit_logs_workspace_created",
+            "workspace_id",
+            "created_at",
+        ),
+        Index(
+            "ix_audit_logs_workspace_action",
+            "workspace_id",
+            "action",
+        ),
+        Index(
+            "ix_audit_logs_workspace_actor",
+            "workspace_id",
+            "actor_user_id",
+        ),
+        Index(
+            "ix_audit_logs_workspace_entity",
+            "workspace_id",
+            "entity_type",
+            "entity_id",
         ),
     )
