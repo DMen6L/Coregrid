@@ -14,6 +14,24 @@ export interface PaginatedResponse<T> {
   has_previous: boolean;
 }
 
+export interface AuditLogResponse {
+  id: number;
+  workspace_id: number;
+  created_at: string;
+  actor_user_id: number | null;
+  actor_name: string | null;
+  actor_email: string | null;
+  target_user_id: number | null;
+  target_name: string | null;
+  target_email: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  entity_label: string | null;
+  changes: Record<string, unknown> | null;
+  extra_data: Record<string, unknown> | null;
+}
+
 export interface DailySalesResponse {
   date: string;
   sales_value: number;

@@ -14,6 +14,7 @@ from app.models import (
     WorkspaceMembership,
 )
 from app.schemas import (
+    AuditLogCreate,
     PaginatedResponse,
     ProductAtomicCreate,
     ProductCreate,
@@ -35,6 +36,7 @@ from helpers.transactions import (
     create_or_resolve_supplier,
     flush_or_raise,
     get_or_create_tags,
+    record_audit_log,
 )
 from helpers.update_helpers import (
     check_unique_constraints,
@@ -265,115 +267,24 @@ def app_product(
     )
 
     db.add(product)
+    flush_or_raise(db)
+
+    record_audit_log(
+        db=db,
+        audit_log_data=AuditLogCreate(
+            workspace_id=membership.workspace_id,
+            actor_user_id=membership.user_id,
+            action="product.created",
+            entity_type="product",
+            entity_id=str(product.id),
+            entity_label=product.name,
+        ),
+    )
+
     commit_or_raise(db)
     db.refresh(product)
 
     return product
-
-
-@router.post(
-    "/{product_id}/links",
-    response_model=list[ProductSupplierResponse],
-    status_code=status.HTTP_201_CREATED,
-)
-def add_supplier_links(
-    db: DbSession,
-    membership: Annotated[
-        WorkspaceMembership,
-        Depends(require_workspace_permission("catalog.write")),
-    ],
-    supplier_links_data: Annotated[list[ProductSupplierCreate], Body(min_length=1)],
-    product_id: Annotated[int, Path(gt=0)],
-):
-    statement = select(Product).where(
-        Product.id == product_id,
-        Product.workspace_id == membership.workspace_id,
-    )
-    product = db.execute(statement).scalar_one_or_none()
-
-    if product is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No product with such id in the database.",
-        )
-
-    supplier_ids = [supplier_link.supplier_id for supplier_link in supplier_links_data]
-    if len(supplier_ids) != len(set(supplier_ids)):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Each supplier may be linked to a product only once per request.",
-        )
-
-    suppliers = db.scalars(
-        select(Supplier).where(
-            Supplier.id.in_(supplier_ids),
-            Supplier.workspace_id == membership.workspace_id,
-        )
-    ).all()
-    suppliers_by_id = {supplier.id: supplier for supplier in suppliers}
-
-    missing_supplier_ids = sorted(set(supplier_ids) - suppliers_by_id.keys())
-    if missing_supplier_ids:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "message": "One or more suppliers were not found.",
-                "supplier_ids": missing_supplier_ids,
-            },
-        )
-
-    supplier_links = []
-    for supplier_link_data in supplier_links_data:
-        sale_price = supplier_link_data.sale_price
-        if sale_price is None:
-            sale_price = calculate_floor_price(
-                purchase_price=supplier_link_data.purchase_price,
-                margin_percent=supplier_link_data.margin_percent,
-            )
-
-        supplier_link_schema = {
-            "product_id": product.id,
-            "supplier_id": supplier_link_data.supplier_id,
-            "purchase_price": supplier_link_data.purchase_price,
-            "margin_percent": supplier_link_data.margin_percent,
-            "sale_price": sale_price,
-            "quantity": supplier_link_data.quantity,
-            "workspace_id": membership.workspace_id,
-        }
-
-        check_unique_constraints(
-            db=db,
-            model=ProductSupplier,
-            constraint_name="uq_product_suppliers_product_supplier_workspace",
-            values=supplier_link_schema,
-        )
-
-        supplier_links.append(
-            ProductSupplier(
-                **supplier_link_schema,
-                product=product,
-                supplier=suppliers_by_id[supplier_link_data.supplier_id],
-            )
-        )
-
-    db.add_all(supplier_links)
-    commit_or_raise(db)
-
-    supplier_link_ids = [supplier_link.id for supplier_link in supplier_links]
-    created_supplier_links = db.scalars(
-        select(ProductSupplier)
-        .options(
-            selectinload(ProductSupplier.product),
-            selectinload(ProductSupplier.supplier),
-        )
-        .where(
-            ProductSupplier.id.in_(supplier_link_ids),
-            ProductSupplier.workspace_id == membership.workspace_id,
-        )
-        .order_by(ProductSupplier.id)
-    ).all()
-
-    return created_supplier_links
 
 
 @router.post(
@@ -424,6 +335,25 @@ def add_product_atomic(
     db.add(product)
     flush_or_raise(db)
 
+    record_audit_log(
+        db=db,
+        audit_log_data=AuditLogCreate(
+            workspace_id=membership.workspace_id,
+            actor_user_id=membership.user_id,
+            action="product.created",
+            entity_type="product",
+            entity_id=str(product.id),
+            entity_label=product.name,
+            extra_data={
+                "company_id": company_id,
+                "quantity_unit": product.quantity_unit,
+                "low_stock_threshold": product.low_stock_threshold,
+                "tags": [tag.name for tag in tags],
+                "supplier_links_count": len(data.product_links),
+            },
+        ),
+    )
+
     for product_link in data.product_links:
         supplier_id = create_or_resolve_supplier(
             db=db,
@@ -458,6 +388,19 @@ def add_product_atomic(
         product_supplier = ProductSupplier(**product_supplier_schema)
 
         db.add(product_supplier)
+        flush_or_raise(db)
+
+        record_audit_log(
+            db=db,
+            audit_log_data=AuditLogCreate(
+                workspace_id=membership.workspace_id,
+                actor_user_id=membership.user_id,
+                action="product_supplier.created",
+                entity_type="product_supplier",
+                entity_id=str(product_supplier.id),
+                entity_label=f"{product_supplier.product.name}_{product_supplier.supplier.name}",
+            ),
+        )
 
     commit_or_raise(db)
 
@@ -498,6 +441,7 @@ def patch_product(
         .options(
             selectinload(Product.company),
             selectinload(Product.supplier_links).selectinload(ProductSupplier.supplier),
+            selectinload(Product.tags),
         )
         .where(
             Product.id == product_id,
@@ -517,17 +461,27 @@ def patch_product(
         dict[str, object],
         patch_data.model_dump(exclude_unset=True),
     )
-    update_data["workspace_id"] = membership.workspace_id
+
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Product update form cannot be empty",
+        )
 
     validate_update(
         db=db,
         model=Product,
         constraint_name="uq_products_workspace_name_company_unit",
-        update_data=update_data,
+        update_data={
+            **update_data,
+            "workspace_id": membership.workspace_id,
+        },
         update_obj=product,
     )
 
-    tag_names = cast(list[str], update_data.pop("tags", None))
+    changes: dict[str, object] = {}
+
+    tag_names = cast(list[str] | None, update_data.pop("tags", None))
 
     if "company_id" in update_data:
         company = db.scalar(
@@ -543,13 +497,45 @@ def patch_product(
             )
 
     for field, value in update_data.items():
+        old_value = getattr(product, field)
+
+        if old_value == value:
+            continue
+
+        changes[field] = {
+            "old": old_value,
+            "new": value,
+        }
         setattr(product, field, value)
 
     if tag_names is not None:
+        old_tags = sorted(tag.name for tag in product.tags)
+        new_tags = sorted(tag_names)
+
+        if old_tags != new_tags:
+            changes["tags"] = {
+                "old": old_tags,
+                "new": new_tags,
+            }
+
         product.tags = get_or_create_tags(
             db=db,
             membership=membership,
             tag_names=tag_names,
+        )
+
+    if changes:
+        record_audit_log(
+            db=db,
+            audit_log_data=AuditLogCreate(
+                workspace_id=membership.workspace_id,
+                actor_user_id=membership.user_id,
+                action="product.updated",
+                entity_type="product",
+                entity_id=str(product.id),
+                entity_label=product.name,
+                changes=changes,
+            ),
         )
 
     commit_or_raise(db)
@@ -671,8 +657,32 @@ def patch_product_links(
         update_obj=product_supplier,
     )
 
+    changes: dict[str, object] = {}
+
     for field, value in update_data.items():
+        old_value = getattr(product_supplier, field)
+
+        if old_value == value:
+            continue
+
+        changes[field] = {
+            "old": old_value,
+            "new": value,
+        }
         setattr(product_supplier, field, value)
+
+    record_audit_log(
+        db=db,
+        audit_log_data=AuditLogCreate(
+            workspace_id=membership.workspace_id,
+            actor_user_id=membership.user_id,
+            action="product_supplier.updated",
+            entity_type="product_supplier",
+            entity_id=str(product_supplier.id),
+            entity_label=f"{product_supplier.product.name}_{product_supplier.supplier.name}",
+            changes=changes,
+        ),
+    )
 
     commit_or_raise(db)
     db.refresh(product_supplier)
@@ -740,6 +750,18 @@ def delete_product_link(
             status_code=status.HTTP_409_CONFLICT,
             detail="Cannot delete supplier link with stock movements tied",
         )
+
+    record_audit_log(
+        db=db,
+        audit_log_data=AuditLogCreate(
+            workspace_id=membership.workspace_id,
+            actor_user_id=membership.user_id,
+            action="product_supplier.deleted",
+            entity_type="product_supplier",
+            entity_id=str(product_supplier.id),
+            entity_label=f"{product_supplier.product.name}_{product_supplier.supplier.name}",
+        ),
+    )
 
     db.delete(product_supplier)
     commit_or_raise(db)

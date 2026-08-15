@@ -6,13 +6,19 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.models import ProductSupplier, Sale, SaleLine, WorkspaceMembership
-from app.schemas import PaginatedResponse, SaleCreate, SaleResponse, SaleSummaryResponse
+from app.schemas import (
+    AuditLogCreate,
+    PaginatedResponse,
+    SaleCreate,
+    SaleResponse,
+    SaleSummaryResponse,
+)
 from helpers.dependencies import (
     DbSession,
     require_workspace_permission,
 )
 from helpers.pagination import aggr_paginate
-from helpers.transactions import commit_or_raise
+from helpers.transactions import commit_or_raise, flush_or_raise, record_audit_log
 
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/sales", tags=["sales"])
@@ -196,6 +202,28 @@ def add_sale(
         )
 
     db.add(sale)
+    flush_or_raise(db)
+
+    record_audit_log(
+        db=db,
+        audit_log_data=AuditLogCreate(
+            workspace_id=membership.workspace_id,
+            actor_user_id=membership.user_id,
+            action="sale.created",
+            entity_type="sale",
+            entity_id=str(sale.id),
+            entity_label=f"Restock #{sale.id}",
+            extra_data={
+                "restock_lines": len(sale.lines),
+                "total_quantity": sum(line.sale_quantity for line in sale.lines),
+                "total_cost": sum(
+                    line.sale_quantity * line.unit_cost_snapshot for line in sale.lines
+                ),
+                "note": sale.note,
+            },
+        ),
+    )
+
     commit_or_raise(db)
 
     return db.scalars(

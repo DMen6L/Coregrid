@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models import ProductSupplier, Restock, RestockLine, WorkspaceMembership
 from app.schemas import (
+    AuditLogCreate,
     PaginatedResponse,
     RestockCreate,
     RestockResponse,
@@ -17,7 +18,7 @@ from helpers.dependencies import (
     require_workspace_permission,
 )
 from helpers.pagination import aggr_paginate
-from helpers.transactions import commit_or_raise
+from helpers.transactions import commit_or_raise, flush_or_raise, record_audit_log
 
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/restocks", tags=["restocks"])
@@ -205,6 +206,29 @@ def add_restock(
         )
 
     db.add(restock)
+    flush_or_raise(db)
+
+    record_audit_log(
+        db=db,
+        audit_log_data=AuditLogCreate(
+            workspace_id=membership.workspace_id,
+            actor_user_id=membership.user_id,
+            action="restock.created",
+            entity_type="restock",
+            entity_id=str(restock.id),
+            entity_label=f"Restock #{restock.id}",
+            extra_data={
+                "restock_lines": len(restock.lines),
+                "total_quantity": sum(line.restock_quantity for line in restock.lines),
+                "total_cost": sum(
+                    line.restock_quantity * line.unit_cost_snapshot
+                    for line in restock.lines
+                ),
+                "note": restock.note,
+            },
+        ),
+    )
+
     commit_or_raise(db)
 
     return db.scalars(

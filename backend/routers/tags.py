@@ -4,13 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy import func, select
 
 from app.models import Product, Tag, WorkspaceMembership
-from app.schemas import PaginatedResponse, TagSummaryResponse
+from app.schemas import AuditLogCreate, PaginatedResponse, TagSummaryResponse
 from helpers.dependencies import (
     DbSession,
     require_workspace_permission,
 )
 from helpers.pagination import aggr_paginate
-from helpers.transactions import commit_or_raise
+from helpers.transactions import commit_or_raise, record_audit_log
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/tags", tags=["tags"])
 
@@ -89,6 +89,18 @@ def delete_tag(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Tag with that id is not found.",
         )
+
+    record_audit_log(
+        db=db,
+        audit_log_data=AuditLogCreate(
+            workspace_id=membership.workspace_id,
+            actor_user_id=membership.user_id,
+            action="tag.deleted",
+            entity_type="tag",
+            entity_id=str(tag.id),
+            entity_label=tag.name,
+        ),
+    )
 
     db.delete(tag)
     commit_or_raise(db)

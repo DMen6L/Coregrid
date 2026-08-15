@@ -1,9 +1,14 @@
 import type { WorkspaceRole } from "../types/api";
 
 const MEMBERS_MANAGE_ROLES = new Set<WorkspaceRole>(["owner", "admin"]);
+const WORKSPACE_MANAGE_ROLES = new Set<WorkspaceRole>(["owner", "admin"]);
 
 export function canManageMembers(role: WorkspaceRole | null | undefined) {
   return Boolean(role && MEMBERS_MANAGE_ROLES.has(role));
+}
+
+export function canManageWorkspace(role: WorkspaceRole | null | undefined) {
+  return Boolean(role && WORKSPACE_MANAGE_ROLES.has(role));
 }
 
 export function formatWorkspaceRole(role: string | null | undefined) {

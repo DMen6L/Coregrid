@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.models import User, WorkspaceInvitation, WorkspaceMembership
 from app.schemas import (
+    AuditLogCreate,
     MeResponse,
     UserPasswordUpdate,
     UserUpdate,
@@ -15,7 +16,7 @@ from app.schemas import (
 from helpers.auth import hash_password, verify_password
 from helpers.dependencies import CurrentUser, DbSession
 from helpers.services import get_user_info
-from helpers.transactions import commit_or_raise
+from helpers.transactions import commit_or_raise, flush_or_raise, record_audit_log
 from helpers.update_helpers import (
     check_unique_constraints,
     password_must_not_include_identity,
@@ -115,6 +116,26 @@ def accept_invitation(
     membership = WorkspaceMembership(**membership_schema)
 
     db.add(membership)
+    flush_or_raise(db)
+
+    record_audit_log(
+        db=db,
+        audit_log_data=AuditLogCreate(
+            workspace_id=membership.workspace_id,
+            actor_user_id=membership.user_id,
+            target_user_id=membership.user_id,
+            action="member.created",
+            entity_type="member",
+            entity_id=str(membership.id),
+            entity_label=current_user.email,
+            extra_data={
+                "email": invitation.email,
+                "role": invitation.role,
+                "accepted_at": now.isoformat(),
+            },
+        ),
+    )
+
     commit_or_raise(db)
 
     return {
@@ -220,5 +241,26 @@ def leave_workspace(
             detail="Owner has to transfer ownership before leaving the workspace",
         )
 
+    left_at = datetime.now()
+
+    record_audit_log(
+        db=db,
+        audit_log_data=AuditLogCreate(
+            workspace_id=membership.workspace_id,
+            actor_user_id=membership.user_id,
+            target_user_id=membership.user_id,
+            action="member.left",
+            entity_type="member",
+            entity_id=str(membership.id),
+            entity_label=current_user.email,
+            extra_data={
+                "email": current_user.email,
+                "role": membership.role,
+                "left_at": left_at.isoformat(),
+            },
+        ),
+    )
+
     db.delete(membership)
+
     commit_or_raise(db)

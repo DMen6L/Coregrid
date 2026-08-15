@@ -2,6 +2,7 @@ import { getBaseApi } from "./apiBase";
 import { getAuthToken } from "./authSession";
 import { requireActiveWorkspaceId } from "./workspaceSession";
 import type {
+  AuditLogResponse,
   BestSalesMode,
   CompanyCreatePayload,
   CompanyResponse,
@@ -129,6 +130,18 @@ export function createWorkspace(payload: WorkspaceCreatePayload) {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function getWorkspaceAuditLogs({
+  page = FIRST_PAGE,
+  pageSize = DEFAULT_PAGE_SIZE,
+}: {
+  page?: number;
+  pageSize?: number;
+} = {}) {
+  return request<PaginatedResponse<AuditLogResponse>>(
+    buildListPath(workspacePath("/logs"), "", page, pageSize),
+  );
 }
 
 export async function getMyInvitations(): Promise<UserInvitationResponse[]> {

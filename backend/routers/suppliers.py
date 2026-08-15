@@ -6,6 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models import Product, ProductSupplier, Supplier, WorkspaceMembership
 from app.schemas import (
+    AuditLogCreate,
     PaginatedResponse,
     SupplierCreate,
     SupplierResponse,
@@ -17,7 +18,7 @@ from helpers.dependencies import (
     require_workspace_permission,
 )
 from helpers.pagination import aggr_paginate
-from helpers.transactions import commit_or_raise
+from helpers.transactions import commit_or_raise, flush_or_raise, record_audit_log
 from helpers.update_helpers import (
     check_unique_constraints,
     validate_update,
@@ -128,24 +129,43 @@ def add_supplier(
     supplier_data: SupplierCreate,
 ) -> Supplier:
     supplier_schema = supplier_data.model_dump()
-    supplier_schema["workspace_id"] = membership.workspace_id
 
     check_unique_constraints(
         db=db,
         model=Supplier,
         constraint_name="uq_suppliers_workspace_name",
-        values=supplier_schema,
+        values={
+            **supplier_schema,
+            "workspace_id": membership.workspace_id,
+        },
     )
     check_unique_constraints(
         db=db,
         model=Supplier,
         constraint_name="uq_suppliers_workspace_phone_number",
-        values=supplier_schema,
+        values={
+            **supplier_schema,
+            "workspace_id": membership.workspace_id,
+        },
     )
 
     supplier = Supplier(**supplier_schema)
 
     db.add(supplier)
+    flush_or_raise(db)
+
+    record_audit_log(
+        db=db,
+        audit_log_data=AuditLogCreate(
+            workspace_id=membership.workspace_id,
+            actor_user_id=membership.user_id,
+            action="supplier.created",
+            entity_type="supplier",
+            entity_id=str(supplier.id),
+            entity_label=supplier.name,
+        ),
+    )
+
     commit_or_raise(db)
     db.refresh(supplier)
 
@@ -183,25 +203,53 @@ def patch_supplier(
         )
 
     update_data = patch_data.model_dump(exclude_unset=True)
-    update_data["workspace_id"] = membership.workspace_id
+    validation_data = {
+        **update_data,
+        "workspace_id": membership.workspace_id,
+    }
 
     validate_update(
         db=db,
         model=Supplier,
         constraint_name="uq_suppliers_workspace_name",
-        update_data=update_data,
+        update_data=validation_data,
         update_obj=supplier,
     )
     validate_update(
         db=db,
         model=Supplier,
         constraint_name="uq_suppliers_workspace_phone_number",
-        update_data=update_data,
+        update_data=validation_data,
         update_obj=supplier,
     )
 
+    changes: dict[str, object] = {}
+
     for field, value in update_data.items():
+        old_value = getattr(supplier, field)
+
+        if old_value == value:
+            continue
+
+        changes[field] = {
+            "old": old_value,
+            "new": value,
+        }
         setattr(supplier, field, value)
+
+    if changes:
+        record_audit_log(
+            db=db,
+            audit_log_data=AuditLogCreate(
+                workspace_id=membership.workspace_id,
+                actor_user_id=membership.user_id,
+                action="supplier.updated",
+                entity_type="supplier",
+                entity_id=str(supplier.id),
+                entity_label=supplier.name,
+                changes=changes,
+            ),
+        )
 
     commit_or_raise(db)
     db.refresh(supplier)

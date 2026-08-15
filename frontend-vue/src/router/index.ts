@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from "vue-router";
 
+import AuditLogsView from "../views/AuditLogsView.vue";
 import CompaniesView from "../views/CompaniesView.vue";
 import AuthView from "../views/AuthView.vue";
 import DashboardView from "../views/DashboardView.vue";
@@ -61,6 +62,12 @@ const router = createRouter({
       path: "/members",
       name: "members",
       component: MembersView,
+      meta: { requiresAuth: true, requiresWorkspace: true },
+    },
+    {
+      path: "/audit-logs",
+      name: "audit-logs",
+      component: AuditLogsView,
       meta: { requiresAuth: true, requiresWorkspace: true },
     },
     {

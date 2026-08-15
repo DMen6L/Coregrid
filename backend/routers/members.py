@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
@@ -5,6 +6,7 @@ from sqlalchemy import Integer, func, or_, select, type_coerce
 
 from app.models import User, WorkspaceMembership
 from app.schemas import (
+    AuditLogCreate,
     PaginatedResponse,
     WorkspaceMembershipResponse,
     WorkspaceMembershipSummaryResponse,
@@ -12,7 +14,7 @@ from app.schemas import (
 from app.type_definitions import AssignableRoles
 from helpers.dependencies import DbSession, require_workspace_permission
 from helpers.pagination import aggr_paginate
-from helpers.transactions import commit_or_raise
+from helpers.transactions import commit_or_raise, record_audit_log
 
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/members", tags=["members"])
@@ -156,6 +158,30 @@ def change_member_role(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only owner can change admins",
         )
+    if member.role == new_role:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="The member roles cannot be the same after the update",
+        )
+
+    record_audit_log(
+        db=db,
+        audit_log_data=AuditLogCreate(
+            workspace_id=membership.workspace_id,
+            actor_user_id=membership.user_id,
+            target_user_id=member.user_id,
+            action="member.role_updated",
+            entity_type="member",
+            entity_id=str(member.id),
+            entity_label=member.user.email,
+            changes={
+                "role": {
+                    "old": member.role,
+                    "new": new_role,
+                }
+            },
+        ),
+    )
 
     member.role = new_role
 
@@ -229,6 +255,25 @@ def delete_member(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only owner can delete admins",
         )
+
+    deleted_at = datetime.now()
+
+    record_audit_log(
+        db=db,
+        audit_log_data=AuditLogCreate(
+            workspace_id=membership.workspace_id,
+            actor_user_id=membership.user_id,
+            target_user_id=member.user_id,
+            action="member.removed",
+            entity_type="member",
+            entity_id=str(member.id),
+            entity_label=member.user.email,
+            extra_data={
+                "role": member.role,
+                "deleted_at": deleted_at.isoformat(),
+            },
+        ),
+    )
 
     db.delete(member)
     commit_or_raise(db)

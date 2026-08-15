@@ -1,13 +1,14 @@
-from typing import Annotated, cast
+from typing import cast
 
-from fastapi import Depends, HTTPException, status
+from fastapi import HTTPException, status
 from psycopg.errors import CheckViolation, ForeignKeyViolation, UniqueViolation
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Company, Supplier, Tag, WorkspaceMembership
-from app.schemas import ProductAtomicCreate, ProductSupplierAtomicCreate
+from app.models import AuditLog, Company, Supplier, Tag, User, WorkspaceMembership
+from app.schemas import AuditLogCreate, ProductAtomicCreate, ProductSupplierAtomicCreate
+from helpers.dependencies import DbSession
 from helpers.update_helpers import check_unique_constraints
 from utils import normalize_tag_names
 
@@ -43,6 +44,45 @@ def commit_or_raise(db: Session) -> None:
     except IntegrityError as exc:
         db.rollback()
         raise_integrity_error(exc)
+
+
+def record_audit_log(
+    db: DbSession,
+    audit_log_data: AuditLogCreate,
+) -> None:
+    audit_log_schema = audit_log_data.model_dump(exclude_unset=True)
+
+    actor = db.get(User, audit_log_data.actor_user_id)
+
+    if actor is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User with this id is not found",
+        )
+
+    audit_log_schema["actor_name"] = actor.name
+    audit_log_schema["actor_email"] = actor.email
+
+    if audit_log_data.target_user_id is not None:
+        target = db.scalar(
+            select(User)
+            .where(
+                User.id == audit_log_data.target_user_id,
+            )
+            .select_from(User)
+        )
+
+        if target is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Target user with this id is not found",
+            )
+
+        audit_log_schema["target_name"] = target.name
+        audit_log_schema["target_email"] = target.email
+
+    audit_log = AuditLog(**audit_log_schema)
+    db.add(audit_log)
 
 
 def create_or_resolve_company(
@@ -87,6 +127,18 @@ def create_or_resolve_company(
 
         db.add(company)
         flush_or_raise(db)
+
+        record_audit_log(
+            db=db,
+            audit_log_data=AuditLogCreate(
+                workspace_id=membership.workspace_id,
+                actor_user_id=membership.user_id,
+                action="company.created",
+                entity_type="company",
+                entity_id=str(company.id),
+                entity_label=company.name,
+            ),
+        )
 
         return company.id
     raise HTTPException(
@@ -135,8 +187,21 @@ def create_or_resolve_supplier(
         )
 
         supplier = Supplier(**supplier_data)
+
         db.add(supplier)
         flush_or_raise(db)
+
+        record_audit_log(
+            db=db,
+            audit_log_data=AuditLogCreate(
+                workspace_id=membership.workspace_id,
+                actor_user_id=membership.user_id,
+                action="supplier.created",
+                entity_type="supplier",
+                entity_id=str(supplier.id),
+                entity_label=supplier.name,
+            ),
+        )
 
         return supplier.id
     raise HTTPException(
@@ -175,6 +240,7 @@ def get_or_create_tags(
     ]
 
     db.add_all(new_tags)
+    flush_or_raise(db)
 
     return sorted(
         [*existing_tags, *new_tags],

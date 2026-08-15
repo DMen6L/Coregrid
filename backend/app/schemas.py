@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from pickle import NONE
 from typing import ClassVar, Generic, Literal
 from uuid import UUID
 from pydantic import (
@@ -231,6 +232,23 @@ class ProductAtomicCreate(BaseModel):
         if (self.company is None) == (self.company_id is None):
             raise ValueError("Provide exactly one of company id or company")
         return self
+
+
+class AuditLogCreate(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    workspace_id: int = Field(gt=0)
+    actor_user_id: int = Field(gt=0)
+    target_user_id: int | None = Field(default=None, gt=0)
+
+    action: str = Field(min_length=1)
+
+    entity_type: str = Field(min_length=1)
+    entity_id: str | None = Field(default=None, min_length=1)
+    entity_label: str | None = Field(default=None, min_length=1)
+
+    changes: dict[str, object] = Field(default_factory=dict)
+    extra_data: dict[str, object] = Field(default_factory=dict)
 
 
 # ==============
@@ -510,6 +528,31 @@ class MeResponse(BaseModel):
     user: UserResponse
     workspaces: list[WorkspaceResponse]
     invitations: list[UserInvitationResponse]
+
+
+class AuditLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    workspace_id: int
+    created_at: datetime
+
+    actor_user_id: int | None
+    actor_name: str | None
+    actor_email: str | None
+
+    target_user_id: int | None
+    target_name: str | None
+    target_email: EmailStr | None
+
+    action: str
+
+    entity_type: str
+    entity_id: str | None
+    entity_label: str | None
+
+    changes: dict[str, object] | None
+    extra_data: dict[str, object] | None
 
 
 # Other Response Schemas

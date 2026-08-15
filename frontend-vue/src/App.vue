@@ -14,7 +14,7 @@ import {
   getAuthToken,
 } from "./lib/authSession";
 import { closeOpenDropdowns } from "./lib/dropdowns";
-import { canManageMembers } from "./lib/permissions";
+import { canManageWorkspace } from "./lib/permissions";
 import {
   activeWorkspace,
   clearWorkspaceSession,
@@ -56,6 +56,10 @@ const isMembersListRouteActive = computed(() => (
 const isMembersInvitationsRouteActive = computed(() => (
   isMembersRouteActive.value && route.query.tab === "invitations"
 ));
+const isAuditLogsRouteActive = computed(() => String(route.name ?? "") === "audit-logs");
+const isWorkspaceAdminRouteActive = computed(() => (
+  isMembersRouteActive.value || isAuditLogsRouteActive.value
+));
 const isAccountRouteActive = computed(() => String(route.name ?? "") === "me");
 const isAuthenticated = computed(() => Boolean(authToken.value));
 const meQuery = useQuery({
@@ -70,8 +74,8 @@ const shouldShowWorkspaceGate = computed(() => (
     && (!activeWorkspace.value || isWorkspaceLoading.value || Boolean(workspaceError.value))
 ));
 const hasVerifiedAccount = computed(() => Boolean(isAuthenticated.value && currentUser.value));
-const canManageCurrentWorkspaceMembers = computed(() => (
-  canManageMembers(activeWorkspace.value?.role)
+const canManageCurrentWorkspace = computed(() => (
+  canManageWorkspace(activeWorkspace.value?.role)
 ));
 const currentUser = computed(() => meQuery.data.value?.user || null);
 const accountDisplayName = computed(() => getAccountDisplayName(currentUser.value));
@@ -350,19 +354,19 @@ onUnmounted(() => {
               Дэшборд
             </RouterLink>
           </template>
-          <div v-if="canManageCurrentWorkspaceMembers" class="nav-item dropdown">
+          <div v-if="canManageCurrentWorkspace" class="nav-item dropdown">
             <button
-              id="coregrid-members-dropdown"
+              id="coregrid-workspace-dropdown"
               class="nav-link dropdown-toggle"
-              :class="{ active: isMembersRouteActive }"
+              :class="{ active: isWorkspaceAdminRouteActive }"
               type="button"
               data-bs-toggle="dropdown"
-              :aria-current="isMembersRouteActive ? 'page' : undefined"
+              :aria-current="isWorkspaceAdminRouteActive ? 'page' : undefined"
               aria-expanded="false"
             >
-              Участники
+              Рабочее пространство
             </button>
-            <ul class="dropdown-menu" aria-labelledby="coregrid-members-dropdown">
+            <ul class="dropdown-menu" aria-labelledby="coregrid-workspace-dropdown">
               <li>
                 <button
                   class="dropdown-item"
@@ -382,6 +386,17 @@ onUnmounted(() => {
                 >
                   Приглашения
                 </button>
+              </li>
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <RouterLink
+                  class="dropdown-item"
+                  :class="{ active: isAuditLogsRouteActive }"
+                  to="/audit-logs"
+                  @click="closeOpenDropdowns"
+                >
+                  Журнал действий
+                </RouterLink>
               </li>
             </ul>
           </div>

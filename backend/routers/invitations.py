@@ -9,13 +9,14 @@ from sqlalchemy import Integer, func, select, type_coerce
 
 from app.models import User, WorkspaceInvitation, WorkspaceMembership
 from app.schemas import (
+    AuditLogCreate,
     PaginatedResponse,
     WorkspaceInvitationCreate,
     WorkspaceInvitationResponse,
 )
 from helpers.dependencies import DbSession, require_workspace_permission
 from helpers.pagination import paginate
-from helpers.transactions import commit_or_raise
+from helpers.transactions import commit_or_raise, flush_or_raise, record_audit_log
 from helpers.update_helpers import check_unique_constraints
 
 
@@ -116,31 +117,52 @@ def post_invitation(
     raw_token = token_urlsafe(32)
     token_hash = sha256(raw_token.encode()).hexdigest()
 
-    workspace_invitation_schema = invite_data.model_dump()
-    workspace_invitation_schema["token_hash"] = token_hash
+    invitation_schema = invite_data.model_dump()
+    invitation_schema["token_hash"] = token_hash
 
     check_unique_constraints(
         db=db,
         model=WorkspaceInvitation,
         constraint_name="uq_workspace_invitations_token_hash",
-        values=workspace_invitation_schema,
+        values=invitation_schema,
     )
 
     expires_at = now + timedelta(days=7)
 
-    workspace_invitation_schema["inviter_user_id"] = membership.user_id
-    workspace_invitation_schema["workspace_id"] = membership.workspace_id
-    workspace_invitation_schema["expires_at"] = expires_at
+    invitation_schema["inviter_user_id"] = membership.user_id
+    invitation_schema["workspace_id"] = membership.workspace_id
+    invitation_schema["expires_at"] = expires_at
 
-    workspace_invitation = WorkspaceInvitation(
-        **workspace_invitation_schema,
+    invitation = WorkspaceInvitation(
+        **invitation_schema,
     )
 
-    db.add(workspace_invitation)
-    commit_or_raise(db)
-    db.refresh(workspace_invitation)
+    db.add(invitation)
+    flush_or_raise(db)
 
-    return workspace_invitation
+    invitee_id = db.scalar(select(User.id).where(User.email == invitation.email))
+
+    record_audit_log(
+        db=db,
+        audit_log_data=AuditLogCreate(
+            workspace_id=membership.workspace_id,
+            actor_user_id=membership.user_id,
+            target_user_id=invitee_id,
+            action="invitation.created",
+            entity_type="invitation",
+            entity_id=str(invitation.id),
+            entity_label=invitation.email,
+            extra_data={
+                "role": invitation.role,
+                "expires_at": invitation.expires_at.isoformat(),
+            },
+        ),
+    )
+
+    commit_or_raise(db)
+    db.refresh(invitation)
+
+    return invitation
 
 
 @router.delete(
@@ -176,5 +198,27 @@ def delete_invitation(
     if invitation.revoked_at is not None:
         return None
 
-    invitation.revoked_at = datetime.now()
+    revoked_at = datetime.now()
+    invitation.revoked_at = revoked_at
+
+    invitee_id = db.scalar(select(User.id).where(User.email == invitation.email))
+
+    record_audit_log(
+        db=db,
+        audit_log_data=AuditLogCreate(
+            workspace_id=membership.workspace_id,
+            actor_user_id=membership.user_id,
+            target_user_id=invitee_id,
+            action="invitation.deleted",
+            entity_type="invitation",
+            entity_id=str(invitation.id),
+            entity_label=invitation.email,
+            extra_data={
+                "email": invitation.email,
+                "role": invitation.role,
+                "revoked_at": revoked_at,
+            },
+        ),
+    )
+
     commit_or_raise(db)
