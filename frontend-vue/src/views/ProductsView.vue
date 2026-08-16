@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { useRoute, useRouter } from "vue-router";
 import type { LocationQueryRaw } from "vue-router";
@@ -38,9 +38,10 @@ import type {
 } from "../types/api";
 
 type ProductStockStatus = StockStatus | "none";
+type StockStatusFilter = StockStatus | "";
 type CompanyMode = "existing" | "new";
 type SupplierMode = "existing" | "new";
-type ProductFilterChipType = "search" | "company" | "supplier" | "tag";
+type ProductFilterChipType = "search" | "company" | "supplier" | "stock_status" | "tag";
 
 interface ProductFilterChip {
   id: string;
@@ -52,12 +53,20 @@ interface ProductFilterChip {
 const POPULAR_TAGS_LIMIT = 10;
 const COMPANY_LOOKUP_PAGE_SIZE = 10;
 const SUPPLIER_LOOKUP_PAGE_SIZE = 10;
+const FILTER_LOOKUP_DEBOUNCE_MS = 300;
+const FILTER_LOOKUP_PAGE_SIZE = 8;
 const STOCK_STATUS: Record<ProductStockStatus, { label: string; className: string }> = {
   available: { label: "В наличии", className: "text-bg-success" },
   low: { label: "Мало", className: "text-bg-warning" },
   out: { label: "Нет", className: "text-bg-danger" },
   none: { label: "Без данных", className: "text-bg-secondary" },
 };
+const STOCK_STATUS_FILTER_OPTIONS: { value: StockStatusFilter; label: string }[] = [
+  { value: "", label: "Все статусы" },
+  { value: "available", label: STOCK_STATUS.available.label },
+  { value: "low", label: STOCK_STATUS.low.label },
+  { value: "out", label: STOCK_STATUS.out.label },
+];
 const EMPTY_PRODUCTS_PAGE: PaginatedResponse<ProductSummaryResponse> = {
   items: [],
   page: FIRST_PAGE,
@@ -81,20 +90,25 @@ const route = useRoute();
 const router = useRouter();
 const queryClient = useQueryClient();
 const searchForm = ref<HTMLFormElement | null>(null);
-const filterForm = ref<HTMLFormElement | null>(null);
 const createFormElement = ref<HTMLFormElement | null>(null);
 const searchDraft = ref(currentSearchFromRoute());
 const filterDraft = reactive({
   companyName: currentCompanyNameFromRoute(),
   supplierName: currentSupplierNameFromRoute(),
-  tags: formatTagsDraft(currentTagsFromRoute()),
+  stockStatus: currentStockStatusFromRoute(),
 });
 const isCreateModalOpen = ref(false);
 const isDetailModalOpen = ref(false);
 const selectedProductId = ref<number | null>(null);
 const createError = ref("");
+const filterCompanyLookupTerm = ref("");
+const filterSupplierLookupTerm = ref("");
+const isCompanyFilterOpen = ref(false);
+const isSupplierFilterOpen = ref(false);
 const companyLookupTerm = ref("");
 const supplierLookupTerm = ref("");
+let companyFilterLookupTimer: number | null = null;
+let supplierFilterLookupTimer: number | null = null;
 const productCreateForm = reactive({
   name: "",
   tags: "",
@@ -120,6 +134,7 @@ const productCreateForm = reactive({
 const currentSearch = computed(() => currentSearchFromRoute());
 const currentCompanyName = computed(() => currentCompanyNameFromRoute());
 const currentSupplierName = computed(() => currentSupplierNameFromRoute());
+const currentStockStatus = computed(() => currentStockStatusFromRoute());
 const currentTags = computed(() => currentTagsFromRoute());
 const currentPage = computed(() => currentPageFromRoute());
 const productsQuery = useQuery({
@@ -129,6 +144,7 @@ const productsQuery = useQuery({
     currentSearch.value,
     currentCompanyName.value,
     currentSupplierName.value,
+    currentStockStatus.value,
     currentTags.value,
     currentPage.value,
     DEFAULT_PAGE_SIZE,
@@ -137,6 +153,7 @@ const productsQuery = useQuery({
     search: currentSearch.value,
     companyName: currentCompanyName.value,
     supplierName: currentSupplierName.value,
+    stockStatus: currentStockStatus.value,
     tags: currentTags.value,
     page: currentPage.value,
     pageSize: DEFAULT_PAGE_SIZE,
@@ -192,6 +209,44 @@ const supplierLookupQuery = useQuery({
       && supplierLookupTerm.value.length >= 2
   )),
 });
+const companyFilterQuery = useQuery({
+  queryKey: computed(() => [
+    "companies",
+    activeWorkspaceId.value,
+    "product-filter",
+    filterCompanyLookupTerm.value,
+    FILTER_LOOKUP_PAGE_SIZE,
+  ]),
+  queryFn: () => getCompanies({
+    search: filterCompanyLookupTerm.value,
+    page: FIRST_PAGE,
+    pageSize: FILTER_LOOKUP_PAGE_SIZE,
+  }),
+  enabled: computed(() => (
+    Boolean(activeWorkspaceId.value)
+      && isCompanyFilterOpen.value
+      && filterCompanyLookupTerm.value.length >= 2
+  )),
+});
+const supplierFilterQuery = useQuery({
+  queryKey: computed(() => [
+    "suppliers",
+    activeWorkspaceId.value,
+    "product-filter",
+    filterSupplierLookupTerm.value,
+    FILTER_LOOKUP_PAGE_SIZE,
+  ]),
+  queryFn: () => getSuppliers({
+    search: filterSupplierLookupTerm.value,
+    page: FIRST_PAGE,
+    pageSize: FILTER_LOOKUP_PAGE_SIZE,
+  }),
+  enabled: computed(() => (
+    Boolean(activeWorkspaceId.value)
+      && isSupplierFilterOpen.value
+      && filterSupplierLookupTerm.value.length >= 2
+  )),
+});
 const createProductMutation = useMutation({
   mutationFn: createProductFromForm,
   onSuccess: handleProductCreateSuccess,
@@ -207,6 +262,8 @@ const selectedProductSummary = computed(() => (
 const popularTagsPage = computed(() => popularTagsQuery.data.value || EMPTY_TAGS_PAGE);
 const companyLookupResults = computed(() => companyLookupQuery.data.value?.items || []);
 const supplierLookupResults = computed(() => supplierLookupQuery.data.value?.items || []);
+const companyFilterResults = computed(() => companyFilterQuery.data.value?.items || []);
+const supplierFilterResults = computed(() => supplierFilterQuery.data.value?.items || []);
 const productsError = computed(() => (
   productsQuery.error.value
     ? getRequestErrorMessage(productsQuery.error.value, "товары")
@@ -227,6 +284,16 @@ const supplierLookupError = computed(() => (
     ? getRequestErrorMessage(supplierLookupQuery.error.value, "поставщиков")
     : ""
 ));
+const companyFilterError = computed(() => (
+  companyFilterQuery.error.value
+    ? getRequestErrorMessage(companyFilterQuery.error.value, "компании")
+    : ""
+));
+const supplierFilterError = computed(() => (
+  supplierFilterQuery.error.value
+    ? getRequestErrorMessage(supplierFilterQuery.error.value, "поставщиков")
+    : ""
+));
 const hasProducts = computed(() => productsPage.value.items.length > 0);
 const shouldShowProductsTable = computed(() => (
   hasProducts.value
@@ -242,6 +309,7 @@ const hasActiveProductFilters = computed(() => Boolean(
   currentSearch.value
     || currentCompanyName.value
     || currentSupplierName.value
+    || currentStockStatus.value
     || currentTags.value.length,
 ));
 const productsEmptyMessage = computed(() => (
@@ -279,6 +347,15 @@ const activeProductFilterChips = computed<ProductFilterChip[]>(() => {
     });
   }
 
+  if (currentStockStatus.value) {
+    chips.push({
+      id: "stock_status",
+      type: "stock_status",
+      label: `Статус: ${getStockStatusFilterLabel(currentStockStatus.value)}`,
+      value: currentStockStatus.value,
+    });
+  }
+
   currentTags.value.forEach((tag) => {
     chips.push({
       id: `tag:${tag}`,
@@ -311,6 +388,12 @@ const shouldShowPopularTagsEmpty = computed(() => (
     && !popularTagsError.value
     && popularTags.value.length === 0
 ));
+const shouldShowCompanyFilterMenu = computed(() => (
+  isCompanyFilterOpen.value && normalizeTagName(filterDraft.companyName).length >= 2
+));
+const shouldShowSupplierFilterMenu = computed(() => (
+  isSupplierFilterOpen.value && normalizeTagName(filterDraft.supplierName).length >= 2
+));
 
 watch(currentSearch, (nextSearch) => {
   searchDraft.value = nextSearch;
@@ -324,8 +407,20 @@ watch(currentSupplierName, (nextSupplierName) => {
   filterDraft.supplierName = nextSupplierName;
 });
 
-watch(currentTags, (nextTags) => {
-  filterDraft.tags = formatTagsDraft(nextTags);
+watch(currentStockStatus, (nextStockStatus) => {
+  filterDraft.stockStatus = nextStockStatus;
+});
+
+watch(() => filterDraft.companyName, (nextCompanyName) => {
+  if (isCompanyFilterOpen.value) {
+    scheduleCompanyFilterLookup(nextCompanyName);
+  }
+});
+
+watch(() => filterDraft.supplierName, (nextSupplierName) => {
+  if (isSupplierFilterOpen.value) {
+    scheduleSupplierFilterLookup(nextSupplierName);
+  }
 });
 
 watch(() => productCreateForm.companyMode, () => {
@@ -346,6 +441,11 @@ watch(() => productCreateForm.linkEnabled, (isEnabled) => {
   }
 });
 
+onBeforeUnmount(() => {
+  clearCompanyFilterLookupTimer();
+  clearSupplierFilterLookupTimer();
+});
+
 function submitSearch() {
   if (!searchForm.value?.reportValidity()) {
     return;
@@ -353,23 +453,10 @@ function submitSearch() {
 
   navigateProducts({
     search: searchDraft.value,
-    companyName: currentCompanyName.value,
-    supplierName: currentSupplierName.value,
-    tags: currentTags.value,
-    page: FIRST_PAGE,
-  });
-}
-
-function submitFilters() {
-  if (!filterForm.value?.reportValidity()) {
-    return;
-  }
-
-  navigateProducts({
-    search: searchDraft.value,
     companyName: filterDraft.companyName,
     supplierName: filterDraft.supplierName,
-    tags: parseTags(filterDraft.tags),
+    stockStatus: filterDraft.stockStatus,
+    tags: currentTags.value,
     page: FIRST_PAGE,
   });
 }
@@ -378,12 +465,19 @@ function resetProductFilters() {
   searchDraft.value = "";
   filterDraft.companyName = "";
   filterDraft.supplierName = "";
-  filterDraft.tags = "";
+  filterDraft.stockStatus = "";
+  filterCompanyLookupTerm.value = "";
+  filterSupplierLookupTerm.value = "";
+  isCompanyFilterOpen.value = false;
+  isSupplierFilterOpen.value = false;
+  clearCompanyFilterLookupTimer();
+  clearSupplierFilterLookupTimer();
 
   navigateProducts({
     search: "",
     companyName: "",
     supplierName: "",
+    stockStatus: "",
     tags: [],
     page: FIRST_PAGE,
   });
@@ -394,6 +488,7 @@ function goToPage(page: number) {
     search: currentSearch.value,
     companyName: currentCompanyName.value,
     supplierName: currentSupplierName.value,
+    stockStatus: currentStockStatus.value,
     tags: currentTags.value,
     page,
   });
@@ -415,12 +510,12 @@ function toggleTagFilter(tagName: string) {
   }
 
   const nextTags = Array.from(currentTagSet);
-  filterDraft.tags = formatTagsDraft(nextTags);
 
   navigateProducts({
-    search: currentSearch.value,
-    companyName: currentCompanyName.value,
-    supplierName: currentSupplierName.value,
+    search: searchDraft.value,
+    companyName: filterDraft.companyName,
+    supplierName: filterDraft.supplierName,
+    stockStatus: filterDraft.stockStatus,
     tags: nextTags,
     page: FIRST_PAGE,
   });
@@ -431,6 +526,7 @@ function removeActiveFilter(chip: ProductFilterChip) {
     search: currentSearch.value,
     companyName: currentCompanyName.value,
     supplierName: currentSupplierName.value,
+    stockStatus: currentStockStatus.value,
     tags: currentTags.value,
     page: FIRST_PAGE,
   };
@@ -450,9 +546,13 @@ function removeActiveFilter(chip: ProductFilterChip) {
     filterDraft.supplierName = "";
   }
 
+  if (chip.type === "stock_status") {
+    nextFilters.stockStatus = "";
+    filterDraft.stockStatus = "";
+  }
+
   if (chip.type === "tag") {
     nextFilters.tags = currentTags.value.filter((tag) => tag !== chip.value);
-    filterDraft.tags = formatTagsDraft(nextFilters.tags);
   }
 
   navigateProducts(nextFilters);
@@ -540,6 +640,102 @@ function clearSelectedSupplier() {
   productCreateForm.selectedSupplier = null;
   productCreateForm.supplierSearch = "";
   supplierLookupTerm.value = "";
+}
+
+function scheduleCompanyFilterLookup(value: string) {
+  clearCompanyFilterLookupTimer();
+
+  const search = normalizeTagName(value);
+
+  if (search.length < 2) {
+    filterCompanyLookupTerm.value = "";
+    return;
+  }
+
+  companyFilterLookupTimer = window.setTimeout(() => {
+    filterCompanyLookupTerm.value = search;
+    companyFilterLookupTimer = null;
+  }, FILTER_LOOKUP_DEBOUNCE_MS);
+}
+
+function scheduleSupplierFilterLookup(value: string) {
+  clearSupplierFilterLookupTimer();
+
+  const search = normalizeTagName(value);
+
+  if (search.length < 2) {
+    filterSupplierLookupTerm.value = "";
+    return;
+  }
+
+  supplierFilterLookupTimer = window.setTimeout(() => {
+    filterSupplierLookupTerm.value = search;
+    supplierFilterLookupTimer = null;
+  }, FILTER_LOOKUP_DEBOUNCE_MS);
+}
+
+function clearCompanyFilterLookupTimer() {
+  if (companyFilterLookupTimer === null) {
+    return;
+  }
+
+  window.clearTimeout(companyFilterLookupTimer);
+  companyFilterLookupTimer = null;
+}
+
+function clearSupplierFilterLookupTimer() {
+  if (supplierFilterLookupTimer === null) {
+    return;
+  }
+
+  window.clearTimeout(supplierFilterLookupTimer);
+  supplierFilterLookupTimer = null;
+}
+
+function openCompanyFilterDropdown() {
+  isCompanyFilterOpen.value = true;
+  scheduleCompanyFilterLookup(filterDraft.companyName);
+}
+
+function closeCompanyFilterDropdown() {
+  isCompanyFilterOpen.value = false;
+}
+
+function selectCompanyFilter(company: CompanyResponse) {
+  isCompanyFilterOpen.value = false;
+  clearCompanyFilterLookupTimer();
+  filterDraft.companyName = company.name;
+  filterCompanyLookupTerm.value = "";
+}
+
+function clearCompanyFilterDraft() {
+  filterDraft.companyName = "";
+  filterCompanyLookupTerm.value = "";
+  isCompanyFilterOpen.value = false;
+  clearCompanyFilterLookupTimer();
+}
+
+function openSupplierFilterDropdown() {
+  isSupplierFilterOpen.value = true;
+  scheduleSupplierFilterLookup(filterDraft.supplierName);
+}
+
+function closeSupplierFilterDropdown() {
+  isSupplierFilterOpen.value = false;
+}
+
+function selectSupplierFilter(supplier: SupplierSummaryResponse) {
+  isSupplierFilterOpen.value = false;
+  clearSupplierFilterLookupTimer();
+  filterDraft.supplierName = supplier.name;
+  filterSupplierLookupTerm.value = "";
+}
+
+function clearSupplierFilterDraft() {
+  filterDraft.supplierName = "";
+  filterSupplierLookupTerm.value = "";
+  isSupplierFilterOpen.value = false;
+  clearSupplierFilterLookupTimer();
 }
 
 function submitProductCreate() {
@@ -636,6 +832,7 @@ async function handleProductCreateSuccess(product: ProductResponse) {
     search: productName,
     companyName: "",
     supplierName: "",
+    stockStatus: "",
     tags: [],
     page: FIRST_PAGE,
   });
@@ -677,18 +874,21 @@ function navigateProducts({
   search,
   companyName,
   supplierName,
+  stockStatus,
   tags,
   page,
 }: {
   search: string;
   companyName: string;
   supplierName: string;
+  stockStatus: StockStatusFilter;
   tags: string[];
   page: number;
 }) {
   const trimmedSearch = String(search || "").trim();
   const trimmedCompanyName = String(companyName || "").trim();
   const trimmedSupplierName = String(supplierName || "").trim();
+  const normalizedStockStatus = normalizeStockStatus(stockStatus);
   const normalizedTags = Array.from(
     new Set(tags.map((tag) => normalizeTagName(tag)).filter(Boolean)),
   );
@@ -705,6 +905,10 @@ function navigateProducts({
 
   if (trimmedSupplierName) {
     query.supplier_name = trimmedSupplierName;
+  }
+
+  if (normalizedStockStatus) {
+    query.stock_status = normalizedStockStatus;
   }
 
   if (normalizedTags.length > 0) {
@@ -728,6 +932,10 @@ function currentCompanyNameFromRoute() {
 
 function currentSupplierNameFromRoute() {
   return normalizeRouteString(route.query.supplier_name);
+}
+
+function currentStockStatusFromRoute() {
+  return normalizeStockStatus(normalizeRouteString(route.query.stock_status));
 }
 
 function currentTagsFromRoute() {
@@ -766,6 +974,16 @@ function normalizeTagName(value: string) {
   return String(value || "").trim();
 }
 
+function normalizeStockStatus(value: string): StockStatusFilter {
+  const status = normalizeTagName(value);
+
+  return isStockStatus(status) ? status : "";
+}
+
+function isStockStatus(value: string): value is StockStatus {
+  return value === "available" || value === "low" || value === "out";
+}
+
 function normalizeOptionalText(value: string) {
   return normalizeTagName(value) || null;
 }
@@ -797,10 +1015,6 @@ function parseTags(value: string) {
   );
 }
 
-function formatTagsDraft(tags: string[]) {
-  return tags.join(", ");
-}
-
 function createLocalValidationError(message: string) {
   const error = new Error(message) as Error & { data: { detail: string } };
 
@@ -814,6 +1028,10 @@ function getProductUnit(product: ProductSummaryResponse) {
 
 function getStatusConfig(status: StockStatus | undefined) {
   return STOCK_STATUS[status || "none"] || STOCK_STATUS.none;
+}
+
+function getStockStatusFilterLabel(status: StockStatusFilter) {
+  return status ? getStatusConfig(status).label : "Все статусы";
 }
 
 function getSummaryStockMeta(product: ProductSummaryResponse) {
@@ -870,6 +1088,205 @@ function getSupplierCountText(value: number) {
             Поиск
           </button>
         </div>
+
+        <div class="products-filter-panel">
+          <div class="products-filter-header">
+            <span class="product-detail-label">Фильтры</span>
+            <button
+              v-if="hasActiveProductFilters"
+              class="btn btn-link products-filter-reset"
+              type="button"
+              :disabled="productsQuery.isFetching.value"
+              @click="resetProductFilters"
+            >
+              Сбросить
+            </button>
+          </div>
+
+          <div class="products-filter-controls">
+            <div class="product-filter-combobox">
+              <label class="form-label" for="products-company-filter">Компания</label>
+              <div class="input-group product-filter-input-group">
+                <input
+                  id="products-company-filter"
+                  v-model="filterDraft.companyName"
+                  class="form-control"
+                  name="company_name"
+                  type="search"
+                  minlength="2"
+                  maxlength="100"
+                  autocomplete="off"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  :aria-expanded="shouldShowCompanyFilterMenu"
+                  aria-controls="products-company-filter-options"
+                  @focus="openCompanyFilterDropdown"
+                  @blur="closeCompanyFilterDropdown"
+                >
+                <button
+                  v-if="filterDraft.companyName"
+                  class="btn btn-outline-secondary product-filter-clear"
+                  type="button"
+                  aria-label="Очистить фильтр компании"
+                  @mousedown.prevent
+                  @click="clearCompanyFilterDraft"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
+              <div
+                v-if="shouldShowCompanyFilterMenu"
+                id="products-company-filter-options"
+                class="product-filter-menu"
+                role="listbox"
+                aria-label="Компании"
+              >
+                <div v-if="!filterCompanyLookupTerm" class="product-filter-menu-state">
+                  Поиск компаний...
+                </div>
+                <div
+                  v-else-if="companyFilterQuery.isFetching.value"
+                  class="product-filter-menu-state"
+                >
+                  Поиск компаний...
+                </div>
+                <div v-else-if="companyFilterError" class="product-filter-menu-state text-danger">
+                  {{ companyFilterError }}
+                </div>
+                <div
+                  v-else-if="companyFilterResults.length === 0"
+                  class="product-filter-menu-state text-secondary"
+                >
+                  Компании не найдены.
+                </div>
+                <template v-else>
+                  <button
+                    v-for="company in companyFilterResults"
+                    :key="company.id"
+                    class="product-filter-option"
+                    type="button"
+                    role="option"
+                    @mousedown.prevent
+                    @click="selectCompanyFilter(company)"
+                  >
+                    <span class="product-filter-option-title">{{ company.name }}</span>
+                    <span class="product-filter-option-meta">
+                      ID {{ formatCount(company.id) }}
+                      <span v-if="company.iin">| ИИН {{ company.iin }}</span>
+                    </span>
+                  </button>
+                </template>
+              </div>
+            </div>
+            <div class="product-filter-combobox">
+              <label class="form-label" for="products-supplier-filter">Поставщик</label>
+              <div class="input-group product-filter-input-group">
+                <input
+                  id="products-supplier-filter"
+                  v-model="filterDraft.supplierName"
+                  class="form-control"
+                  name="supplier_name"
+                  type="search"
+                  minlength="2"
+                  maxlength="100"
+                  autocomplete="off"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  :aria-expanded="shouldShowSupplierFilterMenu"
+                  aria-controls="products-supplier-filter-options"
+                  @focus="openSupplierFilterDropdown"
+                  @blur="closeSupplierFilterDropdown"
+                >
+                <button
+                  v-if="filterDraft.supplierName"
+                  class="btn btn-outline-secondary product-filter-clear"
+                  type="button"
+                  aria-label="Очистить фильтр поставщика"
+                  @mousedown.prevent
+                  @click="clearSupplierFilterDraft"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
+              <div
+                v-if="shouldShowSupplierFilterMenu"
+                id="products-supplier-filter-options"
+                class="product-filter-menu"
+                role="listbox"
+                aria-label="Поставщики"
+              >
+                <div v-if="!filterSupplierLookupTerm" class="product-filter-menu-state">
+                  Поиск поставщиков...
+                </div>
+                <div
+                  v-else-if="supplierFilterQuery.isFetching.value"
+                  class="product-filter-menu-state"
+                >
+                  Поиск поставщиков...
+                </div>
+                <div v-else-if="supplierFilterError" class="product-filter-menu-state text-danger">
+                  {{ supplierFilterError }}
+                </div>
+                <div
+                  v-else-if="supplierFilterResults.length === 0"
+                  class="product-filter-menu-state text-secondary"
+                >
+                  Поставщики не найдены.
+                </div>
+                <template v-else>
+                  <button
+                    v-for="supplier in supplierFilterResults"
+                    :key="supplier.id"
+                    class="product-filter-option"
+                    type="button"
+                    role="option"
+                    @mousedown.prevent
+                    @click="selectSupplierFilter(supplier)"
+                  >
+                    <span class="product-filter-option-title">{{ supplier.name }}</span>
+                    <span class="product-filter-option-meta">
+                      ID {{ formatCount(supplier.id) }}
+                      <span v-if="supplier.phone_number">| {{ supplier.phone_number }}</span>
+                      | Связей: {{ formatCount(supplier.product_links_count) }}
+                    </span>
+                  </button>
+                </template>
+              </div>
+            </div>
+            <div>
+              <label class="form-label" for="products-stock-status-filter">Статус</label>
+              <select
+                id="products-stock-status-filter"
+                v-model="filterDraft.stockStatus"
+                class="form-select"
+                name="stock_status"
+              >
+                <option
+                  v-for="option in STOCK_STATUS_FILTER_OPTIONS"
+                  :key="option.value || 'all'"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <div v-if="activeProductFilterChips.length > 0" class="products-active-filters" aria-label="Активные фильтры">
+            <button
+              v-for="chip in activeProductFilterChips"
+              :key="chip.id"
+              class="btn btn-sm btn-light border product-filter-chip"
+              type="button"
+              :title="`Убрать фильтр ${chip.label}`"
+              :disabled="productsQuery.isFetching.value"
+              @click="removeActiveFilter(chip)"
+            >
+              <span>{{ chip.label }}</span>
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
+        </div>
       </form>
       <div class="products-actions">
         <button class="btn btn-success" type="button" @click="openCreateModal">
@@ -909,83 +1326,6 @@ function getSupplierCountText(value: number) {
         </button>
       </div>
     </div>
-
-    <form ref="filterForm" class="products-filter-panel" @submit.prevent="submitFilters">
-      <div class="products-filter-header">
-        <span class="product-detail-label">Фильтры</span>
-        <button
-          v-if="hasActiveProductFilters"
-          class="btn btn-link products-filter-reset"
-          type="button"
-          :disabled="productsQuery.isFetching.value"
-          @click="resetProductFilters"
-        >
-          Сбросить
-        </button>
-      </div>
-
-      <div class="products-filter-controls">
-        <div>
-          <label class="form-label" for="products-company-filter">Компания</label>
-          <input
-            id="products-company-filter"
-            v-model="filterDraft.companyName"
-            class="form-control"
-            name="company_name"
-            type="search"
-            minlength="2"
-            maxlength="100"
-            autocomplete="off"
-          >
-        </div>
-        <div>
-          <label class="form-label" for="products-supplier-filter">Поставщик</label>
-          <input
-            id="products-supplier-filter"
-            v-model="filterDraft.supplierName"
-            class="form-control"
-            name="supplier_name"
-            type="search"
-            minlength="2"
-            maxlength="100"
-            autocomplete="off"
-          >
-        </div>
-        <div>
-          <label class="form-label" for="products-tags-filter">Теги</label>
-          <input
-            id="products-tags-filter"
-            v-model="filterDraft.tags"
-            class="form-control"
-            name="tags"
-            type="text"
-            maxlength="240"
-            placeholder="retail, warehouse"
-            autocomplete="off"
-          >
-        </div>
-        <div class="products-filter-actions">
-          <button class="btn btn-outline-primary" type="submit" :disabled="productsQuery.isFetching.value">
-            Применить
-          </button>
-        </div>
-      </div>
-
-      <div v-if="activeProductFilterChips.length > 0" class="products-active-filters" aria-label="Активные фильтры">
-        <button
-          v-for="chip in activeProductFilterChips"
-          :key="chip.id"
-          class="btn btn-sm btn-light border product-filter-chip"
-          type="button"
-          :title="`Убрать фильтр ${chip.label}`"
-          :disabled="productsQuery.isFetching.value"
-          @click="removeActiveFilter(chip)"
-        >
-          <span>{{ chip.label }}</span>
-          <span aria-hidden="true">×</span>
-        </button>
-      </div>
-    </form>
 
     <div v-if="productsQuery.isLoading.value" class="text-secondary py-4" aria-live="polite">
       Загрузка товаров...

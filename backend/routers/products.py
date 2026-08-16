@@ -24,6 +24,7 @@ from app.schemas import (
     ProductSupplierUpdate,
     ProductUpdate,
 )
+from app.type_definitions import StockStatus
 from helpers.dependencies import (
     DbSession,
     require_workspace_permission,
@@ -61,6 +62,7 @@ def get_products_by_name(
     company_name: Annotated[str | None, Query(min_length=2, max_length=100)] = None,
     supplier_name: Annotated[str | None, Query(min_length=2, max_length=100)] = None,
     tags: Annotated[list[str] | None, Query(min_length=1)] = None,
+    stock_status: Annotated[StockStatus | None, Query()] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> PaginatedResponse[ProductSummaryResponse]:
@@ -90,6 +92,14 @@ def get_products_by_name(
         )
         .group_by(ProductSupplier.product_id)
         .subquery()
+    )
+
+    total_quantity = func.coalesce(supplier_summary.c.total_quantity, 0)
+
+    stock_status_expr = case(
+        (total_quantity == 0, "out"),
+        (total_quantity <= Product.low_stock_threshold, "low"),
+        else_="available",
     )
 
     ranked_available_supplier = (
@@ -135,14 +145,7 @@ def get_products_by_name(
             cheapest_available_supplier.c.min_purchase_price,
             cheapest_available_supplier.c.margin_percent,
             cheapest_available_supplier.c.min_sale_price,
-            case(
-                (func.coalesce(supplier_summary.c.total_quantity, 0) == 0, "out"),
-                (
-                    supplier_summary.c.total_quantity <= Product.low_stock_threshold,
-                    "low",
-                ),
-                else_="available",
-            ).label("stock_status"),
+            stock_status_expr.label("stock_status"),
         )
         .select_from(Product)
         .join(Product.company)
@@ -177,11 +180,17 @@ def get_products_by_name(
 
     if tags is not None:
         for tag_name in tags:
-            conditions.append(Product.tags.any(Tag.name.in_(tag_name)))
+            conditions.append(Product.tags.any(Tag.name == tag_name))
+
+    if stock_status is not None:
+        conditions.append(stock_status_expr == stock_status)
 
     summary_statement = summary_statement.where(*conditions)
     count_statement = (
-        select(func.count(Product.id)).select_from(Product).where(*conditions)
+        select(func.count(Product.id))
+        .select_from(Product)
+        .outerjoin(supplier_summary, supplier_summary.c.product_id == Product.id)
+        .where(*conditions)
     )
 
     return aggr_paginate(

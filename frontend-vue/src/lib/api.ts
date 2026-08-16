@@ -27,6 +27,7 @@ import type {
   SupplierResponse,
   SupplierSummaryResponse,
   SupplierUpdatePayload,
+  StockStatus,
   SummariesResponse,
   TagSummaryResponse,
   TokenResponse,
@@ -249,6 +250,7 @@ export function getProducts({
   search = "",
   companyName = "",
   supplierName = "",
+  stockStatus = "",
   tags = [],
   page = FIRST_PAGE,
   pageSize = DEFAULT_PAGE_SIZE,
@@ -256,6 +258,7 @@ export function getProducts({
   search?: string;
   companyName?: string;
   supplierName?: string;
+  stockStatus?: StockStatus | "";
   tags?: string[];
   page?: number;
   pageSize?: number;
@@ -265,6 +268,7 @@ export function getProducts({
       search,
       companyName,
       supplierName,
+      stockStatus,
       tags,
       page,
       pageSize,
@@ -482,6 +486,7 @@ function buildProductListPath(
     search,
     companyName,
     supplierName,
+    stockStatus,
     tags,
     page,
     pageSize,
@@ -489,6 +494,7 @@ function buildProductListPath(
     search: string;
     companyName: string;
     supplierName: string;
+    stockStatus: StockStatus | "";
     tags: string[];
     page: number;
     pageSize: number;
@@ -499,6 +505,7 @@ function buildProductListPath(
   setTrimmedParam(params, "search", search);
   setTrimmedParam(params, "company_name", companyName);
   setTrimmedParam(params, "supplier_name", supplierName);
+  setTrimmedParam(params, "stock_status", stockStatus);
 
   tags
     .map((tag) => tag.trim())
