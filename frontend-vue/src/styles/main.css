@@ -765,6 +765,69 @@ body {
   max-width: 48rem;
 }
 
+.products-filter-panel {
+  width: min(100%, 64rem);
+  margin: 0 0 1rem;
+  padding: 1rem;
+  background: var(--bs-tertiary-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.5rem;
+}
+
+.products-filter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.products-filter-reset {
+  padding: 0;
+  border: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-decoration: none;
+}
+
+.products-filter-reset:hover,
+.products-filter-reset:focus-visible {
+  text-decoration: underline;
+}
+
+.products-filter-controls {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) minmax(10rem, 1fr) minmax(12rem, 1.3fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.products-filter-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.products-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+}
+
+.product-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 100%;
+}
+
+.product-filter-chip span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .companies-search,
 .suppliers-search,
 .restocks-filters,
@@ -1374,6 +1437,7 @@ body {
   }
 
   .products-search .input-group,
+  .products-filter-controls,
   .me-profile-grid,
   .members-search .input-group,
   .companies-search .input-group,
@@ -1388,7 +1452,9 @@ body {
   .products-search .input-group > .form-control,
   .members-search .input-group > .form-control,
   .members-search .input-group > .btn,
-  .products-search .input-group > .btn {
+  .products-search .input-group > .btn,
+  .products-filter-actions,
+  .products-filter-actions > .btn {
     width: 100%;
     border-radius: var(--bs-border-radius) !important;
   }

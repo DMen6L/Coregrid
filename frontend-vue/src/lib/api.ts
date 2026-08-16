@@ -247,15 +247,28 @@ export function getSummaries({
 
 export function getProducts({
   search = "",
+  companyName = "",
+  supplierName = "",
+  tags = [],
   page = FIRST_PAGE,
   pageSize = DEFAULT_PAGE_SIZE,
 }: {
   search?: string;
+  companyName?: string;
+  supplierName?: string;
+  tags?: string[];
   page?: number;
   pageSize?: number;
 } = {}) {
   return request<PaginatedResponse<ProductSummaryResponse>>(
-    buildListPath(workspacePath("/products"), search, page, pageSize),
+    buildProductListPath(workspacePath("/products"), {
+      search,
+      companyName,
+      supplierName,
+      tags,
+      page,
+      pageSize,
+    }),
   );
 }
 
@@ -461,6 +474,49 @@ function buildListPath(basePath: string, search: string, page: number, pageSize:
   params.set("page_size", String(pageSize));
 
   return `${basePath}?${params.toString()}`;
+}
+
+function buildProductListPath(
+  basePath: string,
+  {
+    search,
+    companyName,
+    supplierName,
+    tags,
+    page,
+    pageSize,
+  }: {
+    search: string;
+    companyName: string;
+    supplierName: string;
+    tags: string[];
+    page: number;
+    pageSize: number;
+  },
+) {
+  const params = new URLSearchParams();
+
+  setTrimmedParam(params, "search", search);
+  setTrimmedParam(params, "company_name", companyName);
+  setTrimmedParam(params, "supplier_name", supplierName);
+
+  tags
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .forEach((tag) => params.append("tags", tag));
+
+  params.set("page", String(Math.max(Number(page) || FIRST_PAGE, FIRST_PAGE)));
+  params.set("page_size", String(pageSize));
+
+  return `${basePath}?${params.toString()}`;
+}
+
+function setTrimmedParam(params: URLSearchParams, key: string, value: string) {
+  const trimmedValue = value.trim();
+
+  if (trimmedValue) {
+    params.set(key, trimmedValue);
+  }
 }
 
 function buildDateListPath(

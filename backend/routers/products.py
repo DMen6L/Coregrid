@@ -1,6 +1,6 @@
 from typing import Annotated, cast
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy import String, case, func, or_, select
 from sqlalchemy.dialects.postgresql import aggregate_order_by, array
 from sqlalchemy.orm import selectinload
@@ -20,7 +20,6 @@ from app.schemas import (
     ProductCreate,
     ProductResponse,
     ProductSummaryResponse,
-    ProductSupplierCreate,
     ProductSupplierResponse,
     ProductSupplierUpdate,
     ProductUpdate,
@@ -59,6 +58,9 @@ def get_products_by_name(
         Depends(require_workspace_permission("inventory.read")),
     ],
     search: Annotated[str | None, Query(min_length=2, max_length=100)] = None,
+    company_name: Annotated[str | None, Query(min_length=2, max_length=100)] = None,
+    supplier_name: Annotated[str | None, Query(min_length=2, max_length=100)] = None,
+    tags: Annotated[list[str] | None, Query(min_length=1)] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> PaginatedResponse[ProductSummaryResponse]:
@@ -143,7 +145,6 @@ def get_products_by_name(
             ).label("stock_status"),
         )
         .select_from(Product)
-        .where(Product.workspace_id == membership.workspace_id)
         .join(Product.company)
         .outerjoin(tag_summary, tag_summary.c.product_id == Product.id)
         .outerjoin(supplier_summary, supplier_summary.c.product_id == Product.id)
@@ -154,19 +155,34 @@ def get_products_by_name(
         .order_by(Product.id)
     )
 
-    count_statement = (
-        select(func.count(Product.id))
-        .select_from(Product)
-        .where(Product.workspace_id == membership.workspace_id)
-    )
+    conditions = [Product.workspace_id == membership.workspace_id]
 
     if search and (search := search.strip()):
-        search_condition = or_(
-            Product.name.ilike(f"%{search}%"),
-            Product.tags.any(Tag.name.ilike(f"%{search}%")),
+        conditions.append(
+            or_(
+                Product.name.ilike(f"%{search}%"),
+                Product.tags.any(Tag.name.ilike(f"%{search}%")),
+            )
         )
-        summary_statement = summary_statement.where(search_condition)
-        count_statement = count_statement.where(search_condition)
+
+    if company_name and (company_name := company_name.strip()):
+        conditions.append(Product.company.has(Company.name.ilike(f"%{company_name}%")))
+
+    if supplier_name and (supplier_name := supplier_name.strip()):
+        conditions.append(
+            Product.supplier_links.any(
+                ProductSupplier.supplier.has(Supplier.name.ilike(f"%{supplier_name}%"))
+            )
+        )
+
+    if tags is not None:
+        for tag_name in tags:
+            conditions.append(Product.tags.any(Tag.name.in_(tag_name)))
+
+    summary_statement = summary_statement.where(*conditions)
+    count_statement = (
+        select(func.count(Product.id)).select_from(Product).where(*conditions)
+    )
 
     return aggr_paginate(
         db=db,

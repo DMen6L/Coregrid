@@ -21,7 +21,6 @@ from app.type_definitions import (
     NormalizedEmail,
     PhoneNumber,
     QuantityUnit,
-    Roles,
     StockStatus,
     StrongPassword,
     TagName,
