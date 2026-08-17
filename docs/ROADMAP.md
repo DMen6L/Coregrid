@@ -46,11 +46,14 @@ Goal: make local setup predictable before cloud deployment.
 
 Goal: remove frontend partial-failure workflows.
 
-Atomic product create exists for product + tags + company + supplier links. The
-remaining multi-request risk is product update:
+Atomic product create exists for product + tags + company + supplier links.
+`PATCH /workspaces/{workspace_id}/products/{product_id}/full` now updates product
+metadata, tags, and listed existing product-supplier links in one transaction.
+The remaining multi-request risk is nested link create/delete during product
+update:
 
-- update product metadata
-- update/create/delete product-supplier links
+- create product-supplier links during product update
+- delete product-supplier links during product update
 
 Useful backend direction:
 
