@@ -1,0 +1,62 @@
+name: Tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: coregrid_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_USER: test
+      DB_PASSWORD: test
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: coregrid_test
+      JWT_SECRET_KEY: test-secret
+      JWT_ALGORITHM: HS256
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9
+
+      - name: Install python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Apply migrations
+        run: uv run alembic upgrade head
+
+      - name: Health test
+        run: uv run pytest -v tests/test_health.py
+
+      - name: Auth tests
+        run: uv run pytest -v tests/test_auth.py
+
+      - name: Workspace tests
+        run: uv run pytest -v tests/test_workspaces.py
