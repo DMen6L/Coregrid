@@ -320,6 +320,23 @@ require `catalog.write`.
 - Each supplier link source must be exactly one of `supplier_id` or `supplier`.
 - Rolls back the whole operation if any child creation or validation fails.
 
+#### `PATCH /workspaces/{workspace_id}/products/{id}/full`
+
+- Atomically updates product metadata, tags, and listed existing
+  product-supplier links.
+- Product metadata fields match `PATCH /workspaces/{workspace_id}/products/{id}`.
+- Omit `tags` to keep existing tags; send `tags: []` to clear all tags.
+- `product_links` is optional. When provided, it must contain at least one item.
+- Each `product_links` item requires the existing product-supplier link `id`
+  and at least one editable link field.
+- Nested link updates can change `purchase_price`, `margin_percent`,
+  `sale_price`, and `quantity`.
+- Missing product, company, or product-supplier link references return `404`.
+- Duplicate product-supplier link ids inside one request return `422`.
+- `sale_price` below calculated floor price returns `422`.
+- Nested product-supplier link creation and deletion remain handled by the
+  dedicated link endpoints.
+
 #### `PATCH /workspaces/{workspace_id}/products/{id}`
 
 - Updates product metadata.

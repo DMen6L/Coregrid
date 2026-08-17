@@ -9,8 +9,7 @@ import {
   getCompanies,
   getProduct,
   getSuppliers,
-  patchProduct,
-  patchProductSupplierLink,
+  patchProductAtomic,
 } from "../lib/api";
 import {
   DEFAULT_QUANTITY_UNIT,
@@ -25,12 +24,12 @@ import {
 import { activeWorkspaceId } from "../lib/workspaceSession";
 import type {
   CompanyResponse,
+  ProductAtomicUpdatePayload,
   ProductResponse,
   ProductSupplierCreatePayload,
   ProductSupplierResponse,
-  ProductSupplierUpdatePayload,
+  ProductSupplierAtomicUpdatePayload,
   ProductSummaryResponse,
-  ProductUpdatePayload,
   StockStatus,
   SupplierCreatePayload,
   SupplierSummaryResponse,
@@ -402,23 +401,22 @@ async function updateProductFromForm() {
   validateProductEdit();
 
   const productId = product.value.id;
-  const productPayload: ProductUpdatePayload = {
+  const productPayload: ProductAtomicUpdatePayload = {
     name: normalizeText(editForm.name),
     company_id: Number(editForm.selectedCompany?.id),
     quantity_unit: normalizeText(editForm.quantityUnit) || DEFAULT_QUANTITY_UNIT,
     low_stock_threshold: normalizeRequiredNumber(editForm.lowStockThreshold, 0),
     tags: parseTags(editForm.tags),
   };
-
-  await patchProduct(productId, productPayload);
-
-  const existingLinkRequests: Promise<unknown>[] = supplierLinks.value.map((link) => (
-    patchProductSupplierLink(productId, link.id, getExistingLinkPayload(link))
+  const existingLinkPayloads = supplierLinks.value.map((link) => (
+    getExistingLinkPayload(link)
   ));
 
-  if (existingLinkRequests.length > 0) {
-    await Promise.all(existingLinkRequests);
+  if (existingLinkPayloads.length > 0) {
+    productPayload.product_links = existingLinkPayloads;
   }
+
+  await patchProductAtomic(productId, productPayload);
 
   const createdSupplierNames: string[] = [];
 
@@ -525,7 +523,7 @@ function validateProductEdit() {
   }
 }
 
-function getExistingLinkPayload(link: ProductSupplierResponse): ProductSupplierUpdatePayload {
+function getExistingLinkPayload(link: ProductSupplierResponse): ProductSupplierAtomicUpdatePayload {
   const values = linkEditValues[link.id] || {
     purchasePrice: link.purchase_price,
     marginPercent: link.margin_percent,
@@ -534,6 +532,7 @@ function getExistingLinkPayload(link: ProductSupplierResponse): ProductSupplierU
   };
 
   return {
+    id: link.id,
     purchase_price: normalizeRequiredNumber(values.purchasePrice, link.purchase_price),
     margin_percent: normalizeRequiredNumber(values.marginPercent, link.margin_percent),
     sale_price: normalizeRequiredNumber(values.salePrice, link.sale_price),

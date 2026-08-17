@@ -14,6 +14,7 @@ from helpers.dependencies import (
 from helpers.services import build_summaries
 from routers import (
     companies,
+    health,
     invitations,
     me,
     members,
@@ -43,6 +44,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(health.router)
 app.include_router(companies.router)
 app.include_router(suppliers.router)
 app.include_router(products.router)
@@ -54,11 +56,6 @@ app.include_router(workspaces.router)
 app.include_router(members.router)
 app.include_router(invitations.router)
 app.include_router(me.router)
-
-
-@app.get("/")
-def read_root() -> dict[str, str]:
-    return {"Hello": "World"}
 
 
 @app.get(

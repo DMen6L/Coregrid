@@ -12,7 +12,6 @@ from sqlalchemy import (
     Table,
     UniqueConstraint,
     func,
-    null,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PgUUID

@@ -17,6 +17,7 @@ from app.schemas import (
     AuditLogCreate,
     PaginatedResponse,
     ProductAtomicCreate,
+    ProductAtomicUpdate,
     ProductCreate,
     ProductResponse,
     ProductSummaryResponse,
@@ -713,6 +714,234 @@ def patch_product_links(
     db.refresh(product_supplier)
 
     return product_supplier
+
+
+@router.patch(
+    "/{product_id}/full",
+    response_model=ProductResponse,
+    status_code=status.HTTP_200_OK,
+)
+def update_atomic_product(
+    db: DbSession,
+    membership: Annotated[
+        WorkspaceMembership,
+        Depends(require_workspace_permission("catalog.write")),
+    ],
+    product_id: Annotated[int, Path(gt=0)],
+    patch_data: ProductAtomicUpdate,
+) -> Product:
+    statement = (
+        select(Product)
+        .options(
+            selectinload(Product.company),
+            selectinload(Product.tags),
+            selectinload(Product.supplier_links).selectinload(ProductSupplier.supplier),
+        )
+        .where(
+            Product.id == product_id,
+            Product.workspace_id == membership.workspace_id,
+        )
+    )
+
+    product = db.scalars(statement).one_or_none()
+
+    if product is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No product with such id exists.",
+        )
+
+    update_data = cast(
+        dict[str, object],
+        patch_data.model_dump(exclude_unset=True),
+    )
+    update_data.pop("product_links", None)
+
+    product_link_updates = patch_data.product_links
+    tag_names = cast(list[str] | None, update_data.pop("tags", None))
+
+    if "company_id" in update_data:
+        company = db.scalar(
+            select(Company).where(
+                Company.id == update_data["company_id"],
+                Company.workspace_id == membership.workspace_id,
+            )
+        )
+        if company is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Company with such id does not exist for this workspace",
+            )
+
+    if update_data:
+        validate_update(
+            db=db,
+            model=Product,
+            constraint_name="uq_products_workspace_name_company_unit",
+            update_data={
+                **update_data,
+                "workspace_id": membership.workspace_id,
+            },
+            update_obj=product,
+        )
+
+    product_changes: dict[str, object] = {}
+
+    for field, value in update_data.items():
+        old_value = getattr(product, field)
+
+        if old_value == value:
+            continue
+
+        product_changes[field] = {
+            "old": old_value,
+            "new": value,
+        }
+        setattr(product, field, value)
+
+    if tag_names is not None:
+        old_tags = sorted(tag.name for tag in product.tags)
+        new_tags = sorted(tag_names)
+
+        if old_tags != new_tags:
+            product_changes["tags"] = {
+                "old": old_tags,
+                "new": new_tags,
+            }
+
+        product.tags = get_or_create_tags(
+            db=db,
+            membership=membership,
+            tag_names=tag_names,
+        )
+
+    if product_changes:
+        record_audit_log(
+            db=db,
+            audit_log_data=AuditLogCreate(
+                workspace_id=membership.workspace_id,
+                actor_user_id=membership.user_id,
+                action="product.updated",
+                entity_type="product",
+                entity_id=str(product.id),
+                entity_label=product.name,
+                changes=product_changes,
+            ),
+        )
+
+    if product_link_updates is not None:
+        product_links_by_id = {
+            product_supplier.id: product_supplier
+            for product_supplier in product.supplier_links
+        }
+
+        for product_link_update in product_link_updates:
+            product_supplier = product_links_by_id.get(product_link_update.id)
+
+            if product_supplier is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Product supplier link with such id does not exist for this product.",
+                )
+
+            product_link_update_data = cast(
+                dict[str, object],
+                product_link_update.model_dump(exclude_unset=True),
+            )
+            product_link_update_data.pop("id", None)
+
+            candidate_purchase_price = cast(
+                int,
+                product_link_update_data.get(
+                    "purchase_price",
+                    product_supplier.purchase_price,
+                ),
+            )
+            candidate_margin_percent = cast(
+                int,
+                product_link_update_data.get(
+                    "margin_percent",
+                    product_supplier.margin_percent,
+                ),
+            )
+            candidate_sale_price = cast(
+                int,
+                product_link_update_data.get(
+                    "sale_price",
+                    product_supplier.sale_price,
+                ),
+            )
+            floor_price = calculate_floor_price(
+                candidate_purchase_price,
+                candidate_margin_percent,
+            )
+
+            if candidate_sale_price < floor_price:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="sale_price cannot be lower than calculated floor price.",
+                )
+
+            validate_update(
+                db=db,
+                model=ProductSupplier,
+                constraint_name="uq_product_suppliers_product_supplier_workspace",
+                update_data={
+                    **product_link_update_data,
+                    "product_id": product.id,
+                    "supplier_id": product_supplier.supplier_id,
+                    "workspace_id": membership.workspace_id,
+                },
+                update_obj=product_supplier,
+            )
+
+            product_link_changes: dict[str, object] = {}
+
+            for field, value in product_link_update_data.items():
+                old_value = getattr(product_supplier, field)
+
+                if old_value == value:
+                    continue
+
+                product_link_changes[field] = {
+                    "old": old_value,
+                    "new": value,
+                }
+                setattr(product_supplier, field, value)
+
+            if product_link_changes:
+                record_audit_log(
+                    db=db,
+                    audit_log_data=AuditLogCreate(
+                        workspace_id=membership.workspace_id,
+                        actor_user_id=membership.user_id,
+                        action="product_supplier.updated",
+                        entity_type="product_supplier",
+                        entity_id=str(product_supplier.id),
+                        entity_label=(
+                            f"{product_supplier.product.name}_"
+                            f"{product_supplier.supplier.name}"
+                        ),
+                        changes=product_link_changes,
+                    ),
+                )
+
+    commit_or_raise(db)
+
+    response_statement = (
+        select(Product)
+        .options(
+            selectinload(Product.company),
+            selectinload(Product.tags),
+            selectinload(Product.supplier_links).selectinload(ProductSupplier.supplier),
+        )
+        .where(
+            Product.id == product.id,
+            Product.workspace_id == membership.workspace_id,
+        )
+    )
+
+    return db.scalars(response_statement).one()
 
 
 @router.delete(

@@ -301,6 +301,60 @@ class ProductSupplierUpdate(UpdateValidator):
         return self
 
 
+class ProductSupplierAtomicUpdate(UpdateValidator):
+    id: int = Field(gt=0)
+    purchase_price: int | None = Field(default=None, gt=0)
+    margin_percent: int | None = Field(default=None, ge=0)
+    sale_price: int | None = Field(default=None, gt=0)
+    quantity: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def must_update_at_least_one_link_field(self):
+        if self.model_fields_set <= {"id"}:
+            raise ValueError("product supplier update cannot contain only id")
+        return self
+
+    @model_validator(mode="after")
+    def sale_price_must_not_be_below_floor_if_possible(self):
+        if (
+            self.sale_price is None
+            or self.purchase_price is None
+            or self.margin_percent is None
+        ):
+            return self
+
+        floor_price = calculate_floor_price(
+            self.purchase_price,
+            self.margin_percent,
+        )
+        if self.sale_price < floor_price:
+            raise ValueError("sale_price cannot be lower than floor_price")
+
+        return self
+
+
+class ProductAtomicUpdate(UpdateValidator):
+    name: Name | None = None
+    company_id: int | None = Field(default=None, gt=0)
+    tags: list[TagName] | None = None
+    quantity_unit: QuantityUnit | None = None
+    low_stock_threshold: int | None = Field(default=None, ge=0)
+    product_links: list[ProductSupplierAtomicUpdate] | None = Field(
+        default=None,
+        min_length=1,
+    )
+
+    @model_validator(mode="after")
+    def validate_unique_product_links(self):
+        if self.product_links is None:
+            return self
+
+        link_ids = [link.id for link in self.product_links]
+        if len(set(link_ids)) != len(link_ids):
+            raise ValueError("product supplier link ids must be unique")
+        return self
+
+
 class UserUpdate(UpdateValidator):
     name: Name | None = None
     email: NormalizedEmail | None = None

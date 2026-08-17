@@ -10,6 +10,7 @@ import type {
   MeResponse,
   PaginatedResponse,
   ProductAtomicCreatePayload,
+  ProductAtomicUpdatePayload,
   ProductCreatePayload,
   ProductResponse,
   ProductSupplierCreatePayload,
@@ -350,6 +351,13 @@ export function getProduct(productId: number) {
 
 export function patchProduct(productId: number, payload: ProductUpdatePayload) {
   return request<ProductResponse>(workspacePath(`/products/${productId}`), {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function patchProductAtomic(productId: number, payload: ProductAtomicUpdatePayload) {
+  return request<ProductResponse>(workspacePath(`/products/${productId}/full`), {
     method: "PATCH",
     body: JSON.stringify(payload),
   });

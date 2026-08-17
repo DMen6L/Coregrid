@@ -310,6 +310,14 @@ export interface ProductSupplierUpdatePayload {
   quantity?: number;
 }
 
+export interface ProductSupplierAtomicUpdatePayload {
+  id: number;
+  purchase_price?: number;
+  margin_percent?: number;
+  sale_price?: number;
+  quantity?: number;
+}
+
 export interface ProductSupplierResponse {
   id: number;
   product_id: number;
@@ -355,6 +363,10 @@ export interface ProductUpdatePayload {
   tags?: string[];
   quantity_unit?: string;
   low_stock_threshold?: number;
+}
+
+export interface ProductAtomicUpdatePayload extends ProductUpdatePayload {
+  product_links?: ProductSupplierAtomicUpdatePayload[];
 }
 
 export interface ProductResponse {
