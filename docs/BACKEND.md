@@ -30,6 +30,7 @@ Holds actual table models that the database has, essential for both initializati
 - Workspace
 - WorkspaceMembership
 - WorkspaceInvitation
+- AuditLog
 - Company
 - Supplier
 - Product
@@ -46,9 +47,9 @@ Holds actual table models that the database has, essential for both initializati
 ### `main.py`
 
 Defines the FastAPI app, local development CORS, the workspace-scoped dashboard
-summary endpoint, and includes routers for auth, workspaces, personal user
-actions, members, invitations, companies, suppliers, products, tags, restocks,
-and sales.
+summary endpoint, and includes routers for health, auth, workspaces, personal
+user actions, members, invitations, companies, suppliers, products, tags,
+restocks, and sales.
 
 > [!NOTE]
 > Check current endpoints and their functions in [here](/backend/README.md)
@@ -75,6 +76,12 @@ a member of the workspace or does not have the required permission.
 Defines shared pagination helpers for ORM rows and aggregate/select mappings.
 Collection endpoints generally accept `page` and `page_size`.
 
+### `helpers/transactions.py`
+
+Centralizes commit/flush error handling and audit-log creation. Mutating
+workspace-scoped endpoints use `record_audit_log(...)` to store actor snapshots,
+target snapshots, action names, entity details, structured changes, and metadata.
+
 ### `type_definitions.py`
 
 Defines shared literal types and constants, including workspace role
@@ -92,17 +99,13 @@ permissions:
 
 Automated tests use FastAPI `TestClient` and pytest.
 
-The current suite exercises authenticated, workspace-scoped API behavior:
+The current active suite is a small foundation:
 
-- registration, login, `/auth/me`, and `/me`
-- profile updates and duplicate email handling
-- workspace creation and workspace access checks
-- invitation creation, duplicate prevention, personal acceptance, and member
-  list/detail
-- member role update and member removal
-- role permission checks for workspace-scoped catalog writes
-- product creation, product search, workspace isolation, product-supplier link
-  changes, restocks, sales, and dashboard summaries
+- `test_health.py`: `/health` and `/ready`
+- `test_auth.py`: registration, validation failures, login, rejected login, and
+  `/auth/me`
+- `test_workspaces.py`: workspace creation, workspace detail, and paginated
+  workspace audit-log listing
 
 Tests run against the configured local development database and truncate
 Coregrid tables between tests. Apply migrations before running the suite and do
@@ -114,6 +117,10 @@ uv run alembic upgrade head
 uv run pytest -s
 ```
 
+GitHub Actions uses `.github/workflows/tests.yml` to start PostgreSQL, apply
+Alembic migrations, and run the current endpoint test files as separate steps.
+Validate workflow syntax locally with `actionlint .github/workflows/tests.yml`.
+
 ## Alembic
 
 Purpose is to save and generate transaction scripts to dynamically update the tables if such needs occur.
@@ -121,4 +128,5 @@ Purpose is to save and generate transaction scripts to dynamically update the ta
 - Current migrations include product constraints, product-supplier inventory,
   product tags, product low-stock thresholds, product quantity units, restocks,
   sales, workspace/user/membership tables, workspace invitations, and later
-  workspace-scoped inventory relationship updates.
+  workspace-scoped inventory relationship updates, audit logs, and related
+  indexes.

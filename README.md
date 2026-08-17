@@ -13,9 +13,14 @@ App meant for automation of core operations inside businesses.
 - workspace invitations, personal invitation acceptance, member listing/detail,
   member role changes, and member removal
 - personal account page for profile updates, invitations, workspace switching,
-  workspace creation, and sign out
+  workspace creation, password updates, workspace leaving, and sign out
+- workspace audit log listing for member, invitation, catalog, stock movement,
+  and workspace events
 - per-product low-stock thresholds with calculated stock status
-- Vue inventory operations UI for product, supplier, company, member, invitation, and stock movement workflows
+- product filters for search text, company, supplier, tags, and stock status
+- Vue inventory operations UI for product, supplier, company, member,
+  invitation, audit log, and stock movement workflows
+- GitHub Actions workflow for the current backend health, auth, and workspace tests
 
 ## Tech stack
 
@@ -108,7 +113,7 @@ When using Compose, `DB_HOST` should point at the database service name and
 
 ### Test scripts
 
-Run the scripts
+Run the backend tests:
 
 ```bash
 # from backend/
@@ -120,6 +125,15 @@ uv run pytest -s
 > Backend tests use the configured local development database and clean the
 > Coregrid tables before and after each test. Do not point test environment
 > variables at production data.
+
+The repository also has a GitHub Actions workflow at
+`.github/workflows/tests.yml`. It starts PostgreSQL, applies Alembic migrations,
+and runs the current health, auth, and workspace test files as separate steps.
+You can validate workflow syntax locally with:
+
+```bash
+actionlint .github/workflows/tests.yml
+```
 
 ### Run locally
 
@@ -200,6 +214,9 @@ docker compose --env-file .env.docker down --remove-orphans
 ```text
 .
 ├── compose.yaml
+├── .github
+│   └── workflows
+│       └── tests.yml
 ├── backend
 │   ├── alembic
 │   │   ├── env.py
@@ -219,8 +236,10 @@ docker compose --env-file .env.docker down --remove-orphans
 │   ├── routers
 │   ├── tests
 │   │   ├── __init__.py
-│   │   ├── test_api.py
-│   │   └── test_products.py
+│   │   ├── conftest.py
+│   │   ├── test_auth.py
+│   │   ├── test_health.py
+│   │   └── test_workspaces.py
 │   └── uv.lock
 ├── docs
 │   ├── BACKEND.md

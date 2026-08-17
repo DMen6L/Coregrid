@@ -10,7 +10,8 @@ invitation, supplier, company, restock, sale, tag, and dashboard workflows.
 
 Public endpoints:
 
-- `GET /`
+- `GET /health`
+- `GET /ready`
 - `POST /auth/register`
 - `POST /auth/login`
 
@@ -67,9 +68,16 @@ Paginated responses use:
 
 ### Health
 
-#### `GET /`
+#### `GET /health`
 
-- Simple health/testing endpoint.
+- Returns `{"status": "ok"}` when the API process is running.
+
+#### `GET /ready`
+
+- Checks the database connection with `SELECT 1`.
+- Returns `{"status": "ready", "database": "ok"}` when the API can reach the
+  configured database.
+- Returns `503 Service Unavailable` when the readiness check fails.
 
 ### Auth
 
@@ -107,36 +115,7 @@ Paginated responses use:
   - `workspaces`: workspaces where the user is a member, each with `id`, `name`, and the user's `role`.
   - `invitations`: active pending invitations for the user's email, including workspace and inviter details.
 
-#### `PATCH /me`
-
-- Updates the current authenticated user's profile.
-- Accepts `name` and `email`.
-- Duplicate emails return `409 Conflict`.
-- Returns the updated account overview.
-
-### Workspaces
-
-#### `GET /workspaces/{workspace_id}`
-
-- Returns one workspace membership view for the current user.
-- Requires membership in that workspace.
-
-#### `POST /workspaces`
-
-- Creates a workspace.
-- Creates an `owner` membership for the current user.
-- Duplicate workspace names return `409 Conflict`.
-
-### Personal Invitations
-
-#### `GET /me/invitations`
-
-- Returns active pending invitations for the current user's email.
-- Excludes accepted, revoked, and expired invitations.
-- For the richer personal invitation view with workspace and inviter names, use
-  `GET /me`.
-
-#### `POST /me/invitations/accept/{invitation_id}`
+#### `POST /me/accept/{invitation_id}`
 
 - Accepts one invitation for the current user's email.
 - Creates a workspace membership with the invitation role.
@@ -145,6 +124,51 @@ Paginated responses use:
 - Missing or email-mismatched invitations return `404`.
 - Expired, revoked, already accepted, or duplicate-membership invitations return
   `409 Conflict`.
+
+#### `PATCH /me`
+
+- Updates the current authenticated user's profile.
+- Accepts `name` and `email`.
+- Duplicate emails return `409 Conflict`.
+- Returns the updated account overview.
+
+#### `PATCH /me/password`
+
+- Updates the current authenticated user's password.
+- Accepts `current_password` and `new_password`.
+- Wrong current passwords return `403 Forbidden`.
+- Reusing the current password returns `400 Bad Request`.
+- Weak or identity-derived new passwords are rejected.
+- Returns the updated account overview without password data.
+
+#### `DELETE /me/workspaces/{workspace_id}`
+
+- Lets a non-owner leave one workspace.
+- Returns `204 No Content` on success.
+- Returns `404` if the current user is not a member of the workspace.
+- Returns `409 Conflict` when the current user is an owner and must transfer
+  ownership first.
+
+### Workspaces
+
+#### `GET /workspaces/{workspace_id}`
+
+- Returns one workspace membership view for the current user.
+- Requires membership in that workspace.
+
+#### `GET /workspaces/{workspace_id}/logs`
+
+- Requires `workspace.manage`.
+- Returns paginated audit log rows for the workspace, newest first.
+- Each row includes actor snapshot fields, optional target-user snapshot fields,
+  action, entity data, structured `changes`, structured `extra_data`, and
+  `created_at`.
+
+#### `POST /workspaces`
+
+- Creates a workspace.
+- Creates an `owner` membership for the current user.
+- Duplicate workspace names return `409 Conflict`.
 
 ### Workspace Members
 
@@ -187,7 +211,7 @@ Requires `members.manage`.
 
 #### `GET /workspaces/{workspace_id}/invitations`
 
-- Returns sent invitations for the workspace.
+- Returns a paginated list of sent invitations for the workspace.
 - Supports `search` by invited email.
 - Response includes invitation id, workspace id, inviter user id, email, role,
   created time, expiry time, accepted time, and revoked time.
@@ -206,10 +230,11 @@ Requires `members.manage`.
 
 #### `DELETE /workspaces/{workspace_id}/invitations/{invitation_id}`
 
-- Deletes a pending invitation from the workspace.
+- Revokes an invitation from the workspace by setting `revoked_at`.
 - Returns `204 No Content` on success.
-- Returns `404` if the invitation does not exist in the workspace or has already
-  been accepted.
+- Repeating the delete for an already revoked invitation is a no-op `204`.
+- Returns `404` if the invitation does not exist in the workspace.
+- Returns `409 Conflict` if the invitation has already been accepted.
 
 ### Dashboard
 
@@ -289,6 +314,10 @@ require `catalog.write`.
 
 - Returns a paginated product summary list.
 - Supports `search` by product name or tag name.
+- Supports `company_name` and `supplier_name` filters by partial name match.
+- Supports repeated `tags` query parameters. A product must have every requested
+  tag to match.
+- Supports `stock_status` values `out`, `low`, and `available`.
 - Product summaries include:
   - `company_name`
   - `tags`
@@ -486,3 +515,12 @@ uv run pytest -s
 > The tests run against the configured local development database and truncate
 > Coregrid tables between tests. Keep migrations applied before running them and
 > never point test configuration at production data.
+
+Current active test files:
+
+- `tests/test_health.py`
+- `tests/test_auth.py`
+- `tests/test_workspaces.py`
+
+The GitHub Actions workflow in `../.github/workflows/tests.yml` runs those test
+files as separate CI steps after starting PostgreSQL and applying migrations.

@@ -15,18 +15,23 @@ Coregrid currently has the foundation for a small inventory control tool:
 - workspace invitations with in-app acceptance
 - workspace member list/detail, role update, and removal views for users with
   `members.manage`
+- workspace audit logs stored in `audit_logs` and listed in the frontend for
+  users with `workspace.manage`
 - workspace-scoped products, companies, suppliers, tags, supplier links,
   restocks, and sales
-- product search that includes product names and tags
+- product search that includes product names and tags, plus filters for company,
+  supplier, selected tags, and stock status
 - popular tag display in the product list
 - product detail and edit modal with supplier link add/update/delete behavior
 - atomic product creation with existing or inline-created company and supplier
+- atomic product update for metadata, tags, and existing supplier-link updates
 - company and supplier list/create/detail/edit workflows
 - restock and sale list/create/detail workflows
 - personal account page with profile updates, workspace switching, workspace
-  creation, invitations, and sign out
+  creation, password updates, workspace leaving, invitations, and sign out
 - dashboard sales, stock-risk, top-product, and top-supplier summaries
-- backend tests for the current authenticated workspace-scoped API paths
+- initial backend tests for health, auth, and workspace endpoints
+- GitHub Actions workflow for the current backend test files
 
 The next work should make Coregrid feel less like a CRUD interface and more like
 a daily inventory assistant while hardening the new multi-user layer.
@@ -39,7 +44,7 @@ Goal: make local setup predictable before cloud deployment.
 
 - document rebuild commands for frontend, backend, package changes, and Alembic
 - keep Docker Postgres data in a named volume
-- add a backend health endpoint when ready
+- keep `/health` and `/ready` usable in local, Docker, and CI environments
 - keep `.env.docker` as local-only configuration
 
 ### 2. Finish atomic product update endpoints
@@ -76,33 +81,40 @@ Current implemented foundation:
 - owners/admins can list members, inspect member details, list sent
   invitations, create invitations, and delete pending invitations
 - owners/admins can change supported member roles and remove supported members
-- invited users can see and accept active invitations from `/me/invitations`
+- invited users can see active invitations from `/me` and accept them through
+  `/me/accept/{invitation_id}`
+- non-owner users can leave workspaces from their personal account area
+- deleting invitations now preserves the row and sets `revoked_at`
 
 Useful next steps:
 
 - owner transfer and last-owner protection across future owner-management
   workflows
-- invitation revoke behavior using `revoked_at` instead of only hard delete, if
-  auditability matters
 - email delivery for invitation links
 - broader endpoint tests for admin edge cases, rejected owner changes, and
   cross-workspace access attempts
 
 ### 4. Audit log
 
-Goal: make inventory mistakes traceable.
+Goal: make inventory mistakes traceable and readable.
 
-Useful events:
+Implemented foundation:
 
-- product created or updated
-- supplier/company created or updated
-- product-supplier link created, updated, or deleted
-- tag deleted or merged
-- restock created
-- sale created
+- `audit_logs` table with workspace, actor snapshot, target snapshot, action,
+  entity, structured changes, structured metadata, and creation time
+- indexes for workspace + created time, action, actor, and entity lookup
+- audit records for workspace creation, invitations, member changes, products,
+  product-supplier links, companies, suppliers, tags, restocks, sales, and
+  personal workspace leaving
+- paginated backend listing at `GET /workspaces/{workspace_id}/logs`
+- frontend audit log view for workspace managers/admins/owners
 
-An audit log becomes more valuable now that auth exists, because each event can
-include the acting user.
+Useful next steps:
+
+- action filters in the audit log list
+- actor/entity filters
+- clearer user-facing text for less common action names
+- tests for audit-log records on mutating endpoints
 
 ### 5. Stock adjustment workflow
 
@@ -139,12 +151,15 @@ Later:
 
 Goal: make the product list useful at scale.
 
-Useful filters:
+Implemented filters:
 
 - stock status
 - company
 - supplier
 - one or more tags
+
+Remaining useful filters:
+
 - low-stock threshold range
 - has supplier links / missing supplier links
 

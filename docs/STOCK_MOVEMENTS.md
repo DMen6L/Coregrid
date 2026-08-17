@@ -7,6 +7,8 @@ The key rule is:
 - `product_suppliers.quantity` stores current stock for a specific
   product-supplier link.
 - `restocks` and `sales` store history for stock increases and decreases.
+- `audit_logs` stores who created the stock movement and summarizes the event
+  for workspace history.
 
 This design is implemented in the backend and exposed in the Vue frontend.
 
@@ -114,6 +116,7 @@ Rules:
 - the backend locks affected product-supplier rows while applying the change.
 - the current user must be a member of the workspace and have
   `stock_movement.create`.
+- an audit log row is recorded for the created restock.
 
 Response shape:
 
@@ -170,6 +173,7 @@ Rules:
 - the backend locks affected product-supplier rows while applying the change.
 - the current user must be a member of the workspace and have
   `stock_movement.create`.
+- an audit log row is recorded for the created sale.
 
 Response shape:
 

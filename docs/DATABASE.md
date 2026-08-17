@@ -75,6 +75,42 @@ Stores invitations sent by workspace admins/owners.
 Invitation ids are UUIDs as the first non-integer-id experiment. The API does
 not expose `token_hash` in response schemas.
 
+Deleting a workspace invitation through the API is a soft revoke: the row
+remains and `revoked_at` is set unless the invitation was already accepted.
+
+### Audit logs
+
+Stores workspace-scoped history for user-visible actions.
+
+- `id` unique identifier of each audit log row
+- `workspace_id` reference to the affected workspace
+- `actor_user_id` nullable reference to the user who performed the action
+- `actor_name` nullable snapshot of the actor name at event time
+- `actor_email` nullable snapshot of the actor email at event time
+- `target_user_id` nullable reference to the affected user, when applicable
+- `target_name` nullable snapshot of the target user name at event time
+- `target_email` nullable snapshot of the target user email at event time
+- `action` machine-readable action name, such as `workspace.created`
+- `entity_type` affected entity category, such as `product`, `member`, or
+  `invitation`
+- `entity_id` nullable string copy of the affected entity id
+- `entity_label` nullable human-readable label for the affected entity
+- `changes` nullable JSON object for before/after field changes
+- `metadata` nullable JSON object exposed by the API as `extra_data`
+- `created_at` time when the event was recorded
+
+Audit logs keep actor and target text snapshots because related users can later
+change their name/email or be deleted. User foreign keys use `SET NULL`; the log
+row remains readable through the snapshot fields.
+
+Current indexes support common workspace log queries by creation time, action,
+actor, and entity:
+
+- `(workspace_id, created_at)`
+- `(workspace_id, action)`
+- `(workspace_id, actor_user_id)`
+- `(workspace_id, entity_type, entity_id)`
+
 ### Companies
 
 Stores supplier companies whose products are stored.
