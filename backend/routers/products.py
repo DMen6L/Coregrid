@@ -490,7 +490,7 @@ def patch_product(
 
     if not update_data:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Product update form cannot be empty",
         )
 
@@ -671,7 +671,7 @@ def patch_product_links(
 
     if candidate_sale_price < floor_price:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="sale_price cannot be lower than calculated floor price.",
         )
 
@@ -878,7 +878,7 @@ def update_atomic_product(
 
             if candidate_sale_price < floor_price:
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail="sale_price cannot be lower than calculated floor price.",
                 )
 

@@ -123,12 +123,12 @@ def password_must_not_include_identity(
 
     if email_local_part and email_local_part in password:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="password cannot include email parts",
         )
 
     if name and name in password:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="password cannot include name parts",
         )

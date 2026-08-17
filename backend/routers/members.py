@@ -160,7 +160,7 @@ def change_member_role(
         )
     if member.role == new_role:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="The member roles cannot be the same after the update",
         )
 

@@ -2,7 +2,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import Integer, func, select, type_coerce
-from sqlalchemy.sql.functions import coalesce
 
 from app.models import AuditLog, Workspace, WorkspaceMembership
 from app.schemas import (

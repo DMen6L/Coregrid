@@ -142,7 +142,7 @@ def create_or_resolve_company(
 
         return company.id
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail="Company could not be created or extracted.",
     )
 
@@ -205,7 +205,7 @@ def create_or_resolve_supplier(
 
         return supplier.id
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail="Supplier could not be created or extracted.",
     )
 
