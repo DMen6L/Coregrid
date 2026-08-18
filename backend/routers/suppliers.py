@@ -129,24 +129,19 @@ def add_supplier(
     supplier_data: SupplierCreate,
 ) -> Supplier:
     supplier_schema = supplier_data.model_dump()
+    supplier_schema["workspace_id"] = membership.workspace_id
 
     check_unique_constraints(
         db=db,
         model=Supplier,
         constraint_name="uq_suppliers_workspace_name",
-        values={
-            **supplier_schema,
-            "workspace_id": membership.workspace_id,
-        },
+        values=supplier_schema,
     )
     check_unique_constraints(
         db=db,
         model=Supplier,
         constraint_name="uq_suppliers_workspace_phone_number",
-        values={
-            **supplier_schema,
-            "workspace_id": membership.workspace_id,
-        },
+        values=supplier_schema,
     )
 
     supplier = Supplier(**supplier_schema)

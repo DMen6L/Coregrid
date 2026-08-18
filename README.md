@@ -20,7 +20,7 @@ App meant for automation of core operations inside businesses.
 - product filters for search text, company, supplier, tags, and stock status
 - Vue inventory operations UI for product, supplier, company, member,
   invitation, audit log, and stock movement workflows
-- GitHub Actions workflow for the current backend health, auth, and workspace tests
+- GitHub Actions workflow for the current backend endpoint tests
 
 ## Tech stack
 
@@ -128,7 +128,7 @@ uv run pytest -s
 
 The repository also has a GitHub Actions workflow at
 `.github/workflows/tests.yml`. It starts PostgreSQL, applies Alembic migrations,
-and runs the current health, auth, and workspace test files as separate steps.
+and runs the current endpoint test files as separate steps.
 You can validate workflow syntax locally with:
 
 ```bash
@@ -238,7 +238,17 @@ docker compose --env-file .env.docker down --remove-orphans
 │   │   ├── __init__.py
 │   │   ├── conftest.py
 │   │   ├── test_auth.py
+│   │   ├── test_companies.py
 │   │   ├── test_health.py
+│   │   ├── test_invitations.py
+│   │   ├── test_me.py
+│   │   ├── test_members.py
+│   │   ├── test_products.py
+│   │   ├── test_restocks.py
+│   │   ├── test_sales.py
+│   │   ├── test_summaries.py
+│   │   ├── test_suppliers.py
+│   │   ├── test_tags.py
 │   │   └── test_workspaces.py
 │   └── uv.lock
 ├── docs

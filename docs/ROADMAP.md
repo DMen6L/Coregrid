@@ -30,7 +30,9 @@ Coregrid currently has the foundation for a small inventory control tool:
 - personal account page with profile updates, workspace switching, workspace
   creation, password updates, workspace leaving, invitations, and sign out
 - dashboard sales, stock-risk, top-product, and top-supplier summaries
-- initial backend tests for health, auth, and workspace endpoints
+- backend endpoint tests for health, auth, workspaces, companies, suppliers,
+  products, tags, invitations, members, personal account actions, restocks,
+  sales, and dashboard summaries
 - GitHub Actions workflow for the current backend test files
 
 The next work should make Coregrid feel less like a CRUD interface and more like

@@ -99,13 +99,26 @@ permissions:
 
 Automated tests use FastAPI `TestClient` and pytest.
 
-The current active suite is a small foundation:
+The current active suite covers the main endpoint groups:
 
 - `test_health.py`: `/health` and `/ready`
 - `test_auth.py`: registration, validation failures, login, rejected login, and
   `/auth/me`
 - `test_workspaces.py`: workspace creation, workspace detail, and paginated
   workspace audit-log listing
+- `test_companies.py`: company create/list/detail/update and validation
+- `test_suppliers.py`: supplier create/list/detail/update and validation
+- `test_products.py`: product create/list/detail/filter/update, tags, atomic
+  create/update, and product-supplier link update/delete
+- `test_tags.py`: tag list/search/delete
+- `test_invitations.py`: invitation create/list/search/revoke and conflicts
+- `test_members.py`: member list/detail/role update/delete and forbidden cases
+- `test_me.py`: personal overview, profile/password update, invitation
+  acceptance, and leaving workspaces
+- `test_restocks.py`: restock create/list/detail and invalid line handling
+- `test_sales.py`: sale create/list/detail, over-stock conflict, and invalid
+  line handling
+- `test_summaries.py`: dashboard summaries and query validation
 
 Tests run against the configured local development database and truncate
 Coregrid tables between tests. Apply migrations before running the suite and do

@@ -63,3 +63,30 @@ jobs:
 
       - name: Company tests
         run: uv run pytest -v tests/test_companies.py
+
+      - name: Supplier tests
+        run: uv run pytest -v tests/test_suppliers.py
+
+      - name: Product tests
+        run: uv run pytest -v tests/test_products.py
+
+      - name: Tag tests
+        run: uv run pytest -v tests/test_tags.py
+
+      - name: Invitation tests
+        run: uv run pytest -v tests/test_invitations.py
+
+      - name: Member tests
+        run: uv run pytest -v tests/test_members.py
+
+      - name: Personal account tests
+        run: uv run pytest -v tests/test_me.py
+
+      - name: Restock tests
+        run: uv run pytest -v tests/test_restocks.py
+
+      - name: Sale tests
+        run: uv run pytest -v tests/test_sales.py
+
+      - name: Summary tests
+        run: uv run pytest -v tests/test_summaries.py

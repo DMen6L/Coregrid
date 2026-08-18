@@ -216,7 +216,7 @@ def delete_invitation(
             extra_data={
                 "email": invitation.email,
                 "role": invitation.role,
-                "revoked_at": revoked_at,
+                "revoked_at": revoked_at.isoformat(),
             },
         ),
     )

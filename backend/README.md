@@ -521,6 +521,16 @@ Current active test files:
 - `tests/test_health.py`
 - `tests/test_auth.py`
 - `tests/test_workspaces.py`
+- `tests/test_companies.py`
+- `tests/test_suppliers.py`
+- `tests/test_products.py`
+- `tests/test_tags.py`
+- `tests/test_invitations.py`
+- `tests/test_members.py`
+- `tests/test_me.py`
+- `tests/test_restocks.py`
+- `tests/test_sales.py`
+- `tests/test_summaries.py`
 
 The GitHub Actions workflow in `../.github/workflows/tests.yml` runs those test
 files as separate CI steps after starting PostgreSQL and applying migrations.
