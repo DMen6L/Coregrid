@@ -91,7 +91,7 @@ def auth_headers(client, registered_user) -> dict[str, str]:
 
 @pytest.fixture
 def workspace(client, auth_headers):
-    payload = {
+    payload: dict[str, str] = {
         "name": "new_workspace",
     }
     response = client.post(

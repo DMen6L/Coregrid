@@ -60,3 +60,6 @@ jobs:
 
       - name: Workspace tests
         run: uv run pytest -v tests/test_workspaces.py
+
+      - name: Company tests
+        run: uv run pytest -v tests/test_companies.py
